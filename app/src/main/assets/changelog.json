@@ -1,0 +1,13 @@
+{
+  "versions": [
+    {
+      "version": "1.0.0",
+      "changes": [
+        "Initial release",
+        "Support for LiteRT-LM models (.litertlm)",
+        "OpenAI-compatible API Server",
+        "Test Inference feature"
+      ]
+    }
+  ]
+}
