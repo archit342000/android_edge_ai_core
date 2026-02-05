@@ -1,6 +1,16 @@
 {
   "versions": [
     {
+      "version": "1.0.1",
+      "changes": [
+        "Fixed crash on Android 14+ due to missing foreground service permission",
+        "Fixed 16KB page alignment crash by enabling native lib extraction",
+        "Enabled cleartext traffic for local server access",
+        "Implemented model path persistence",
+        "Upgraded Gradle and build tools"
+      ]
+    },
+    {
       "version": "1.0.0",
       "changes": [
         "Initial release",

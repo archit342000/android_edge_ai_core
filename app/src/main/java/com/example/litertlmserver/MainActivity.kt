@@ -18,8 +18,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.NetworkInterface
 import java.net.URL
 import java.nio.charset.Charset
+import java.util.Collections
 
 class MainActivity : AppCompatActivity() {
 
@@ -27,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvModelPath: TextView
     private lateinit var switchEnableServer: SwitchMaterial
     private lateinit var tvStatus: TextView
+    private lateinit var tvServerAddress: TextView
     private lateinit var btnTestInference: Button
     private lateinit var tvLogs: TextView
 
@@ -48,8 +52,25 @@ class MainActivity : AppCompatActivity() {
         tvModelPath = findViewById(R.id.tv_model_path)
         switchEnableServer = findViewById(R.id.switch_enable_server)
         tvStatus = findViewById(R.id.tv_status)
+        tvServerAddress = findViewById(R.id.tv_server_address)
         btnTestInference = findViewById(R.id.btn_test_inference)
         tvLogs = findViewById(R.id.tv_logs)
+
+        val ip = getIpAddress()
+        tvServerAddress.text = getString(R.string.server_address) + ": " + (ip ?: "Unavailable")
+
+        // Restore saved model path
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val savedPath = prefs.getString(KEY_MODEL_PATH, null)
+        if (savedPath != null) {
+            val file = File(savedPath)
+            if (file.exists()) {
+                selectedModelPath = savedPath
+                tvModelPath.text = savedPath
+                switchEnableServer.isEnabled = true
+                appendLog("Restored model path: $savedPath")
+            }
+        }
 
         btnSelectModel.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -104,6 +125,11 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 selectedModelPath = destinationFile.absolutePath
+
+                // Save path
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                    .putString(KEY_MODEL_PATH, selectedModelPath)
+                    .apply()
 
                 withContext(Dispatchers.Main) {
                     tvModelPath.text = selectedModelPath
@@ -214,7 +240,29 @@ class MainActivity : AppCompatActivity() {
         tvLogs.text = "$current\n$msg"
     }
 
+    private fun getIpAddress(): String? {
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (intf in interfaces) {
+                val addrs = Collections.list(intf.inetAddresses)
+                for (addr in addrs) {
+                    if (!addr.isLoopbackAddress) {
+                        val sAddr = addr.hostAddress
+                        // Check if it's IPv4
+                        val isIPv4 = sAddr?.indexOf(':') ?: -1 < 0
+                        if (isIPv4) return sAddr
+                    }
+                }
+            }
+        } catch (ex: Exception) {
+            Log.e(TAG, "Error getting IP address", ex)
+        }
+        return null
+    }
+
     companion object {
         private const val TAG = "MainActivity"
+        private const val PREFS_NAME = "litertlm_prefs"
+        private const val KEY_MODEL_PATH = "model_path"
     }
 }
