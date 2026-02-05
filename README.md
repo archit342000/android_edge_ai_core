@@ -1,1 +1,1 @@
-# android_edge_ai_core
+# Android Edge AI Core
