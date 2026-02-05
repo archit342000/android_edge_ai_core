@@ -4,14 +4,16 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
+    android:padding="24dp"
     tools:context=".MainActivity">
 
-    <Button
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btn_select_model"
+        style="@style/Widget.Material3.Button.TonalButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/select_model"
+        app:icon="@android:drawable/ic_menu_save"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -20,20 +22,23 @@
         android:id="@+id/tv_model_path"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="12dp"
         android:text="No model selected"
         android:textAlignment="center"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textColor="?attr/colorOnSurfaceVariant"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/btn_select_model" />
 
-    <com.google.android.material.switchmaterial.SwitchMaterial
+    <com.google.android.material.materialswitch.MaterialSwitch
         android:id="@+id/switch_enable_server"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:text="@string/enable_server"
         android:enabled="false"
+        android:textAppearance="?attr/textAppearanceTitleMedium"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tv_model_path" />
@@ -44,60 +49,135 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="@string/status_idle"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+        android:textAppearance="?attr/textAppearanceLabelLarge"
+        android:textColor="?attr/colorPrimary"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/switch_enable_server" />
 
     <TextView
-        android:id="@+id/tv_server_address"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/server_address"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tv_status" />
-
-    <Button
-        android:id="@+id/btn_test_inference"
+        android:id="@+id/tv_backend_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
-        android:text="@string/test_inference"
+        android:text="@string/backend_label"
+        android:textAppearance="?attr/textAppearanceTitleSmall"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tv_status" />
+
+    <RadioGroup
+        android:id="@+id/rg_backend"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tv_backend_label">
+
+        <RadioButton
+            android:id="@+id/rb_cpu"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/backend_cpu"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+        <RadioButton
+            android:id="@+id/rb_gpu"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="@string/backend_gpu"
+            android:layout_marginStart="16dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+        <RadioButton
+            android:id="@+id/rb_npu"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/backend_npu"
+            android:layout_marginStart="16dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+    </RadioGroup>
+
+    <LinearLayout
+        android:id="@+id/ll_inference_buttons"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:orientation="horizontal"
+        android:gravity="center"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/rg_backend">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_test_inference"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/test_inference"
+            android:enabled="false" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_test_vision"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="@string/test_vision"
+            android:enabled="false" />
+    </LinearLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_test_audio"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/test_audio"
         android:enabled="false"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tv_server_address" />
+        app:layout_constraintTop_toBottomOf="@+id/ll_inference_buttons" />
 
     <TextView
         android:id="@+id/tv_logs_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="24dp"
         android:text="@string/logs_label"
-        android:textStyle="bold"
+        android:textAppearance="?attr/textAppearanceTitleSmall"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btn_test_inference" />
+        app:layout_constraintTop_toBottomOf="@+id/btn_test_audio" />
 
-    <ScrollView
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginTop="8dp"
-        android:background="#EEEEEE"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="1dp"
+        app:strokeColor="?attr/colorOutline"
+        app:cardBackgroundColor="?attr/colorSurfaceVariant"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tv_logs_label">
 
-        <TextView
-            android:id="@+id/tv_logs"
+        <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:text="Logs will appear here..."
-            android:fontFamily="monospace"
-            android:textSize="12sp" />
-    </ScrollView>
+            android:layout_height="match_parent">
+
+            <TextView
+                android:id="@+id/tv_logs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="12dp"
+                android:text="Logs will appear here..."
+                android:fontFamily="monospace"
+                android:textSize="12sp"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+        </ScrollView>
+    </com.google.android.material.card.MaterialCardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,4 +1,4 @@
-package com.example.litertlmserver
+package com.aanand.edgeaicore
 
 import com.google.gson.Gson
 import com.google.gson.JsonPrimitive

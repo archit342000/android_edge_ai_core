@@ -1,14 +1,14 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+
 }
 
 android {
-    namespace = "com.example.litertlmserver"
+    namespace = "com.aanand.edgeaicore"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.litertlmserver"
+        applicationId = "com.aanand.edgeaicore"
         minSdk = 26
         targetSdk = 34
         versionCode = 2
@@ -30,19 +30,25 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
-    kotlinOptions {
-        jvmTarget = "1.8"
-        freeCompilerArgs += "-Xskip-metadata-version-check"
+
+    buildFeatures {
+        aidl = true
     }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "META-INF/INDEX.LIST"
-            excludes += "META-INF/io.netty.versions.properties"
         }
         jniLibs {
             useLegacyPackaging = true
         }
+    }
+}
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+        freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 }
 
@@ -54,14 +60,10 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
     // LiteRT-LM
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.8.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.9.0-alpha02")
 
-    // Ktor Server
-    val ktorVersion = "2.3.7"
-    implementation("io.ktor:ktor-server-core:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
-    implementation("io.ktor:ktor-serialization-gson:$ktorVersion")
+    // Gson
+    implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.slf4j:slf4j-android:1.7.36")
 
     testImplementation("junit:junit:4.13.2")

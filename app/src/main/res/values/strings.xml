@@ -1,14 +1,21 @@
 <resources>
-    <string name="app_name">LiteRTLM Server</string>
+    <string name="app_name">Edge AI Core</string>
     <string name="select_model">Select Model (.litertlm)</string>
     <string name="enable_server">Enable Server</string>
     <string name="test_inference">Test Inference</string>
+    <string name="test_vision">Test Vision</string>
+    <string name="test_audio">Test Audio</string>
     <string name="status_label">Status: </string>
     <string name="status_idle">Idle</string>
     <string name="status_loading">Loading Model...</string>
     <string name="status_ready">Ready</string>
     <string name="status_error">Error</string>
-    <string name="server_address">Server Address: </string>
+    <string name="status_selecting_image">Selecting Image...</string>
+    <string name="status_recording">Recording Audio...</string>
+    <string name="backend_label">Backend:</string>
+    <string name="backend_cpu">CPU</string>
+    <string name="backend_gpu">GPU</string>
+    <string name="backend_npu">NPU</string>
     <string name="logs_label">Logs:</string>
     <string name="notification_channel_id">inference_channel</string>
     <string name="notification_channel_name">Inference Service</string>
