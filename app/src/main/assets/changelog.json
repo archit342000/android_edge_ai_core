@@ -1,6 +1,86 @@
 {
   "versions": [
     {
+      "version": "1.3.15",
+      "changes": [
+        "Added explicit AIDL intent-filter for better external app discoverability",
+        "Improved service visibility for Android 11+ client applications",
+        "Streamlined binding process for third-party integrations"
+      ]
+    },
+    {
+      "version": "1.3.14",
+      "changes": [
+        "Implemented transparent IPC request logging in the main UI",
+        "Identifies and logs external application package names making AIDL calls",
+        "Logs all requests (StartSession, Inference, Ping) regardless of auth status",
+        "Ensures invalid tokens are visible in the logs for easier developer debugging"
+      ]
+    },
+    {
+      "version": "1.3.13",
+      "changes": [
+        "Enhanced InferenceService with robust JSON response handling",
+        "Added 'ping()' method to AIDL for basic health and connectivity checks",
+        "Implemented automatic token trimming to prevent auth failures from whitespace",
+        "Added comprehensive try-catch wrappers around binder methods to prevent silent failures",
+        "Improved diagnostic logging for token validation and session lifecycle"
+      ]
+    },
+    {
+      "version": "1.3.12",
+      "changes": [
+        "Fixed critical gap in 'approveRequest' persistence",
+        "Tokens approved via UI are now correctly written to the backup file",
+        "Ensures new approvals survive crashes even if SharedPreferences fails"
+      ]
+    },
+    {
+      "version": "1.3.11",
+      "changes": [
+        "Implemented security restriction to block client-side token revocation",
+        "Only the Edge AI Core app (owner) can now revoke tokens",
+        "External authorization calls to 'revokeApiToken' are silently rejected"
+      ]
+    },
+    {
+      "version": "1.3.10",
+      "changes": [
+        "Implemented 'Double Persistence' strategy for API tokens",
+        "Added fail-safe backup file (filesDir/auth_tokens_backup.json)",
+        "System now attempts self-repair from backup if SharedPreferences are corrupted or empty",
+        "Guaranteed persistence for authorized apps against process kills and disk flakiness"
+      ]
+    },
+    {
+      "version": "1.3.9",
+      "changes": [
+        "Fixed major bug where tokens were lost due to unnecessary disk reloading",
+        "Optimized Singleton TokenManager to trust in-memory state as the source of truth",
+        "Removed redundant data loading logic to prevent stale disk reads from overwriting memory",
+        "Streamlined persistence logic for maximum stability under high concurrency"
+      ]
+    },
+    {
+      "version": "1.3.8",
+      "changes": [
+        "Resolved deep-seated concurrency bug in TokenManager using Singleton pattern",
+        "Implemented global synchronization locks for all token operations",
+        "Fixed race condition between 'loadData' and 'persist' that caused token loss",
+        "Standardized on unified in-memory state for Service and UI processes",
+        "Added parse-failure protection to prevent overwriting tokens with empty data"
+      ]
+    },
+    {
+      "version": "1.3.7",
+      "changes": [
+        "Fixed critical multi-process race condition causing tokens to disappear",
+        "Implemented atomic token persistence using synchronous commit and granular keys",
+        "Enhanced TokenManager with mandatory cross-process data synchronization",
+        "Separated persistence logic for approved tokens and pending requests"
+      ]
+    },
+    {
       "version": "1.3.6",
       "changes": [
         "Polished UI to strictly adhere to Material Design 3 standards",

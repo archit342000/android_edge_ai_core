@@ -82,4 +82,9 @@ interface IInferenceService {
      * @param callback The callback for receiving tokens, completion, or errors
      */
     void generateResponseAsyncWithSession(String apiToken, String sessionId, String jsonRequest, IInferenceCallback callback);
+    /**
+     * Diagnostic method to check if the service is alive and responsive.
+     * @return The string "pong"
+     */
+    String ping();
 }
