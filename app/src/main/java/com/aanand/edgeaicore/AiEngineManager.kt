@@ -209,12 +209,11 @@ class AiEngineManager {
         return Message.of(contents)
     }
 
-    private fun extractText(contents: List<Content>): String {
-        return contents.joinToString("") { content ->
-            when (content) {
-                is Content.Text -> content.text
-                else -> ""
-            }
+    private fun extractText(contents: Any): String {
+        return if (contents is Iterable<*>) {
+            contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
+        } else {
+            contents.toString()
         }
     }
 
