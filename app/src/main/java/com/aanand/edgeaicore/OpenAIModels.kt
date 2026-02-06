@@ -41,3 +41,44 @@ data class Usage(
     val completion_tokens: Int,
     val total_tokens: Int
 )
+
+// ===========================
+// Session Management Models
+// ===========================
+
+/**
+ * Response for session creation
+ */
+data class SessionResponse(
+    val session_id: String,
+    val ttl_ms: Long,
+    val created_at: Long,
+    val expires_at: Long
+)
+
+/**
+ * Response for session info query
+ */
+data class SessionInfoResponse(
+    val session_id: String,
+    val ttl_ms: Long,
+    val created_at: Long,
+    val last_access_time: Long,
+    val expires_at: Long,
+    val remaining_ttl_ms: Long
+)
+
+/**
+ * Generic success response
+ */
+data class SuccessResponse(
+    val success: Boolean
+)
+
+/**
+ * Generic error response
+ */
+data class ErrorResponse(
+    val error: String
+)
+

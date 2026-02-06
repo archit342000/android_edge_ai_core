@@ -11,8 +11,8 @@ android {
         applicationId = "com.aanand.edgeaicore"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.1.2"
+        versionCode = 9
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
