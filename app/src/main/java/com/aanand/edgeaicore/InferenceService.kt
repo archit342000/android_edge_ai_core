@@ -183,26 +183,17 @@ class InferenceService : Service() {
                 Log.d(TAG, "Received session request for ${sessionId.take(8)}...: $jsonRequest")
                 val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
                 
-                // For session-based inference, we only use the last user message
-                val lastMessage = request.messages.lastOrNull { it.role != "system" }
-                if (lastMessage == null) {
-                    return gson.toJson(ErrorResponse("No user message found"))
-                }
-                
                 val preamble = extractSystemPreamble(request.messages)
-                val (responseText, conversation) = runBlocking {
+                val (responseText, _) = runBlocking {
                     aiEngineManager.generateResponseWithSession(
                         session = session,
-                        message = lastMessage,
+                        messages = request.messages,
                         temperature = request.temperature,
                         topP = request.top_p,
                         topK = request.top_k,
                         preamble = preamble
                     )
                 }
-                
-                // Update session with the conversation (for KV cache reuse)
-                session.conversation = conversation
 
                 val response = createChatCompletionResponse(request, responseText)
                 gson.toJson(response)
@@ -249,17 +240,10 @@ class InferenceService : Service() {
                     Log.d(TAG, "Received session async request for ${sessionId.take(8)}...: $jsonRequest")
                     val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
                     
-                    // For session-based inference, we only use the last user message
-                    val lastMessage = request.messages.lastOrNull { it.role != "system" }
-                    if (lastMessage == null) {
-                        callback.onError("No user message found")
-                        return@launch
-                    }
-                    
                     val preamble = extractSystemPreamble(request.messages)
-                    val conversation = aiEngineManager.generateResponseAsyncWithSession(
+                    aiEngineManager.generateResponseAsyncWithSession(
                         session = session,
-                        message = lastMessage,
+                        messages = request.messages,
                         onToken = { token ->
                             try {
                                 callback.onToken(token)
@@ -287,9 +271,6 @@ class InferenceService : Service() {
                         topK = request.top_k,
                         preamble = preamble
                     )
-                    
-                    // Update session with the conversation (for KV cache reuse)
-                    session.conversation = conversation
                     
                 } catch (e: Exception) {
                     Log.e(TAG, "Internal error in session async request", e)

@@ -1,7 +1,7 @@
 package com.aanand.edgeaicore
 
 import android.util.Log
-import com.google.ai.edge.litertlm.Conversation
+import com.google.ai.edge.litertlm.Session as LiteRTSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,11 +11,11 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Represents a client session with its associated LiteRT-LM conversation.
+ * Represents a client session with its associated LiteRT-LM session.
  * 
  * @property sessionId Unique identifier for this session
  * @property apiToken The API token that owns this session
- * @property conversation The LiteRT-LM Conversation object for KV cache reuse
+ * @property engineSession The LiteRT-LM Session object for KV cache reuse and prefill control
  * @property ttlMs Time-to-live in milliseconds
  * @property lastAccessTime Timestamp of the last access (for TTL calculation)
  * @property createdAt Timestamp when the session was created
@@ -23,10 +23,11 @@ import java.util.concurrent.ConcurrentHashMap
 data class Session(
     val sessionId: String,
     val apiToken: String,
-    var conversation: Conversation?,
+    var engineSession: LiteRTSession?,
     val ttlMs: Long,
     var lastAccessTime: Long = System.currentTimeMillis(),
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    var processedMessageCount: Int = 0
 ) {
     /**
      * Checks if this session has expired.
@@ -46,8 +47,8 @@ data class Session(
 /**
  * Manages client sessions with TTL (Time-To-Live) support.
  * 
- * Each session maintains a LiteRT-LM Conversation object to leverage
- * KV caching for efficient multi-turn conversations.
+ * Each session maintains a LiteRT-LM Session object to leverage
+ * KV caching for efficient multi-turn conversations and prefill control.
  * 
  * Sessions expire after a configurable TTL if not accessed, allowing
  * cleanup of stale sessions when clients forget to close them.
@@ -77,7 +78,7 @@ class SessionManager(
         val session = Session(
             sessionId = sessionId,
             apiToken = apiToken,
-            conversation = null, // Will be set when first inference runs
+            engineSession = null, // Will be set when first inference runs
             ttlMs = ttlMs
         )
         sessions[sessionId] = session
@@ -166,11 +167,11 @@ class SessionManager(
     fun getActiveSessionCount(): Int = sessions.count { !it.value.isExpired() }
     
     /**
-     * Sets the conversation object for a session.
-     * Called when a new inference request creates or reuses a conversation.
+     * Sets the LiteRT session object for a session.
+     * Called when a new inference request creates or reuses a session.
      */
-    fun setSessionConversation(sessionId: String, conversation: Conversation) {
-        sessions[sessionId]?.conversation = conversation
+    fun setEngineSession(sessionId: String, engineSession: LiteRTSession) {
+        sessions[sessionId]?.engineSession = engineSession
     }
     
     /**
@@ -180,9 +181,9 @@ class SessionManager(
         val session = sessions.remove(sessionId)
         if (session != null) {
             try {
-                session.conversation?.close()
+                session.engineSession?.close()
             } catch (e: Exception) {
-                Log.e(TAG, "Error closing conversation for session ${sessionId.take(8)}...", e)
+                Log.e(TAG, "Error closing engine session for session ${sessionId.take(8)}...", e)
             }
             Log.i(TAG, "Removed session: ${sessionId.take(8)}...")
             return true

@@ -2,7 +2,7 @@
 
 This application provides a system-wide AI inference service via **AIDL (Android Interface Definition Language)** and a local **OpenAI-compatible HTTP Server**. 
 
-Starting from **v1.3.4**, Edge AI Core **only supports stateful, session-based inference**. This ensures high performance through KV cache reuse and robust resource management.
+Starting from **v1.4.0**, Edge AI Core **only supports stateful, session-based inference**. This ensures high performance through KV cache reuse and robust resource management.
 
 ---
 
@@ -136,7 +136,7 @@ aiService?.generateResponseAsyncWithSession(apiToken, sessionId, request, object
 | `messages[].content` | String/Obj | The text content or multimodal data. |
 | `temperature` | Double | (Optional) Controls randomness (0.0 to 2.0). |
 | `top_p` | Double | (Optional) Nucleus sampling probability threshold (0.0 to 1.0). |
-| `max_tokens` | Integer | (Optional) Maximum number of tokens to generate. |
+| `top_k` | Integer | (Optional) Top-K sampling threshold. |
 
 ### Response Structure
 Standard OpenAI-compatible JSON:
@@ -172,30 +172,72 @@ Send images or audio as base64-encoded strings within the `content` array of a m
 
 ---
 
-## 5. Advanced Multi-Session Management
+## 5. Assistant Message Continuation (Prefilling)
+
+You can guide or constrain the model's response by "prefilling" the assistant's turn. If the last message in your `messages` array has the role `assistant`, the model will treat this text as the beginning of its response and continue generating from there.
+
+**Example: Forcing a specific format**
+```json
+{
+  "messages": [
+    { "role": "user", "content": "Spell the word 'apple'." },
+    { "role": "assistant", "content": "A-P-" }
+  ]
+}
+```
+**Response:**
+```json
+{
+  "choices": [{
+    "message": { "role": "assistant", "content": "P-L-E" }
+  }]
+}
+```
+
+**Example: Reasoning Enforcement (CoT)**
+```json
+{
+  "messages": [
+    { "role": "user", "content": "How many 'r's are in 'strawberry'?" },
+    { "role": "assistant", "content": "<think>\n" }
+  ]
+}
+```
+*The model will continue its reasoning inside the `<think>` block.*
+
+This is useful for:
+*   Forcing JSON output (start with `{`).
+*   Reasoning enforcement (start with `<think>`).
+*   Continuing a sentence or interrupted thought.
+*   Guiding the model's tone or style.
+
+---
+
+## 6. Advanced Multi-Session Management
 
 Edge AI Core supports **true multi-session concurrency**. Multiple independent client applications can maintain their own conversation states simultaneously.
 
 ### How it Works:
-1.  **Independent Contexts**: Each `sessionId` maps to a distinct `Conversation` instance in the LiteRT-LM engine.
-2.  **KV Cache Persistence**: The hardware KV cache is preserved for each session, enabling ultra-fast response times for multi-turn dialogues.
+1.  **Independent Contexts**: Each `sessionId` maps to a distinct `Session` instance in the LiteRT-LM engine.
+2.  **KV Cache Persistence**: The hardware KV cache is preserved for each session. 
+    *   **Full History Support**: You can safely send the full conversation history in every request (standard OpenAI behavior). The engine intelligently detects the session state and only processes the new messages, avoiding redundant computation.
 3.  **Hardware Awareness**:
-    *   **GPU Backend**: Typically supports many parallel sessions without context switching.
-    *   **NPU/CPU Backend**: If hardware limits are reached (e.g., "session already exists" error), the engine intelligently identifies and **closes the oldest active session** (LRU) to make room for the new request.
-    *   **Lock Serialization**: While session states are parallel, actual hardware inference is serialized to ensure stability.
+    *   **GPU Backend**: Typically supports many parallel sessions.
+    *   **NPU/CPU Backend**: If hardware limits are reached, the engine closes the oldest active session (LRU) to make room.
+    *   **Lock Serialization**: Inference execution is serialized for stability.
 
 ---
 
-## 6. Best Practices & Security
+## 7. Best Practices & Security
 
 1.  **Session Hygiene**: Always call `closeSession()` when a conversation ends to free up NPU memory.
-2.  **KV Cache Reuse**: The model remembers context within a session. You only need to send the **latest** message in subsequent calls to the same session.
+2.  **KV Cache Reuse**: The engine intelligently avoids re-processing old messages. For best performance, send the **full conversation history** in every request. The service will automatically detect the overlapping messages and only process the new tokens.
 3.  **Local Server**: For testing, a local OpenAI-compatible server runs at `localhost:8080`.
 4.  **Token Security**: Keep backup files of your API tokens safe. Tokens are mapped to your app's package name for security.
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
     
 - **"PENDING_USER_APPROVAL"**: The user hasn't approved your app in the Edge AI Core UI yet.
 - **Service Not Found**: On Android 11+, ensure your client app declares the `<queries>` tag in its `AndroidManifest.xml`.
@@ -205,7 +247,7 @@ Edge AI Core supports **true multi-session concurrency**. Multiple independent c
 
 ---
 
-## 8. Integration Guide: Binding to the Service
+## 9. Integration Guide: Binding to the Service
 
 On Android 11 (API 30) and above, package visibility restrictions prevent apps from seeing each other by default. To bind to the Edge AI Core service, your client app **must** include the following in its `AndroidManifest.xml`:
 

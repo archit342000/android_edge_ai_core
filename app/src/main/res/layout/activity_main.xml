@@ -144,6 +144,35 @@
                             app:icon="@android:drawable/ic_btn_speak_now"
                             android:layout_marginStart="6dp"/>
                     </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_test_multiturn"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Test Multi-Turn"
+                            android:enabled="false"
+                            app:icon="@android:drawable/ic_menu_sort_by_size"
+                            android:layout_marginEnd="6dp"/>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_test_continuation"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Test Contin."
+                            android:enabled="false"
+                            app:icon="@android:drawable/ic_media_play"
+                            android:layout_marginStart="6dp"/>
+                    </LinearLayout>
                 </LinearLayout>
 
                 <TextView
