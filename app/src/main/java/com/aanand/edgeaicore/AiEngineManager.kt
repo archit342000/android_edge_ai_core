@@ -81,8 +81,9 @@ class AiEngineManager {
                 conversation = currentEngine.createConversation(ConversationConfig())
                 val response = conversation!!.sendMessage(lrtMessage)
                 val content = response.contents
-                Log.d(TAG, "Received response from engine: $content")
-                content.toString()
+                val responseText = extractText(content)
+                Log.d(TAG, "Received response from engine: $responseText")
+                responseText
             } catch (e: Exception) {
                  Log.e(TAG, "Error generating response", e)
                  throw e
@@ -116,7 +117,7 @@ class AiEngineManager {
                 suspendCancellableCoroutine<Unit> { cont ->
                     conversation!!.sendMessageAsync(lrtMessage, object : MessageCallback {
                         override fun onMessage(message: Message) {
-                            val fullText = message.contents.toString()
+                            val fullText = extractText(message.contents)
                             // Calculate the new token part. 
                             // Note: Native SDK might provide full accumulated text each time.
                             val newToken = if (fullText.startsWith(lastResponseText)) {
@@ -206,6 +207,15 @@ class AiEngineManager {
         }
         
         return Message.of(contents)
+    }
+
+    private fun extractText(contents: List<Content>): String {
+        return contents.joinToString("") { content ->
+            when (content) {
+                is Content.Text -> content.text
+                else -> ""
+            }
+        }
     }
 
     fun close() {
