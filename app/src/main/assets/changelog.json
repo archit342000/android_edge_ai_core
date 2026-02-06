@@ -1,6 +1,14 @@
 {
   "versions": [
     {
+      "version": "1.1.2",
+      "changes": [
+        "Added support for System Prompts (preambles)",
+        "Implemented sampling parameters: temperature, top_k, and max_tokens",
+        "Updated documentation with detailed integration guide for new features"
+      ]
+    },
+    {
       "version": "1.1.1",
       "changes": [
         "Fixed build error in AiEngineManager due to type mismatch",

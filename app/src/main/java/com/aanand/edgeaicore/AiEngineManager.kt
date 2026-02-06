@@ -3,8 +3,10 @@ package com.aanand.edgeaicore
 import android.util.Log
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
+import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.Message
@@ -65,7 +67,13 @@ class AiEngineManager {
         }
     }
 
-    suspend fun generateResponse(messages: List<ChatMessage>): String = withContext(Dispatchers.IO) {
+    suspend fun generateResponse(
+        messages: List<ChatMessage>,
+        temperature: Double? = null,
+        topP: Double? = null,
+        topK: Int? = null,
+        preamble: String? = null
+    ): String = withContext(Dispatchers.IO) {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
 
         // We take the last user message
@@ -78,7 +86,15 @@ class AiEngineManager {
             Log.d(TAG, "Request starting inference (lock acquired)")
             var conversation: Conversation? = null
             try {
-                conversation = currentEngine.createConversation(ConversationConfig())
+                val conversationConfig = ConversationConfig(
+                    systemInstruction = preamble?.let { Contents.of(Content.Text(it)) },
+                    samplerConfig = SamplerConfig(
+                        topK = topK ?: 40,
+                        topP = topP ?: 0.95,
+                        temperature = temperature ?: 0.8
+                    )
+                )
+                conversation = currentEngine.createConversation(conversationConfig)
                 val response = conversation!!.sendMessage(lrtMessage)
                 val content = response.contents
                 val responseText = extractText(content)
@@ -98,7 +114,11 @@ class AiEngineManager {
         messages: List<ChatMessage>,
         onToken: (String) -> Unit,
         onComplete: (String) -> Unit,
-        onError: (Throwable) -> Unit
+        onError: (Throwable) -> Unit,
+        temperature: Double? = null,
+        topP: Double? = null,
+        topK: Int? = null,
+        preamble: String? = null
     ) = withContext(Dispatchers.IO) {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
 
@@ -111,7 +131,15 @@ class AiEngineManager {
             Log.d(TAG, "Request starting async inference (lock acquired)")
             var conversation: Conversation? = null
             try {
-                conversation = currentEngine.createConversation(ConversationConfig())
+                val conversationConfig = ConversationConfig(
+                    systemInstruction = preamble?.let { Contents.of(Content.Text(it)) },
+                    samplerConfig = SamplerConfig(
+                        topK = topK ?: 40,
+                        topP = topP ?: 0.95,
+                        temperature = temperature ?: 0.8
+                    )
+                )
+                conversation = currentEngine.createConversation(conversationConfig)
                 var lastResponseText = ""
                 
                 suspendCancellableCoroutine<Unit> { cont ->

@@ -5,8 +5,9 @@ import com.google.gson.JsonElement
 data class ChatCompletionRequest(
     val model: String? = null,
     val messages: List<ChatMessage>,
-    val temperature: Float? = 1.0f,
-    val top_p: Float? = 1.0f,
+    val temperature: Double? = null,
+    val top_p: Double? = null,
+    val top_k: Int? = null,
     val stream: Boolean? = false
 )
 

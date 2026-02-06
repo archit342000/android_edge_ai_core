@@ -31,8 +31,15 @@ class InferenceService : Service() {
                 Log.d(TAG, "Received request: $jsonRequest")
                 val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
                 
+                val preamble = extractSystemPreamble(request.messages)
                 val responseText = runBlocking {
-                     aiEngineManager.generateResponse(request.messages)
+                     aiEngineManager.generateResponse(
+                         messages = request.messages,
+                         temperature = request.temperature,
+                         topP = request.top_p,
+                         topK = request.top_k,
+                         preamble = preamble
+                     )
                 }
 
                 val response = createChatCompletionResponse(request, responseText)
@@ -50,6 +57,7 @@ class InferenceService : Service() {
                     Log.d(TAG, "Received async request: $jsonRequest")
                     val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
                     
+                    val preamble = extractSystemPreamble(request.messages)
                     aiEngineManager.generateResponseAsync(
                         request.messages,
                         onToken = { token ->
@@ -73,7 +81,11 @@ class InferenceService : Service() {
                              } catch (e: Exception) {
                                  Log.e(TAG, "Error calling onError callback", e)
                              }
-                        }
+                        },
+                        temperature = request.temperature,
+                        topP = request.top_p,
+                        topK = request.top_k,
+                        preamble = preamble
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in async processing", e)
@@ -217,6 +229,13 @@ class InferenceService : Service() {
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
             .build()
+    }
+
+    private fun extractSystemPreamble(messages: List<ChatMessage>): String? {
+        return messages.firstOrNull { it.role == "system" }?.let {
+            if (it.content.isJsonPrimitive) it.content.asString
+            else it.content.toString()
+        }
     }
 
     companion object {

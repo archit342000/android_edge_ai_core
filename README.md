@@ -132,8 +132,11 @@ suspend fun askAi(prompt: String): String? {
 | :--- | :--- | :--- |
 | `model` | String | Identifier for the loaded model (e.g., "gemma"). |
 | `messages` | Array | List of chat objects. |
-| `messages[].role` | String | Either "user" or "assistant". |
+| `messages[].role` | String | "user", "assistant", or **"system"**. |
 | `messages[].content` | String/Obj | The text content or multimodal data. |
+| `temperature` | Double | (Optional) Controls randomness (0.0 to 2.0). |
+| `top_p` | Double | (Optional) Nucleus sampling probability threshold (0.0 to 1.0). |
+| `top_k` | Integer | (Optional) Limit vocabulary to top K probable tokens. |
 
 ### Response Structure
 The service returns a stringified JSON mimicking the OpenAI standard:
@@ -376,7 +379,58 @@ aiService?.generateResponseAsync(requestJson, object : IInferenceCallback.Stub()
 > [!NOTE]
 > **Performance Tip**: For very long responses, `textView.text = buffer.toString()` becomes slow. Use `textView.append(token)` inside `onToken` for the best performance.
 
-## 7. Best Practices & Safety
+## 7. System Prompts & Sampling Parameters
+
+Starting from **v1.1.2**, the service supports defining AI behavior via **System Prompts** and fine-tuning output via **Sampling Parameters**.
+
+### System Prompt (Preamble)
+To set a system-wide behavior or "persona", include a message with the `role: "system"`. The engine extracts this message and uses it as the conversation preamble.
+
+```json
+{
+  "model": "gemma",
+  "messages": [
+    {
+      "role": "system", 
+      "content": "You are a professional chef. Answer all questions with a culinary twist."
+    },
+    {
+      "role": "user", 
+      "content": "How do I fix a flat tire?"
+    }
+  ]
+}
+```
+
+### Sampling Parameters
+You can control the creativity and length of the response by providing optional parameters at the root of the JSON request.
+
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `temperature` | 0.8 | Higher values make output more creative; lower make it more deterministic. |
+| `top_p` | 0.95 | Nucleus sampling: only considers tokens with top P cumulative probability. |
+| `top_k` | 40 | Limits the model to consider only the top K most likely next words. |
+
+#### Example Request with Parameters
+```json
+{
+  "model": "gemma",
+  "messages": [{"role": "user", "content": "Write a poem about Kotlin."}],
+  "temperature": 0.8,
+  "top_p": 0.9,
+  "top_k": 40
+}
+```
+
+### Statelessness & History
+To keep the service lightweight and efficient on mobile devices, each request to `generateResponse` or `generateResponseAsync` is **stateless**. The internal conversation instance is closed after each call.
+
+If your application requires chat history (context), you must manage the history state in your client application. However, please note that current versions of the core engine optimize for the **last message** in the `messages` array while using the `system` message as a preamble. 
+
+> [!TIP]
+> Future updates will include optimized KV-cache management to support efficient multi-turn conversations without replaying history. For now, it is recommended to keep prompts self-contained for the best performance.
+
+## 8. Best Practices & Safety
 
 1.  **Streaming vs. Synchronous**: Use `generateResponseAsync` for interactive chat applications to prevent the appearance of the app being frozen.
 2.  **Thread Management**: Never call `generateResponse` on the Main Thread. Large models can take several seconds to generate text.
