@@ -67,6 +67,10 @@ class AiEngineManager {
         }
     }
 
+    // ===================================================================
+    // Stateless Inference (Legacy - creates new conversation each call)
+    // ===================================================================
+
     suspend fun generateResponse(
         messages: List<ChatMessage>,
         temperature: Double? = null,
@@ -197,6 +201,152 @@ class AiEngineManager {
         }
     }
 
+    // ===================================================================
+    // Session-Based Inference (Uses existing conversation for KV cache)
+    // ===================================================================
+
+    /**
+     * Creates a new conversation for a session.
+     * The returned conversation should be stored in the Session object.
+     */
+    fun createSessionConversation(
+        preamble: String? = null,
+        temperature: Double? = null,
+        topP: Double? = null,
+        topK: Int? = null
+    ): Conversation {
+        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
+        
+        val conversationConfig = ConversationConfig(
+            systemInstruction = preamble?.let { Contents.of(Content.Text(it)) },
+            samplerConfig = SamplerConfig(
+                topK = topK ?: 40,
+                topP = topP ?: 0.95,
+                temperature = temperature ?: 0.8
+            )
+        )
+        return currentEngine.createConversation(conversationConfig)
+    }
+
+    /**
+     * Generates a response using an existing session conversation.
+     * This reuses the KV cache from previous messages in the session.
+     */
+    suspend fun generateResponseWithSession(
+        session: Session,
+        message: ChatMessage,
+        temperature: Double? = null,
+        topP: Double? = null,
+        topK: Int? = null,
+        preamble: String? = null
+    ): Pair<String, Conversation> = withContext(Dispatchers.IO) {
+        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
+
+        val lrtMessage = toLiteRTMessage(message)
+        
+        return@withContext inferenceMutex.withLock {
+            Log.d(TAG, "Session inference starting (lock acquired) - session: ${session.sessionId.take(8)}...")
+            
+            // Get or create conversation for this session
+            var conversation = session.conversation
+            if (conversation == null) {
+                Log.d(TAG, "Creating new conversation for session ${session.sessionId.take(8)}...")
+                conversation = createSessionConversation(preamble, temperature, topP, topK)
+            }
+            
+            try {
+                val response = conversation.sendMessage(lrtMessage)
+                val content = response.contents
+                val responseText = extractText(content)
+                Log.d(TAG, "Session inference complete: $responseText")
+                Pair(responseText, conversation)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in session inference", e)
+                // If there's an error, we might need to recreate the conversation
+                conversation.close()
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Generates a streaming response using an existing session conversation.
+     * This reuses the KV cache from previous messages in the session.
+     */
+    suspend fun generateResponseAsyncWithSession(
+        session: Session,
+        message: ChatMessage,
+        onToken: (String) -> Unit,
+        onComplete: (String) -> Unit,
+        onError: (Throwable) -> Unit,
+        temperature: Double? = null,
+        topP: Double? = null,
+        topK: Int? = null,
+        preamble: String? = null
+    ): Conversation = withContext(Dispatchers.IO) {
+        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
+
+        val lrtMessage = toLiteRTMessage(message)
+
+        return@withContext inferenceMutex.withLock {
+            Log.d(TAG, "Session async inference starting (lock acquired) - session: ${session.sessionId.take(8)}...")
+            
+            // Get or create conversation for this session
+            var conversation = session.conversation
+            if (conversation == null) {
+                Log.d(TAG, "Creating new conversation for session ${session.sessionId.take(8)}...")
+                conversation = createSessionConversation(preamble, temperature, topP, topK)
+            }
+            
+            try {
+                var lastResponseText = ""
+                
+                suspendCancellableCoroutine<Unit> { cont ->
+                    conversation.sendMessageAsync(lrtMessage, object : MessageCallback {
+                        override fun onMessage(message: Message) {
+                            val fullText = extractText(message.contents)
+                            val newToken = if (fullText.startsWith(lastResponseText)) {
+                                fullText.substring(lastResponseText.length)
+                            } else {
+                                fullText
+                            }
+                            lastResponseText = fullText
+                            if (newToken.isNotEmpty()) {
+                                onToken(newToken)
+                            }
+                        }
+
+                        override fun onDone() {
+                            onComplete(lastResponseText)
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+
+                        override fun onError(error: Throwable) {
+                            Log.e(TAG, "Session async inference error", error)
+                            onError(error)
+                            if (cont.isActive) cont.resumeWithException(error)
+                        }
+                    })
+
+                    cont.invokeOnCancellation {
+                        // Attempt to cancel if possible
+                    }
+                }
+                
+                Log.d(TAG, "Session async inference complete")
+                conversation
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in session async inference", e)
+                conversation.close()
+                throw e
+            }
+        }
+    }
+
+    // ===================================================================
+    // Helper Methods
+    // ===================================================================
+
     private fun toLiteRTMessage(chatMessage: ChatMessage): Message {
         val contents = mutableListOf<Content>()
         
@@ -268,3 +418,4 @@ class AiEngineManager {
         private const val TAG = "AiEngineManager"
     }
 }
+

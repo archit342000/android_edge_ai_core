@@ -24,12 +24,16 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import android.media.AudioRecord
 import android.media.AudioFormat
 import android.media.MediaRecorder
 import android.content.pm.PackageManager
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.widget.Toast
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
@@ -38,6 +42,7 @@ import java.io.FileOutputStream
 import java.net.NetworkInterface
 import java.nio.charset.Charset
 import java.util.Collections
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
@@ -50,6 +55,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnTestVision: MaterialButton
     private lateinit var btnTestAudio: MaterialButton
     private lateinit var tvLogs: TextView
+    
+    // API Token UI
+    private lateinit var tvApiToken: TextView
+    private lateinit var btnGenerateToken: MaterialButton
+    private lateinit var btnCopyToken: MaterialButton
+    private lateinit var btnDeleteToken: MaterialButton
+    private lateinit var btnBackupTokens: MaterialButton
+    private lateinit var btnRestoreTokens: MaterialButton
+    private lateinit var llPendingRequests: android.widget.LinearLayout
+    private lateinit var tvPendingLabel: TextView
+    private lateinit var bottomNav: com.google.android.material.bottomnavigation.BottomNavigationView
+    private lateinit var pageServer: android.view.View
+    private lateinit var pageBackend: android.view.View
+    private lateinit var pageTokens: android.view.View
+    private lateinit var tokenManager: TokenManager
+    private var currentToken: String? = null
 
     private var selectedModelPath: String? = null
     private var inferenceService: IInferenceService? = null
@@ -89,8 +110,20 @@ class MainActivity : AppCompatActivity() {
                      btnTestVision.isEnabled = false
                      btnTestAudio.isEnabled = false
                 }
+            } else if (intent.action == InferenceService.ACTION_TOKEN_REQUEST) {
+                val pkgName = intent.getStringExtra(InferenceService.EXTRA_PACKAGE_NAME) ?: "unknown"
+                appendLog("New token request from $pkgName")
+                updatePendingRequestsUI()
             }
         }
+    }
+
+    private val backupTokensLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let { performBackup(it) }
+    }
+
+    private val restoreTokensLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { performRestore(it) }
     }
 
     private val selectModelLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -125,7 +158,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        val filter = IntentFilter(InferenceService.ACTION_STATUS_UPDATE)
+        val filter = IntentFilter().apply {
+            addAction(InferenceService.ACTION_STATUS_UPDATE)
+            addAction(InferenceService.ACTION_TOKEN_REQUEST)
+        }
         ContextCompat.registerReceiver(this, statusReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
@@ -147,6 +183,70 @@ class MainActivity : AppCompatActivity() {
         btnTestVision = findViewById(R.id.btn_test_vision)
         btnTestAudio = findViewById(R.id.btn_test_audio)
         tvLogs = findViewById(R.id.tv_logs)
+        
+        // Navigation UI
+        val toolbar: com.google.android.material.appbar.MaterialToolbar = findViewById(R.id.toolbar)
+        bottomNav = findViewById(R.id.bottom_navigation)
+        pageServer = findViewById(R.id.page_server)
+        pageBackend = findViewById(R.id.page_backend)
+        pageTokens = findViewById(R.id.page_tokens)
+        
+        bottomNav.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_server -> {
+                    pageServer.visibility = android.view.View.VISIBLE
+                    pageBackend.visibility = android.view.View.GONE
+                    pageTokens.visibility = android.view.View.GONE
+                    toolbar.title = "Edge AI Server"
+                    true
+                }
+                R.id.nav_backend -> {
+                    pageServer.visibility = android.view.View.GONE
+                    pageBackend.visibility = android.view.View.VISIBLE
+                    pageTokens.visibility = android.view.View.GONE
+                    toolbar.title = "Backend Settings"
+                    true
+                }
+                R.id.nav_tokens -> {
+                    pageServer.visibility = android.view.View.GONE
+                    pageBackend.visibility = android.view.View.GONE
+                    pageTokens.visibility = android.view.View.VISIBLE
+                    toolbar.title = "API Token Management"
+                    true
+                }
+                else -> false
+            }
+        }
+        
+        // Default title
+        toolbar.title = "Edge AI Server"
+        
+        // API Token UI
+        tvApiToken = findViewById(R.id.tv_api_token)
+        btnGenerateToken = findViewById(R.id.btn_generate_token)
+        btnCopyToken = findViewById(R.id.btn_copy_token)
+        btnDeleteToken = findViewById(R.id.btn_delete_token)
+        btnBackupTokens = findViewById(R.id.btn_backup_tokens)
+        btnRestoreTokens = findViewById(R.id.btn_restore_tokens)
+        llPendingRequests = findViewById(R.id.ll_pending_requests)
+        tvPendingLabel = findViewById(R.id.tv_pending_label)
+        
+        // Initialize TokenManager
+        tokenManager = TokenManager(applicationContext)
+        
+        // Refresh Pending UI
+        updatePendingRequestsUI()
+        
+        // Restore existing token (use the first one if any exist)
+        val existingTokens = tokenManager.getAllTokens()
+        if (existingTokens.isNotEmpty()) {
+            currentToken = existingTokens.first()
+            updateTokenUI()
+            appendLog("Restored existing API token")
+        }
+        
+        // Token button listeners
+        setupTokenListeners()
 
         // Restore saved model path
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -215,6 +315,180 @@ class MainActivity : AppCompatActivity() {
         
         checkAndRequestPermissions()
         requestIgnoreBatteryOptimizations()
+    }
+
+    private fun setupTokenListeners() {
+        btnGenerateToken.setOnClickListener {
+            // Generate new token (or regenerate if one exists)
+            if (currentToken != null) {
+                // Ask user for confirmation before regenerating
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Generate New Token?")
+                    .setMessage("This will create a new token. The old token will still be valid. Continue?")
+                    .setPositiveButton("Generate") { _, _ ->
+                        generateNewToken()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            } else {
+                generateNewToken()
+            }
+        }
+        
+        btnCopyToken.setOnClickListener {
+            currentToken?.let { token ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("API Token", token)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(this, getString(R.string.token_copied), Toast.LENGTH_SHORT).show()
+                appendLog("Token copied to clipboard")
+            }
+        }
+        
+        btnDeleteToken.setOnClickListener {
+            currentToken?.let { token ->
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Delete Token?")
+                    .setMessage("This will revoke the token. Any client using this token will lose access. Continue?")
+                    .setPositiveButton("Delete") { _, _ ->
+                        tokenManager.revokeToken(token)
+                        currentToken = null
+                        updateTokenUI()
+                        Toast.makeText(this, getString(R.string.token_deleted), Toast.LENGTH_SHORT).show()
+                        appendLog("Token deleted")
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+
+        btnBackupTokens.setOnClickListener {
+            val fileName = "edge_ai_tokens_${System.currentTimeMillis()}.json"
+            backupTokensLauncher.launch(fileName)
+        }
+
+        btnRestoreTokens.setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+            }
+            restoreTokensLauncher.launch(arrayOf("application/json"))
+        }
+    }
+
+    private fun performBackup(uri: Uri) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val tokens = tokenManager.getAllTokens()
+                val json = Gson().toJson(tokens)
+                contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(json.toByteArray())
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, getString(R.string.tokens_backed_up), Toast.LENGTH_SHORT).show()
+                    appendLog("Tokens backed up to: $uri")
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Backup failed", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, getString(R.string.backup_error), Toast.LENGTH_SHORT).show()
+                    appendLog("Backup failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun performRestore(uri: Uri) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val json = inputStream.bufferedReader().readText()
+                    val type = object : com.google.gson.reflect.TypeToken<Set<String>>() {}.type
+                    val tokens: Set<String> = Gson().fromJson(json, type)
+                    
+                    tokenManager.addTokens(tokens)
+                    
+                    withContext(Dispatchers.Main) {
+                        if (currentToken == null && tokens.isNotEmpty()) {
+                            currentToken = tokens.first()
+                            updateTokenUI()
+                        }
+                        Toast.makeText(this@MainActivity, getString(R.string.tokens_restored), Toast.LENGTH_SHORT).show()
+                        appendLog("Tokens restored from: $uri")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Restore failed", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, getString(R.string.restore_error), Toast.LENGTH_SHORT).show()
+                    appendLog("Restore failed: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    private fun generateNewToken() {
+        currentToken = tokenManager.generateToken()
+        updateTokenUI()
+        Toast.makeText(this, getString(R.string.token_generated), Toast.LENGTH_SHORT).show()
+        appendLog("New API token generated: ${currentToken?.take(8)}...")
+    }
+    
+    private fun updateTokenUI() {
+        if (currentToken != null) {
+            tvApiToken.text = currentToken
+            btnCopyToken.isEnabled = true
+            btnDeleteToken.isEnabled = true
+        } else {
+            tvApiToken.text = getString(R.string.no_token_generated)
+            btnCopyToken.isEnabled = false
+            btnDeleteToken.isEnabled = false
+        }
+    }
+
+    private fun updatePendingRequestsUI() {
+        val requests = tokenManager.getPendingRequests()
+        llPendingRequests.removeAllViews()
+        
+        if (requests.isEmpty()) {
+            tvPendingLabel.visibility = View.GONE
+            return
+        }
+        
+        tvPendingLabel.visibility = View.VISIBLE
+        requests.forEach { pkgName ->
+            val itemView = layoutInflater.inflate(android.R.layout.simple_list_item_2, llPendingRequests, false)
+            val text1 = itemView.findViewById<TextView>(android.R.id.text1)
+            val text2 = itemView.findViewById<TextView>(android.R.id.text2)
+            
+            text1.text = pkgName
+            text2.text = "Tap to Approve or Deny"
+            
+            itemView.setOnClickListener {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Token Request")
+                    .setMessage("App '$pkgName' is requesting an AI API Token. Allow?")
+                    .setPositiveButton("Approve") { _, _ ->
+                        tokenManager.approveRequest(pkgName)
+                        updatePendingRequestsUI()
+                        appendLog("Approved token for $pkgName")
+                        // If we don't have a token displayed, show this one
+                        if (currentToken == null) {
+                            tokenManager.getTokenMappings()[pkgName]?.let {
+                                currentToken = it
+                                updateTokenUI()
+                            }
+                        }
+                    }
+                    .setNegativeButton("Deny") { _, _ ->
+                        tokenManager.denyRequest(pkgName)
+                        updatePendingRequestsUI()
+                        appendLog("Denied request from $pkgName")
+                    }
+                    .show()
+            }
+            llPendingRequests.addView(itemView)
+        }
     }
 
     private fun checkAndRequestPermissions() {
@@ -330,22 +604,22 @@ class MainActivity : AppCompatActivity() {
         val byteRate = 16 * sampleRate * channels / 8
 
         val header = ByteArray(44)
-        header[0] = 'R'.toByte() // RIFF/WAV header
-        header[1] = 'I'.toByte()
-        header[2] = 'F'.toByte()
-        header[3] = 'F'.toByte()
+        header[0] = 'R'.code.toByte() // RIFF/WAV header
+        header[1] = 'I'.code.toByte()
+        header[2] = 'F'.code.toByte()
+        header[3] = 'F'.code.toByte()
         header[4] = (totalDataLen and 0xff).toByte()
         header[5] = (totalDataLen shr 8 and 0xff).toByte()
         header[6] = (totalDataLen shr 16 and 0xff).toByte()
         header[7] = (totalDataLen shr 24 and 0xff).toByte()
-        header[8] = 'W'.toByte()
-        header[9] = 'A'.toByte()
-        header[10] = 'V'.toByte()
-        header[11] = 'E'.toByte()
-        header[12] = 'f'.toByte() // 'fmt ' chunk
-        header[13] = 'm'.toByte()
-        header[14] = 't'.toByte()
-        header[15] = ' '.toByte()
+        header[8] = 'W'.code.toByte()
+        header[9] = 'A'.code.toByte()
+        header[10] = 'V'.code.toByte()
+        header[11] = 'E'.code.toByte()
+        header[12] = 'f'.code.toByte() // 'fmt ' chunk
+        header[13] = 'm'.code.toByte()
+        header[14] = 't'.code.toByte()
+        header[15] = ' '.code.toByte()
         header[16] = 16 // 4 bytes: size of 'fmt ' chunk
         header[17] = 0
         header[18] = 0
@@ -366,10 +640,10 @@ class MainActivity : AppCompatActivity() {
         header[33] = 0
         header[34] = 16 // bits per sample
         header[35] = 0
-        header[36] = 'd'.toByte()
-        header[37] = 'a'.toByte()
-        header[38] = 't'.toByte()
-        header[39] = 'a'.toByte()
+        header[36] = 'd'.code.toByte()
+        header[37] = 'a'.code.toByte()
+        header[38] = 't'.code.toByte()
+        header[39] = 'a'.code.toByte()
         header[40] = (totalAudioLen and 0xff).toByte()
         header[41] = (totalAudioLen shr 8 and 0xff).toByte()
         header[42] = (totalAudioLen shr 16 and 0xff).toByte()
@@ -420,29 +694,31 @@ class MainActivity : AppCompatActivity() {
                     appendLog("Response: ")
                 }
 
-                inferenceService?.generateResponseAsync(jsonInputString, object : IInferenceCallback.Stub() {
-                    override fun onToken(token: String) {
-                        runOnUiThread {
-                            val current = tvLogs.text.toString()
-                            tvLogs.text = current + token
+                ensureSession { sessionId ->
+                    inferenceService?.generateResponseAsyncWithSession(currentToken!!, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
+                        override fun onToken(token: String) {
+                            runOnUiThread {
+                                val current = tvLogs.text.toString()
+                                tvLogs.text = current + token
+                            }
                         }
-                    }
 
-                    override fun onComplete(fullResponse: String) {
-                        runOnUiThread {
-                            appendLog("\n---")
-                            appendLog("Final Response: $fullResponse")
-                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                        override fun onComplete(fullResponse: String) {
+                            runOnUiThread {
+                                appendLog("\n---")
+                                appendLog("Final Response: $fullResponse")
+                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                            }
                         }
-                    }
 
-                    override fun onError(error: String) {
-                        runOnUiThread {
-                            appendLog("\nError: $error")
-                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                        override fun onError(error: String) {
+                            runOnUiThread {
+                                appendLog("\nError: $error")
+                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                            }
                         }
-                    }
-                })
+                    })
+                }
 
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
@@ -495,29 +771,31 @@ class MainActivity : AppCompatActivity() {
                     appendLog("Response: ")
                 }
 
-                inferenceService?.generateResponseAsync(jsonInputString, object : IInferenceCallback.Stub() {
-                    override fun onToken(token: String) {
-                        runOnUiThread {
-                            val current = tvLogs.text.toString()
-                            tvLogs.text = current + token
+                ensureSession { sessionId ->
+                    inferenceService?.generateResponseAsyncWithSession(currentToken!!, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
+                        override fun onToken(token: String) {
+                            runOnUiThread {
+                                val current = tvLogs.text.toString()
+                                tvLogs.text = current + token
+                            }
                         }
-                    }
 
-                    override fun onComplete(fullResponse: String) {
-                        runOnUiThread {
-                            appendLog("\n---")
-                            appendLog("Final Response: $fullResponse")
-                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                        override fun onComplete(fullResponse: String) {
+                            runOnUiThread {
+                                appendLog("\n---")
+                                appendLog("Final Response: $fullResponse")
+                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                            }
                         }
-                    }
 
-                    override fun onError(error: String) {
-                        runOnUiThread {
-                            appendLog("\nError: $error")
-                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                        override fun onError(error: String) {
+                            runOnUiThread {
+                                appendLog("\nError: $error")
+                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                            }
                         }
-                    }
-                })
+                    })
+                }
 
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
@@ -624,6 +902,60 @@ class MainActivity : AppCompatActivity() {
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
+    private var testSessionId: String? = null
+
+    /**
+     * Helper to ensure we have a valid session before running inference.
+     * Starts a new session if needed.
+     */
+    private fun ensureSession(onReady: (sessionId: String) -> Unit) {
+        val token = currentToken
+        if (token == null) {
+            appendLog("Error: No API token available for testing.")
+            return
+        }
+
+        if (!isBound || inferenceService == null) {
+            appendLog("Error: Service not bound")
+            return
+        }
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // If we already have a session, check if it's still alive
+                if (testSessionId != null) {
+                    val info = inferenceService?.getSessionInfo(token, testSessionId!!)
+                    if (info != null && !info.contains("error")) {
+                        withContext(Dispatchers.Main) { onReady(testSessionId!!) }
+                        return@launch
+                    }
+                }
+
+                // Start a new session
+                appendLog("Starting new test session...")
+                val sessionJson = inferenceService?.startSession(token, 0) ?: ""
+                if (sessionJson.isEmpty() || sessionJson.contains("error")) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("Failed to start session: $sessionJson")
+                    }
+                    return@launch
+                }
+
+                val json = JSONObject(sessionJson)
+                testSessionId = json.getString("session_id")
+                
+                withContext(Dispatchers.Main) {
+                    appendLog("Session started: ${testSessionId?.take(8)}...")
+                    onReady(testSessionId!!)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    appendLog("Session management error: ${e.message}")
+                }
+            }
+        }
+    }
+
     private fun stopInferenceService() {
         if (isBound) {
             unbindService(serviceConnection)
@@ -655,30 +987,32 @@ class MainActivity : AppCompatActivity() {
                     appendLog("Response: ")
                 }
 
-                inferenceService?.generateResponseAsync(jsonInputString, object : IInferenceCallback.Stub() {
-                    override fun onToken(token: String) {
-                        runOnUiThread {
-                            val current = tvLogs.text.toString()
-                            tvLogs.text = current + token
+                ensureSession { sessionId ->
+                    inferenceService?.generateResponseAsyncWithSession(currentToken!!, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
+                        override fun onToken(token: String) {
+                            runOnUiThread {
+                                val current = tvLogs.text.toString()
+                                tvLogs.text = current + token
+                            }
                         }
-                    }
 
-                    override fun onComplete(fullResponse: String) {
-                        runOnUiThread {
-                            // fullResponse is the JSON, we don't necessarily need to print it all if we streamed tokens
-                            appendLog("\n---")
-                            appendLog("Final Response: $fullResponse")
-                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                        override fun onComplete(fullResponse: String) {
+                            runOnUiThread {
+                                // fullResponse is the JSON, we don't necessarily need to print it all if we streamed tokens
+                                appendLog("\n---")
+                                appendLog("Final Response: $fullResponse")
+                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                            }
                         }
-                    }
 
-                    override fun onError(error: String) {
-                        runOnUiThread {
-                            appendLog("\nError: $error")
-                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                        override fun onError(error: String) {
+                            runOnUiThread {
+                                appendLog("\nError: $error")
+                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                            }
                         }
-                    }
-                })
+                    })
+                }
 
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {

@@ -1,6 +1,35 @@
 {
   "versions": [
     {
+      "version": "1.3.0",
+      "changes": [
+        "Enforced mandatory stateful, session-based inference (stateless methods removed)",
+        "Overhauled UI with Material Design 3 and Bottom Navigation",
+        "Implemented Manual User Approval for API token generation",
+        "Added package-based token mapping for enhanced security",
+        "Consolidated settings into distinct Server, Backend, and Token screens",
+        "Optimized inference performance via mandatory KV cache reuse"
+      ]
+    },
+    {
+      "version": "1.2.1",
+      "changes": [
+        "Implemented API token persistence across app restarts",
+        "Added Backup and Restore features for API tokens",
+        "Updated UI with dedicated token management actions"
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "changes": [
+        "Added API token generation for client authentication",
+        "Implemented session management with TTL (Time-To-Live) support",
+        "Added session-based inference methods for KV cache reuse",
+        "Sessions automatically clean up expired connections",
+        "Updated AIDL interface with new token and session methods"
+      ]
+    },
+    {
       "version": "1.1.2",
       "changes": [
         "Added support for System Prompts (preambles)",

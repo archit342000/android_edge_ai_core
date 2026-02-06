@@ -21,4 +21,20 @@
     <string name="notification_channel_name">Inference Service</string>
     <string name="notification_title">AI Server Running</string>
     <string name="notification_content">Listening for requests...</string>
+    
+    <!-- API Token -->
+    <string name="api_token_label">API Token</string>
+    <string name="no_token_generated">No token generated</string>
+    <string name="generate_token">Generate</string>
+    <string name="copy_token">Copy</string>
+    <string name="delete_token">Delete</string>
+    <string name="token_copied">Token copied to clipboard</string>
+    <string name="token_deleted">Token deleted</string>
+    <string name="token_generated">New token generated</string>
+    <string name="backup_tokens">Backup</string>
+    <string name="restore_tokens">Restore</string>
+    <string name="tokens_backed_up">Tokens backed up successfully</string>
+    <string name="tokens_restored">Tokens restored successfully</string>
+    <string name="backup_error">Error backing up tokens</string>
+    <string name="restore_error">Error restoring tokens</string>
 </resources>
