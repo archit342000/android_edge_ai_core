@@ -9,10 +9,14 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.Message
 import android.util.Base64
+import com.google.ai.edge.litertlm.MessageCallback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class AiEngineManager {
     private var engine: Engine? = null
@@ -85,6 +89,70 @@ class AiEngineManager {
             } finally {
                 conversation?.close()
                 Log.d(TAG, "Inference finished (lock released)")
+            }
+        }
+    }
+
+    suspend fun generateResponseAsync(
+        messages: List<ChatMessage>,
+        onToken: (String) -> Unit,
+        onComplete: (String) -> Unit,
+        onError: (Throwable) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
+
+        val lastMessage = messages.lastOrNull { it.role == "user" }
+            ?: messages.last()
+
+        val lrtMessage = toLiteRTMessage(lastMessage)
+
+        inferenceMutex.withLock {
+            Log.d(TAG, "Request starting async inference (lock acquired)")
+            var conversation: Conversation? = null
+            try {
+                conversation = currentEngine.createConversation(ConversationConfig())
+                var lastResponseText = ""
+                
+                suspendCancellableCoroutine<Unit> { cont ->
+                    conversation!!.sendMessageAsync(lrtMessage, object : MessageCallback {
+                        override fun onMessage(message: Message) {
+                            val fullText = message.contents.toString()
+                            // Calculate the new token part. 
+                            // Note: Native SDK might provide full accumulated text each time.
+                            val newToken = if (fullText.startsWith(lastResponseText)) {
+                                fullText.substring(lastResponseText.length)
+                            } else {
+                                fullText
+                            }
+                            lastResponseText = fullText
+                            if (newToken.isNotEmpty()) {
+                                onToken(newToken)
+                            }
+                        }
+
+                        override fun onDone() {
+                            onComplete(lastResponseText)
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+
+                        override fun onError(error: Throwable) {
+                            Log.e(TAG, "Async inference error", error)
+                            onError(error)
+                            if (cont.isActive) cont.resumeWithException(error)
+                        }
+                    })
+
+                    cont.invokeOnCancellation {
+                        // Attempt to cancel if possible, though LiteRT-LM might not support it directly here
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in generateResponseAsync", e)
+                onError(e)
+                throw e
+            } finally {
+                conversation?.close()
+                Log.d(TAG, "Async inference finished (lock released)")
             }
         }
     }

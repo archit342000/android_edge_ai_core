@@ -35,22 +35,7 @@ class InferenceService : Service() {
                      aiEngineManager.generateResponse(request.messages)
                 }
 
-                val response = ChatCompletionResponse(
-                    id = "chatcmpl-${UUID.randomUUID()}",
-                    created = System.currentTimeMillis() / 1000,
-                    model = request.model ?: "litertlm-model",
-                    choices = listOf(
-                        Choice(
-                            index = 0,
-                            message = ChatMessageResponse(
-                                role = "assistant",
-                                content = responseText
-                            ),
-                            finish_reason = "stop"
-                        )
-                    ),
-                    usage = Usage(0, 0, 0)
-                )
+                val response = createChatCompletionResponse(request, responseText)
                 gson.toJson(response)
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing request", e)
@@ -58,6 +43,63 @@ class InferenceService : Service() {
                 gson.toJson(errorResponse)
             }
         }
+
+        override fun generateResponseAsync(jsonRequest: String, callback: IInferenceCallback) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    Log.d(TAG, "Received async request: $jsonRequest")
+                    val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
+                    
+                    aiEngineManager.generateResponseAsync(
+                        request.messages,
+                        onToken = { token ->
+                             try {
+                                 callback.onToken(token)
+                             } catch (e: Exception) {
+                                 Log.e(TAG, "Error calling onToken callback", e)
+                             }
+                        },
+                        onComplete = { fullText ->
+                             try {
+                                 val response = createChatCompletionResponse(request, fullText)
+                                 callback.onComplete(gson.toJson(response))
+                             } catch (e: Exception) {
+                                 Log.e(TAG, "Error calling onComplete callback", e)
+                             }
+                        },
+                        onError = { error ->
+                             try {
+                                 callback.onError(error.message ?: "Unknown error")
+                             } catch (e: Exception) {
+                                 Log.e(TAG, "Error calling onError callback", e)
+                             }
+                        }
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in async processing", e)
+                    callback.onError(e.message ?: "Unknown error")
+                }
+            }
+        }
+    }
+
+    private fun createChatCompletionResponse(request: ChatCompletionRequest, content: String): ChatCompletionResponse {
+        return ChatCompletionResponse(
+            id = "chatcmpl-${UUID.randomUUID()}",
+            created = System.currentTimeMillis() / 1000,
+            model = request.model ?: "litertlm-model",
+            choices = listOf(
+                Choice(
+                    index = 0,
+                    message = ChatMessageResponse(
+                        role = "assistant",
+                        content = content
+                    ),
+                    finish_reason = "stop"
+                )
+            ),
+            usage = Usage(0, 0, 0)
+        )
     }
 
     override fun onCreate() {

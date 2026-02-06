@@ -8,17 +8,31 @@ This application provides a system-wide AI inference service via **AIDL (Android
 
 ### AIDL Definition
 1. Create a directory in your project: `app/src/main/aidl/com/aanand/edgeaicore/`.
-2. Create a file named `IInferenceService.aidl` inside that directory with the following content:
+2. Create `IInferenceService.aidl` and `IInferenceCallback.aidl` inside that directory.
 
+**IInferenceService.aidl**:
 ```aidl
 package com.aanand.edgeaicore;
 
+import com.aanand.edgeaicore.IInferenceCallback;
+
 interface IInferenceService {
-    /**
-     * Sends a JSON request (OpenAI Chat format) and returns a JSON response.
-     * This call is synchronous and should be called from a background thread.
-     */
+    /** Synchronous response generation */
     String generateResponse(String jsonRequest);
+
+    /** Asynchronous streaming response generation */
+    void generateResponseAsync(String jsonRequest, IInferenceCallback callback);
+}
+```
+
+**IInferenceCallback.aidl**:
+```aidl
+package com.aanand.edgeaicore;
+
+interface IInferenceCallback {
+    void onToken(String token);
+    void onComplete(String fullResponse);
+    void onError(String error);
 }
 ```
 
@@ -266,10 +280,40 @@ The service returns audio transcriptions or analysis in the OpenAI format:
 > -   **Audio Format**: The engine highly prefers **16kHz Mono 16-bit PCM WAV** files. Other compressed formats may fail with decoder errors.
 > -   **Permissions**: Ensure your client app has `RECORD_AUDIO` if you are capturing intent directly.
 
-## 6. Best Practices & Safety
+## 6. Streaming Responses
 
-1.  **Thread Management**: Never call `generateResponse` on the Main Thread. Large models can take several seconds to generate text.
-2.  **Service State**: Ensure that the **Edge AI Core** app has been opened and the "Enable Server" switch is **ON**. If the server is off, the service will return `{"error": "Model not loaded"}`.
-3.  **Error Handling**: Always wrap calls in `try-catch` blocks to handle `RemoteException` or connection drops.
-4.  **Concurrency & Queuing**: The service is thread-safe. If multiple applications send requests at the same time, **Edge AI Core** automatically queues them and processes them sequentially. This prevents Out-Of-Memory (OOM) crashes and ensures stable performance on mobile hardware.
-5.  **Security**: The service is strictly on-device. No data leaves the device during the inference process.
+Starting from **v1.1.0**, the service supports streaming tokens in real-time. This provides a better user experience for long responses by showing progress as it's generated.
+
+### Implementation Example
+
+```kotlin
+val requestJson = "{\"model\": \"gemma\", \"messages\": [{\"role\": \"user\", \"content\": \"Write a poem about AI\"}]}"
+
+aiService?.generateResponseAsync(requestJson, object : IInferenceCallback.Stub() {
+    override fun onToken(token: String) {
+        // This is called on a background thread for every new token generated
+        runOnUiThread {
+            textView.append(token)
+        }
+    }
+
+    override fun onComplete(fullResponse: String) {
+        // fullResponse is the final completion JSON (OpenAI format)
+        Log.d("AiClient", "Inference complete")
+    }
+
+    override fun onError(error: String) {
+        Log.e("AiClient", "Streaming error: $error")
+    }
+})
+```
+
+## 7. Best Practices & Safety
+
+1.  **Streaming vs. Synchronous**: Use `generateResponseAsync` for interactive chat applications to prevent the appearance of the app being frozen.
+2.  **Thread Management**: Never call `generateResponse` on the Main Thread. Large models can take several seconds to generate text.
+3.  **Service State**: Ensure that the **Edge AI Core** app has been opened and the "Enable Server" switch is **ON**. If the server is off, the service will return `{"error": "Model not loaded"}`.
+4.  **Multimodal Streaming**: The streaming interface (`generateResponseAsync`) also supports Vision and Audio requests. Use it to provide real-time feedback during media analysis.
+5.  **Error Handling**: Always wrap calls in `try-catch` blocks to handle `RemoteException` or connection drops.
+6.  **Concurrency & Queuing**: The service is thread-safe. If multiple applications send requests at the same time, **Edge AI Core** automatically queues them and processes them sequentially. This prevents Out-Of-Memory (OOM) crashes and ensures stable performance on mobile hardware.
+7.  **Security**: The service is strictly on-device. No data leaves the device during the inference process.
