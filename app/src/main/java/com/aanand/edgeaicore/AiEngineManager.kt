@@ -76,11 +76,15 @@ class AiEngineManager {
     ): String = withContext(Dispatchers.IO) {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
 
-        // We take the last user message
-        val lastMessage = messages.lastOrNull { it.role == "user" }
-            ?: messages.last()
+        // Separate system, history and last message
+        val systemMessage = messages.find { it.role == "system" }
+        val nonSystemMessages = messages.filter { it.role != "system" }
+        
+        val lastMessage = nonSystemMessages.lastOrNull() ?: return@withContext "No user message found"
+        val history = nonSystemMessages.dropLast(1)
 
-        val lrtMessage = toLiteRTMessage(lastMessage)
+        val lrtLastMessage = toLiteRTMessage(lastMessage)
+        val lrtHistory = history.map { toLiteRTMessage(it) }
         
         return@withContext inferenceMutex.withLock {
             Log.d(TAG, "Request starting inference (lock acquired)")
@@ -88,6 +92,7 @@ class AiEngineManager {
             try {
                 val conversationConfig = ConversationConfig(
                     systemInstruction = preamble?.let { Contents.of(Content.Text(it)) },
+                    initialMessages = lrtHistory,
                     samplerConfig = SamplerConfig(
                         topK = topK ?: 40,
                         topP = topP ?: 0.95,
@@ -95,7 +100,7 @@ class AiEngineManager {
                     )
                 )
                 conversation = currentEngine.createConversation(conversationConfig)
-                val response = conversation!!.sendMessage(lrtMessage)
+                val response = conversation!!.sendMessage(lrtLastMessage)
                 val content = response.contents
                 val responseText = extractText(content)
                 Log.d(TAG, "Received response from engine: $responseText")
@@ -122,10 +127,15 @@ class AiEngineManager {
     ) = withContext(Dispatchers.IO) {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
 
-        val lastMessage = messages.lastOrNull { it.role == "user" }
-            ?: messages.last()
+        // Separate system, history and last message
+        val systemMessage = messages.find { it.role == "system" }
+        val nonSystemMessages = messages.filter { it.role != "system" }
+        
+        val lastMessage = nonSystemMessages.lastOrNull() ?: return@withContext Unit
+        val history = nonSystemMessages.dropLast(1)
 
-        val lrtMessage = toLiteRTMessage(lastMessage)
+        val lrtLastMessage = toLiteRTMessage(lastMessage)
+        val lrtHistory = history.map { toLiteRTMessage(it) }
 
         inferenceMutex.withLock {
             Log.d(TAG, "Request starting async inference (lock acquired)")
@@ -133,6 +143,7 @@ class AiEngineManager {
             try {
                 val conversationConfig = ConversationConfig(
                     systemInstruction = preamble?.let { Contents.of(Content.Text(it)) },
+                    initialMessages = lrtHistory,
                     samplerConfig = SamplerConfig(
                         topK = topK ?: 40,
                         topP = topP ?: 0.95,
@@ -143,7 +154,7 @@ class AiEngineManager {
                 var lastResponseText = ""
                 
                 suspendCancellableCoroutine<Unit> { cont ->
-                    conversation!!.sendMessageAsync(lrtMessage, object : MessageCallback {
+                    conversation!!.sendMessageAsync(lrtLastMessage, object : MessageCallback {
                         override fun onMessage(message: Message) {
                             val fullText = extractText(message.contents)
                             // Calculate the new token part. 
@@ -206,7 +217,6 @@ class AiEngineManager {
                                 val base64Data = url.substringAfter("base64,")
                                 val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
                                 contents.add(Content.ImageBytes(bytes))
-                                Log.d(TAG, "Added image part (${bytes.size} bytes)")
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to decode base64 image", e)
                             }
@@ -218,9 +228,7 @@ class AiEngineManager {
                             try {
                                 val base64Data = url.substringAfter("base64,")
                                 val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
-                                // Assuming factory method is Content.AudioBytes(bytes)
                                 contents.add(Content.AudioBytes(bytes))
-                                Log.d(TAG, "Added audio part (${bytes.size} bytes)")
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to decode base64 audio", e)
                             }
@@ -234,7 +242,12 @@ class AiEngineManager {
             contents.add(Content.Text(chatMessage.content.toString()))
         }
         
-        return Message.of(contents)
+        val lrtContents = Contents.of(contents)
+        return if (chatMessage.role.equals("assistant", ignoreCase = true)) {
+            Message.model(lrtContents)
+        } else {
+            Message.user(lrtContents)
+        }
     }
 
     private fun extractText(contents: Any): String {

@@ -422,12 +422,13 @@ You can control the creativity and length of the response by providing optional 
 }
 ```
 
-### Statelessness & History
+### Statelessness & Multi-turn History
 To keep the service lightweight and efficient on mobile devices, each request to `generateResponse` or `generateResponseAsync` is **stateless**. The internal conversation instance is closed after each call.
 
-If your application requires chat history (context), you must manage the history state in your client application. However, please note that current versions of the core engine optimize for the **last message** in the `messages` array while using the `system` message as a preamble. 
+However, the service **fully supports multi-turn conversations**. If you provide a list of previous messages in the `messages` array, the service automatically injects them as conversation history (`initialMessages`) before sending your latest prompt.
 
 > [!TIP]
+> To maintain context, simply append the AI's responses and your new prompts to the `messages` array in your client application. The service will handle the rest! 
 > Future updates will include optimized KV-cache management to support efficient multi-turn conversations without replaying history. For now, it is recommended to keep prompts self-contained for the best performance.
 
 ## 8. Best Practices & Safety
