@@ -1,6 +1,14 @@
 {
   "versions": [
     {
+      "version": "1.1.1",
+      "changes": [
+        "Fixed build error in AiEngineManager due to type mismatch",
+        "Updated README with detailed streaming response integration guide",
+        "Improved on-device inference text extraction"
+      ]
+    },
+    {
       "version": "1.1.0",
       "changes": [
         "Implemented streaming output tokens for real-time inference feedback",
