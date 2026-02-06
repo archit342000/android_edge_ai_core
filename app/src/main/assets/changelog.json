@@ -1,6 +1,15 @@
 {
   "versions": [
     {
+      "version": "1.4.0",
+      "changes": [
+        "Added 'Test Multi-Turn' and 'Test Contin.' buttons to the main UI",
+        "Fixed critical bug where Assistant Message Continuation (prefilling) was ignored",
+        "Implemented advanced control flow (Prefill + Decode) for correct partial message completion",
+        "Restored standard GenerateContentStream logic for normal user turns to prevent empty input errors"
+      ]
+    },
+    {
       "version": "1.3.15",
       "changes": [
         "Added explicit AIDL intent-filter for better external app discoverability",

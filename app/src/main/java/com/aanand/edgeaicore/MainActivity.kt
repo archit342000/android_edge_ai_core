@@ -27,6 +27,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import android.media.AudioRecord
 import android.media.AudioFormat
 import android.media.MediaRecorder
@@ -54,6 +55,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnTestInference: MaterialButton
     private lateinit var btnTestVision: MaterialButton
     private lateinit var btnTestAudio: MaterialButton
+    private lateinit var btnTestMultiTurn: MaterialButton
+    private lateinit var btnTestContinuation: MaterialButton
     private lateinit var tvLogs: TextView
     
     // API Token UI
@@ -104,7 +107,11 @@ class MainActivity : AppCompatActivity() {
                      switchEnableServer.isChecked = true
                      btnTestInference.isEnabled = true
                      btnTestVision.isEnabled = true
+                     btnTestInference.isEnabled = true
+                     btnTestVision.isEnabled = true
                      btnTestAudio.isEnabled = true
+                     btnTestMultiTurn.isEnabled = true
+                     btnTestContinuation.isEnabled = true
                      
                      if (!isBound) {
                         val intent = Intent(this@MainActivity, InferenceService::class.java)
@@ -115,7 +122,11 @@ class MainActivity : AppCompatActivity() {
                      switchEnableServer.isChecked = false
                      btnTestInference.isEnabled = false
                      btnTestVision.isEnabled = false
+                     btnTestInference.isEnabled = false
+                     btnTestVision.isEnabled = false
                      btnTestAudio.isEnabled = false
+                     btnTestMultiTurn.isEnabled = false
+                     btnTestContinuation.isEnabled = false
                 }
             } else if (intent.action == InferenceService.ACTION_TOKEN_REQUEST) {
                 val pkgName = intent.getStringExtra(InferenceService.EXTRA_PACKAGE_NAME) ?: "unknown"
@@ -189,6 +200,8 @@ class MainActivity : AppCompatActivity() {
         btnTestInference = findViewById(R.id.btn_test_inference)
         btnTestVision = findViewById(R.id.btn_test_vision)
         btnTestAudio = findViewById(R.id.btn_test_audio)
+        btnTestMultiTurn = findViewById(R.id.btn_test_multiturn)
+        btnTestContinuation = findViewById(R.id.btn_test_continuation)
         tvLogs = findViewById(R.id.tv_logs)
         
         // Navigation UI
@@ -324,6 +337,9 @@ class MainActivity : AppCompatActivity() {
                 requestPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
             }
         }
+        
+        btnTestMultiTurn.setOnClickListener { runTestMultiTurn() }
+        btnTestContinuation.setOnClickListener { runTestContinuation() }
         
         checkAndRequestPermissions()
         requestIgnoreBatteryOptimizations()
@@ -1290,6 +1306,137 @@ class MainActivity : AppCompatActivity() {
                      appendLog("❌ Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
+            }
+        }
+    }
+
+    private fun runTestMultiTurn() {
+        if (!isBound || inferenceService == null) {
+            appendLog("Error: Service not bound")
+            return
+        }
+        appendLog("=== Starting Multi-Turn Test ===")
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // 1. Get Token
+                val token = inferenceService?.generateApiToken() ?: "ERROR"
+                if (token.startsWith("ERROR") || token == "PENDING_USER_APPROVAL") {
+                    withContext(Dispatchers.Main) { appendLog("❌ Token Check Failed: $token") }
+                    return@launch
+                }
+                
+                // 2. Start Session
+                val sessionJson = inferenceService?.startSession(token, 0) ?: ""
+                if (sessionJson.contains("error")) {
+                    withContext(Dispatchers.Main) { appendLog("❌ Session Failed: $sessionJson") }
+                    return@launch
+                }
+                val sessionId = JSONObject(sessionJson).getString("session_id")
+                withContext(Dispatchers.Main) { appendLog("✅ Session Started: ${sessionId.take(8)}...") }
+                
+                // 3. First Turn: "Hello"
+                withContext(Dispatchers.Main) { appendLog("User: Hello! Who are you?") }
+                val req1 = """{"messages": [{"role": "user", "content": "Hello! Who are you?"}]}"""
+                
+                var firstResponse = ""
+                inferenceService?.generateResponseAsyncWithSession(token, sessionId, req1, object : IInferenceCallback.Stub() {
+                    override fun onToken(token: String) {
+                         firstResponse += token
+                         runOnUiThread {
+                             // Optional: stream to log
+                         }
+                    }
+                    override fun onComplete(fullResponse: String) {
+                        runOnUiThread { appendLog("Assistant: ${JSONObject(fullResponse).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")}") }
+                        
+                        // 4. Second Turn: "What did I just ask you?"
+                        CoroutineScope(Dispatchers.IO).launch {
+                            delay(1000)
+                            withContext(Dispatchers.Main) { appendLog("User: What is 2 + 2?") }
+                            val req2 = """{"messages": [{"role": "user", "content": "Hello! Who are you?"}, {"role": "assistant", "content": "$firstResponse"}, {"role": "user", "content": "What is 2 + 2?"}]}"""
+                            
+                            inferenceService?.generateResponseAsyncWithSession(token, sessionId, req2, object : IInferenceCallback.Stub() {
+                                override fun onToken(t: String) {}
+                                override fun onComplete(res: String) {
+                                     runOnUiThread { 
+                                         appendLog("Assistant: ${JSONObject(res).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")}")
+                                         appendLog("=== Multi-Turn Test Complete ===")
+                                     }
+                                     inferenceService?.closeSession(token, sessionId)
+                                }
+                                override fun onError(e: String) {
+                                    runOnUiThread { appendLog("❌ Turn 2 Error: $e") }
+                                }
+                            })
+                        }
+                    }
+                    override fun onError(error: String) {
+                        runOnUiThread { appendLog("❌ Turn 1 Error: $error") }
+                    }
+                })
+                
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { appendLog("❌ Error: ${e.message}") }
+            }
+        }
+    }
+
+    private fun runTestContinuation() {
+        if (!isBound || inferenceService == null) {
+            appendLog("Error: Service not bound")
+            return
+        }
+        appendLog("=== Starting Continuation Test ===")
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val token = inferenceService?.generateApiToken() ?: "ERROR"
+                 if (token.startsWith("ERROR") || token == "PENDING_USER_APPROVAL") {
+                    withContext(Dispatchers.Main) { appendLog("❌ Token Check Failed: $token") }
+                    return@launch
+                }
+                
+                val sessionJson = inferenceService?.startSession(token, 0) ?: ""
+                 if (sessionJson.contains("error")) {
+                    withContext(Dispatchers.Main) { appendLog("❌ Session Failed: $sessionJson") }
+                    return@launch
+                }
+                val sessionId = JSONObject(sessionJson).getString("session_id")
+                
+                withContext(Dispatchers.Main) { 
+                    appendLog("User: Write a poem about rust.")
+                    appendLog("Assistant (Prefill): Rust is a language safe and fast,")
+                    appendLog("Streaming Continuation...")
+                }
+                
+                val req = """
+                    {
+                        "messages": [
+                            {"role": "user", "content": "Write a poem about rust."},
+                            {"role": "assistant", "content": "Rust is a language safe and fast,"}
+                        ]
+                    }
+                """.trimIndent()
+                
+                inferenceService?.generateResponseAsyncWithSession(token, sessionId, req, object : IInferenceCallback.Stub() {
+                    override fun onToken(token: String) {
+                        runOnUiThread {
+                            val current = tvLogs.text.toString()
+                             tvLogs.text = current + token
+                        }
+                    }
+                    override fun onComplete(fullResponse: String) {
+                        runOnUiThread { 
+                            appendLog("\n=== Continuation Test Complete ===")
+                        }
+                        inferenceService?.closeSession(token, sessionId)
+                    }
+                    override fun onError(error: String) {
+                        runOnUiThread { appendLog("❌ Error: $error") }
+                    }
+                })
+                
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { appendLog("❌ Error: ${e.message}") }
             }
         }
     }
