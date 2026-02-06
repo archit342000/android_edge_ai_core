@@ -417,18 +417,32 @@ class MainActivity : AppCompatActivity() {
 
                 withContext(Dispatchers.Main) {
                     appendLog("Sending audio request to service (${bytes.size} bytes)...")
+                    appendLog("Response: ")
                 }
 
-                val responseJson = inferenceService?.generateResponse(jsonInputString)
-
-                withContext(Dispatchers.Main) {
-                    if (responseJson != null) {
-                        appendLog("Response: $responseJson")
-                    } else {
-                        appendLog("Error: Null response from service")
+                inferenceService?.generateResponseAsync(jsonInputString, object : IInferenceCallback.Stub() {
+                    override fun onToken(token: String) {
+                        runOnUiThread {
+                            val current = tvLogs.text.toString()
+                            tvLogs.text = current + token
+                        }
                     }
-                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
-                }
+
+                    override fun onComplete(fullResponse: String) {
+                        runOnUiThread {
+                            appendLog("\n---")
+                            appendLog("Final Response: $fullResponse")
+                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                        }
+                    }
+
+                    override fun onError(error: String) {
+                        runOnUiThread {
+                            appendLog("\nError: $error")
+                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                        }
+                    }
+                })
 
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
@@ -478,18 +492,32 @@ class MainActivity : AppCompatActivity() {
 
                 withContext(Dispatchers.Main) {
                     appendLog("Sending vision request to service...")
+                    appendLog("Response: ")
                 }
 
-                val responseJson = inferenceService?.generateResponse(jsonInputString)
-
-                withContext(Dispatchers.Main) {
-                    if (responseJson != null) {
-                        appendLog("Response: $responseJson")
-                    } else {
-                        appendLog("Error: Null response from service")
+                inferenceService?.generateResponseAsync(jsonInputString, object : IInferenceCallback.Stub() {
+                    override fun onToken(token: String) {
+                        runOnUiThread {
+                            val current = tvLogs.text.toString()
+                            tvLogs.text = current + token
+                        }
                     }
-                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
-                }
+
+                    override fun onComplete(fullResponse: String) {
+                        runOnUiThread {
+                            appendLog("\n---")
+                            appendLog("Final Response: $fullResponse")
+                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                        }
+                    }
+
+                    override fun onError(error: String) {
+                        runOnUiThread {
+                            appendLog("\nError: $error")
+                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                        }
+                    }
+                })
 
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
@@ -613,7 +641,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        appendLog("Sending test request via AIDL...")
+        appendLog("Sending test request via AIDL (Streaming)...")
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val jsonInputString = """
@@ -623,19 +651,34 @@ class MainActivity : AppCompatActivity() {
                     }
                 """.trimIndent()
 
-                val responseJson = inferenceService?.generateResponse(jsonInputString)
-
-                if (responseJson != null) {
-                     // Simple parsing or just display raw
-                     withContext(Dispatchers.Main) {
-                         appendLog("Response: $responseJson")
-                         tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
-                     }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        appendLog("Error: Null response from service")
-                    }
+                withContext(Dispatchers.Main) {
+                    appendLog("Response: ")
                 }
+
+                inferenceService?.generateResponseAsync(jsonInputString, object : IInferenceCallback.Stub() {
+                    override fun onToken(token: String) {
+                        runOnUiThread {
+                            val current = tvLogs.text.toString()
+                            tvLogs.text = current + token
+                        }
+                    }
+
+                    override fun onComplete(fullResponse: String) {
+                        runOnUiThread {
+                            // fullResponse is the JSON, we don't necessarily need to print it all if we streamed tokens
+                            appendLog("\n---")
+                            appendLog("Final Response: $fullResponse")
+                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                        }
+                    }
+
+                    override fun onError(error: String) {
+                        runOnUiThread {
+                            appendLog("\nError: $error")
+                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                        }
+                    }
+                })
 
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {

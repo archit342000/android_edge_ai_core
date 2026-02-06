@@ -1,6 +1,14 @@
 {
   "versions": [
     {
+      "version": "1.1.0",
+      "changes": [
+        "Implemented streaming output tokens for real-time inference feedback",
+        "Added asynchronous AIDL interface for streaming responses",
+        "Updated test inference UI to show tokens as they are generated"
+      ]
+    },
+    {
       "version": "1.0.1",
       "changes": [
         "Fixed crash on Android 14+ due to missing foreground service permission",
