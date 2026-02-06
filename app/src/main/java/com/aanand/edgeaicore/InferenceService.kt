@@ -34,6 +34,7 @@ class InferenceService : Service() {
         // =====================
         
         override fun generateApiToken(): String {
+            logIpcRequest("generateApiToken", "none")
             val callingUid = getCallingUid()
             val packages = packageManager.getPackagesForUid(callingUid)
             val pkgName = packages?.firstOrNull() ?: "unknown"
@@ -54,6 +55,15 @@ class InferenceService : Service() {
         }
         
         override fun revokeApiToken(apiToken: String): Boolean {
+            val sanitizedToken = apiToken.trim()
+            logIpcRequest("revokeApiToken", sanitizedToken)
+            // Security Check: Only allow revocation from the Edge AI Core app itself
+            val callingUid = getCallingUid()
+            if (callingUid != android.os.Process.myUid()) {
+                Log.w(TAG, "Security: Blocked external client attempt to revoke token: ${apiToken.take(8)}... (Caller UID: $callingUid)")
+                return false
+            }
+
             // Close all sessions for this token first
             sessionManager.closeAllSessionsForToken(apiToken)
             val revoked = tokenManager.revokeToken(apiToken)
@@ -66,36 +76,51 @@ class InferenceService : Service() {
         // =====================
         
         override fun startSession(apiToken: String, ttlMs: Long): String {
-            // Validate token
-            if (!tokenManager.isValidToken(apiToken)) {
-                Log.w(TAG, "startSession failed: invalid token ${apiToken.take(8)}...")
-                return gson.toJson(ErrorResponse("Invalid API token"))
+            val sanitizedToken = apiToken.trim()
+            logIpcRequest("startSession", sanitizedToken, "ttl=$ttlMs")
+            
+            return try {
+                // Validate token
+                if (!tokenManager.isValidToken(sanitizedToken)) {
+                    Log.w(TAG, "startSession failed: invalid token ${sanitizedToken.take(8)}...")
+                    return gson.toJson(ErrorResponse("Invalid API token"))
+                }
+                
+                val actualTtl = if (ttlMs <= 0) SessionManager.DEFAULT_SESSION_TTL_MS else ttlMs
+                val session = sessionManager.createSession(sanitizedToken, actualTtl)
+                
+                val response = SessionResponse(
+                    session_id = session.sessionId,
+                    ttl_ms = session.ttlMs,
+                    created_at = session.createdAt,
+                    expires_at = session.createdAt + session.ttlMs
+                )
+                
+                val msg = "Started session ${session.sessionId.take(8)}... for ${sanitizedToken.take(8)}..."
+                Log.i(TAG, msg)
+                sendStatusBroadcast(msg)
+                gson.toJson(response)
+            } catch (e: Exception) {
+                Log.e(TAG, "Internal error in startSession", e)
+                gson.toJson(ErrorResponse("Internal server error: ${e.message}"))
             }
-            
-            val actualTtl = if (ttlMs <= 0) SessionManager.DEFAULT_SESSION_TTL_MS else ttlMs
-            val session = sessionManager.createSession(apiToken, actualTtl)
-            
-            val response = SessionResponse(
-                session_id = session.sessionId,
-                ttl_ms = session.ttlMs,
-                created_at = session.createdAt,
-                expires_at = session.createdAt + session.ttlMs
-            )
-            
-            Log.i(TAG, "Started session ${session.sessionId.take(8)}... for token ${apiToken.take(8)}...")
-            return gson.toJson(response)
         }
         
         override fun closeSession(apiToken: String, sessionId: String): String {
+            val sanitizedToken = apiToken.trim()
+            logIpcRequest("closeSession", sanitizedToken, "session=${sessionId.take(8)}...")
+            
             // Validate token
-            if (!tokenManager.isValidToken(apiToken)) {
-                Log.w(TAG, "closeSession failed: invalid token ${apiToken.take(8)}...")
+            if (!tokenManager.isValidToken(sanitizedToken)) {
+                Log.w(TAG, "closeSession failed: invalid token ${sanitizedToken.take(8)}...")
                 return gson.toJson(ErrorResponse("Invalid API token"))
             }
             
-            val closed = sessionManager.closeSession(sessionId, apiToken)
+            val closed = sessionManager.closeSession(sessionId, sanitizedToken)
             return if (closed) {
-                Log.i(TAG, "Closed session ${sessionId.take(8)}...")
+                val msg = "Closed session ${sessionId.take(8)}..."
+                Log.i(TAG, msg)
+                sendStatusBroadcast(msg)
                 gson.toJson(SuccessResponse(true))
             } else {
                 Log.w(TAG, "Failed to close session ${sessionId.take(8)}...")
@@ -104,12 +129,15 @@ class InferenceService : Service() {
         }
         
         override fun getSessionInfo(apiToken: String, sessionId: String): String {
+            val sanitizedToken = apiToken.trim()
+            logIpcRequest("getSessionInfo", sanitizedToken, "session=${sessionId.take(8)}...")
+            
             // Validate token
-            if (!tokenManager.isValidToken(apiToken)) {
+            if (!tokenManager.isValidToken(sanitizedToken)) {
                 return gson.toJson(ErrorResponse("Invalid API token"))
             }
             
-            val session = sessionManager.getSession(sessionId, apiToken)
+            val session = sessionManager.getSession(sessionId, sanitizedToken)
             return if (session != null) {
                 val now = System.currentTimeMillis()
                 val response = SessionInfoResponse(
@@ -135,14 +163,17 @@ class InferenceService : Service() {
         // =====================
         
         override fun generateResponseWithSession(apiToken: String, sessionId: String, jsonRequest: String): String {
+            val sanitizedToken = apiToken.trim()
+            logIpcRequest("generateResponseWithSession", sanitizedToken, "session=${sessionId.take(8)}...")
+            
             // Validate token
-            if (!tokenManager.isValidToken(apiToken)) {
+            if (!tokenManager.isValidToken(sanitizedToken)) {
                 Log.w(TAG, "generateResponseWithSession failed: invalid token")
                 return gson.toJson(ErrorResponse("Invalid API token"))
             }
             
             // Get session (this also validates ownership and resets TTL)
-            val session = sessionManager.getSession(sessionId, apiToken)
+            val session = sessionManager.getSession(sessionId, sanitizedToken)
             if (session == null) {
                 Log.w(TAG, "generateResponseWithSession failed: session not found or expired")
                 return gson.toJson(ErrorResponse("Session not found, expired, or unauthorized"))
@@ -187,8 +218,11 @@ class InferenceService : Service() {
             jsonRequest: String, 
             callback: IInferenceCallback
         ) {
+            val sanitizedToken = apiToken.trim()
+            logIpcRequest("generateResponseAsyncWithSession", sanitizedToken, "session=${sessionId.take(8)}...")
+            
             // Validate token
-            if (!tokenManager.isValidToken(apiToken)) {
+            if (!tokenManager.isValidToken(sanitizedToken)) {
                 Log.w(TAG, "generateResponseAsyncWithSession failed: invalid token")
                 try {
                     callback.onError("Invalid API token")
@@ -199,7 +233,7 @@ class InferenceService : Service() {
             }
             
             // Get session (this also validates ownership and resets TTL)
-            val session = sessionManager.getSession(sessionId, apiToken)
+            val session = sessionManager.getSession(sessionId, sanitizedToken)
             if (session == null) {
                 Log.w(TAG, "generateResponseAsyncWithSession failed: session not found or expired")
                 try {
@@ -243,7 +277,7 @@ class InferenceService : Service() {
                         },
                         onError = { error ->
                             try {
-                                callback.onError(error.message ?: "Unknown error")
+                                callback.onError(error.message ?: "Unknown inference error")
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error calling onError callback", e)
                             }
@@ -258,14 +292,30 @@ class InferenceService : Service() {
                     session.conversation = conversation
                     
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error in session async processing", e)
+                    Log.e(TAG, "Internal error in session async request", e)
                     try {
-                        callback.onError(e.message ?: "Unknown error")
+                        callback.onError(e.message ?: "Unknown internal error")
                     } catch (ce: Exception) {
-                        Log.e(TAG, "Error calling onError callback", ce)
+                        Log.e(TAG, "Error notifying client of internal failure", ce)
                     }
                 }
             }
+        }
+
+        override fun ping(): String {
+            logIpcRequest("ping", "none")
+            return "pong"
+        }
+
+        private fun logIpcRequest(methodName: String, apiToken: String, extras: String = "") {
+            val callingUid = getCallingUid()
+            val packages = packageManager.getPackagesForUid(callingUid)
+            val pkgName = packages?.firstOrNull() ?: "unknown"
+            val sanitized = apiToken.trim()
+            val tokenPart = if (sanitized.length >= 8) sanitized.take(8) + "..." else sanitized
+            val msg = "IPC: [$pkgName] $methodName(token=$tokenPart) $extras"
+            Log.i(TAG, msg)
+            sendStatusBroadcast(msg)
         }
     }
 
@@ -290,7 +340,7 @@ class InferenceService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        tokenManager = TokenManager(applicationContext)
+        tokenManager = TokenManager.getInstance(this)
         createNotificationChannel()
     }
 

@@ -196,8 +196,41 @@ Edge AI Core supports **true multi-session concurrency**. Multiple independent c
 ---
 
 ## 7. Troubleshooting
-
+    
 - **"PENDING_USER_APPROVAL"**: The user hasn't approved your app in the Edge AI Core UI yet.
+- **Service Not Found**: On Android 11+, ensure your client app declares the `<queries>` tag in its `AndroidManifest.xml`.
 - **"Invalid API token"**: The token has been revoked or was never approved.
 - **"Session expired"**: The session timed out due to inactivity. Create a new session.
 - **ANR in Client**: Ensure you are not calling synchronous AIDL methods on the main thread.
+
+---
+
+## 8. Integration Guide: Binding to the Service
+
+On Android 11 (API 30) and above, package visibility restrictions prevent apps from seeing each other by default. To bind to the Edge AI Core service, your client app **must** include the following in its `AndroidManifest.xml`:
+
+```xml
+<queries>
+    <package android:name="com.aanand.edgeaicore" />
+    <intent>
+        <action android:name="com.aanand.edgeaicore.IInferenceService" />
+    </intent>
+</queries>
+```
+
+### Binding Example (Kotlin)
+```kotlin
+val intent = Intent("com.aanand.edgeaicore.IInferenceService").apply {
+    setPackage("com.aanand.edgeaicore")
+}
+bindService(intent, connection, Context.BIND_AUTO_CREATE)
+```
+
+### Diagnostic Check
+You can use the `ping()` method to verify your connection and that the service is responsive, even without an API token:
+
+```kotlin
+// Returns "pong" if the service is alive
+val status = aiService?.ping()
+Log.d("ClientApp", "Service status: $status")
+```

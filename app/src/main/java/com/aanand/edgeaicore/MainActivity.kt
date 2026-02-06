@@ -243,7 +243,7 @@ class MainActivity : AppCompatActivity() {
         tvAuthorizedLabel = findViewById(R.id.tv_authorized_label)
         
         // Initialize TokenManager
-        tokenManager = TokenManager(applicationContext)
+        tokenManager = TokenManager.getInstance(this)
         
         // Refresh UI
         updatePendingRequestsUI()
