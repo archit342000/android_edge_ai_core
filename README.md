@@ -137,6 +137,7 @@ suspend fun askAi(prompt: String): String? {
 
 ### Response Structure
 The service returns a stringified JSON mimicking the OpenAI standard:
+
 ```json
 {
   "id": "chatcmpl-0719e869-b5a1-428b-be6c-b75d31995d6f",
@@ -154,11 +155,41 @@ The service returns a stringified JSON mimicking the OpenAI standard:
     }
   ],
   "usage": {
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0
+    "prompt_tokens": 12,
+    "completion_tokens": 25,
+    "total_tokens": 37
   }
 }
+```
+
+### Parsing the Response (Kotlin Data Classes)
+To parse the JSON response in your Android app using **Gson**, you can use the following data classes:
+
+```kotlin
+data class ChatResponse(
+    val id: String,
+    val created: Long,
+    val model: String,
+    val choices: List<Choice>,
+    val usage: Usage
+)
+
+data class Choice(
+    val index: Int,
+    val message: ChatMessageResponse,
+    val finish_reason: String
+)
+
+data class ChatMessageResponse(
+    val role: String,
+    val content: String
+)
+
+data class Usage(
+    val prompt_tokens: Int,
+    val completion_tokens: Int,
+    val total_tokens: Int
+)
 ```
 
 ## 4. Multimodal Inference (Vision)
@@ -284,29 +315,66 @@ The service returns audio transcriptions or analysis in the OpenAI format:
 
 Starting from **v1.1.0**, the service supports streaming tokens in real-time. This provides a better user experience for long responses by showing progress as it's generated.
 
-### Implementation Example
+### Implementation Guide
+
+To correctly handle streaming, you should distinguish between incremental token updates (`onToken`) and the final response metadata (`onComplete`).
+
+#### 1. Manage State & UI
+Use a `StringBuilder` to accumulate tokens if you need the raw text, and always update UI components on the main thread (e.g., using `runOnUiThread` or `View.post`).
+
+#### 2. Handle Final Response
+`onComplete` provides the **entire** conversation response in the OpenAI-compatible JSON format (the same format as the synchronous `generateResponse` method). This includes usage statistics (token counts) and the final combined message.
+
+### Example Code
 
 ```kotlin
-val requestJson = "{\"model\": \"gemma\", \"messages\": [{\"role\": \"user\", \"content\": \"Write a poem about AI\"}]}"
+val requestJson = """
+    {
+      "model": "gemma",
+      "messages": [{"role": "user", "content": "Explain quantum physics in one sentence."}]
+    }
+""".trimIndent()
+
+val responseBuffer = StringBuilder()
 
 aiService?.generateResponseAsync(requestJson, object : IInferenceCallback.Stub() {
     override fun onToken(token: String) {
-        // This is called on a background thread for every new token generated
+        // 1. Append raw token to your local buffer
+        responseBuffer.append(token)
+
+        // 2. Update UI incrementally
         runOnUiThread {
+            // Recommendation: Append to existing text rather than re-setting the whole buffer
+            // to improve performance on large responses.
             textView.append(token)
         }
     }
 
-    override fun onComplete(fullResponse: String) {
-        // fullResponse is the final completion JSON (OpenAI format)
-        Log.d("AiClient", "Inference complete")
+    override fun onComplete(fullResponseJson: String) {
+        // 3. fullResponseJson is the final OpenAI-style JSON object
+        // You can parse this to get usage metadata or verify the final text.
+        try {
+            val responseObj = Gson().fromJson(fullResponseJson, ChatResponse::class.java)
+            val finalContent = responseObj.choices[0].message.content
+            val usage = responseObj.usage
+            
+            Log.d("AiClient", "Inference complete. Used ${usage.total_tokens} tokens.")
+        } catch (e: Exception) {
+            Log.e("AiClient", "Failed to parse final response", e)
+        }
     }
 
     override fun onError(error: String) {
-        Log.e("AiClient", "Streaming error: $error")
+        // 4. Handle errors (timeout, model unloaded, etc.)
+        runOnUiThread {
+            showErrorToast("Inference failed: $error")
+        }
     }
 })
 ```
+
+> [!NOTE]
+> **Performance Tip**: For very long responses, `textView.text = buffer.toString()` becomes slow. Use `textView.append(token)` inside `onToken` for the best performance.
 
 ## 7. Best Practices & Safety
 
