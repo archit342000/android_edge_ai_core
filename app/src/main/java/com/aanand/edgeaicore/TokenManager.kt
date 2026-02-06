@@ -148,12 +148,25 @@ class TokenManager(private val context: Context) {
             false
         }
     }
+
+    fun revokeTokenByPackage(packageName: String): Boolean {
+        return if (tokenMap.remove(packageName) != null) {
+            persistData()
+            Log.i(TAG, "Revoked token for $packageName")
+            true
+        } else {
+            false
+        }
+    }
     
     fun getAllTokens(): Set<String> = tokenMap.values.toSet()
     
     fun getTokenMappings(): Map<String, String> = tokenMap.toMap()
     
-    fun getPendingRequests(): Set<String> = pendingRequests.toSet()
+    fun getPendingRequests(): Set<String> {
+        loadData() // Force sync before returning
+        return pendingRequests.toSet()
+    }
     
     fun addTokens(tokens: Set<String>) {
         tokens.forEach { token ->

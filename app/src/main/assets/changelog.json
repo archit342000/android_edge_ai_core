@@ -1,6 +1,60 @@
 {
   "versions": [
     {
+      "version": "1.3.6",
+      "changes": [
+        "Polished UI to strictly adhere to Material Design 3 standards",
+        "Refined spacing, typography, and card designs across all pages",
+        "Added descriptive icons to all action buttons and test interfaces",
+        "Enhanced README with detailed Multi-Session management documentation",
+        "Improved Backend selection UI with better touch targets and visual grouping"
+      ]
+    },
+    {
+      "version": "1.3.5",
+      "changes": [
+        "Implemented true multi-session support for concurrent clients",
+        "Added intelligent session tracking and automatic hardware resource fallback",
+        "Systems on GPU now maintain multiple independent conversation contexts",
+        "Graceful session switching on limited hardware (NPU/CPU)",
+        "Fixed 'session already exists' errors during concurrent usage"
+      ]
+    },
+    {
+      "version": "1.3.4",
+      "changes": [
+        "Added 'Authorized Apps' list to manage and revoke API access",
+        "Implemented token revocation with automatic session cleanup",
+        "Fixed 'FAILED_PRECONDITION: A session already exists' error with engine retry logic",
+        "Improved robustness of hardware resource management during rapid testing",
+        "Enhanced Tokens UI with separate sections for Pending and Authorized apps"
+      ]
+    },
+    {
+      "version": "1.3.3",
+      "changes": [
+        "Test buttons now simulate full external app authentication flow",
+        "Token request → Approval → Session → Inference → Close cycle",
+        "Each test (Text, Vision, Audio) properly validates auth mechanism",
+        "Sessions are properly closed after each test to free resources"
+      ]
+    },
+    {
+      "version": "1.3.2",
+      "changes": [
+        "Fixed critical NullPointerException during layout inflation",
+        "Improved stability of NestedScrollView for log display"
+      ]
+    },
+    {
+      "version": "1.3.1",
+      "changes": [
+        "Fixed 'Service not bound' error by implementing auto-binding on status updates",
+        "Improved log container scrolling behavior with NestedScrollView",
+        "Made logs text selectable for easier debugging"
+      ]
+    },
+    {
       "version": "1.3.0",
       "changes": [
         "Enforced mandatory stateful, session-based inference (stateless methods removed)",
