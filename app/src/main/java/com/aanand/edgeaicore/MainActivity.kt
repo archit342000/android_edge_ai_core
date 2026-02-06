@@ -65,6 +65,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRestoreTokens: MaterialButton
     private lateinit var llPendingRequests: android.widget.LinearLayout
     private lateinit var tvPendingLabel: TextView
+    private lateinit var llAuthorizedApps: android.widget.LinearLayout
+    private lateinit var tvAuthorizedLabel: TextView
     private lateinit var bottomNav: com.google.android.material.bottomnavigation.BottomNavigationView
     private lateinit var pageServer: android.view.View
     private lateinit var pageBackend: android.view.View
@@ -103,6 +105,11 @@ class MainActivity : AppCompatActivity() {
                      btnTestInference.isEnabled = true
                      btnTestVision.isEnabled = true
                      btnTestAudio.isEnabled = true
+                     
+                     if (!isBound) {
+                        val intent = Intent(this@MainActivity, InferenceService::class.java)
+                        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+                     }
                 } else if (status?.contains("Error", ignoreCase = true) == true) {
                      switchEnableServer.isEnabled = true
                      switchEnableServer.isChecked = false
@@ -212,6 +219,8 @@ class MainActivity : AppCompatActivity() {
                     pageBackend.visibility = android.view.View.GONE
                     pageTokens.visibility = android.view.View.VISIBLE
                     toolbar.title = "API Token Management"
+                    updatePendingRequestsUI()
+                    updateAuthorizedAppsUI()
                     true
                 }
                 else -> false
@@ -230,12 +239,15 @@ class MainActivity : AppCompatActivity() {
         btnRestoreTokens = findViewById(R.id.btn_restore_tokens)
         llPendingRequests = findViewById(R.id.ll_pending_requests)
         tvPendingLabel = findViewById(R.id.tv_pending_label)
+        llAuthorizedApps = findViewById(R.id.ll_authorized_apps)
+        tvAuthorizedLabel = findViewById(R.id.tv_authorized_label)
         
         // Initialize TokenManager
         tokenManager = TokenManager(applicationContext)
         
-        // Refresh Pending UI
+        // Refresh UI
         updatePendingRequestsUI()
+        updateAuthorizedAppsUI()
         
         // Restore existing token (use the first one if any exist)
         val existingTokens = tokenManager.getAllTokens()
@@ -448,16 +460,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun updatePendingRequestsUI() {
         val requests = tokenManager.getPendingRequests()
+        appendLog("Refreshing pending requests: ${requests.size} found")
         llPendingRequests.removeAllViews()
         
         if (requests.isEmpty()) {
-            tvPendingLabel.visibility = View.GONE
+            tvPendingLabel.visibility = View.VISIBLE
+            tvPendingLabel.text = "No pending access requests"
             return
         }
         
         tvPendingLabel.visibility = View.VISIBLE
+        tvPendingLabel.text = "Pending Access Requests"
         requests.forEach { pkgName ->
             val itemView = layoutInflater.inflate(android.R.layout.simple_list_item_2, llPendingRequests, false)
+            itemView.setPadding(32, 16, 32, 16)
             val text1 = itemView.findViewById<TextView>(android.R.id.text1)
             val text2 = itemView.findViewById<TextView>(android.R.id.text2)
             
@@ -471,23 +487,94 @@ class MainActivity : AppCompatActivity() {
                     .setPositiveButton("Approve") { _, _ ->
                         tokenManager.approveRequest(pkgName)
                         updatePendingRequestsUI()
+                        updateAuthorizedAppsUI()
                         appendLog("Approved token for $pkgName")
                         // If we don't have a token displayed, show this one
                         if (currentToken == null) {
-                            tokenManager.getTokenMappings()[pkgName]?.let {
-                                currentToken = it
-                                updateTokenUI()
-                            }
+                            currentToken = tokenManager.getTokenMappings()[pkgName]
+                            updateTokenUI()
                         }
                     }
                     .setNegativeButton("Deny") { _, _ ->
                         tokenManager.denyRequest(pkgName)
                         updatePendingRequestsUI()
-                        appendLog("Denied request from $pkgName")
+                        appendLog("Denied token for $pkgName")
                     }
                     .show()
             }
             llPendingRequests.addView(itemView)
+        }
+    }
+
+    private fun updateAuthorizedAppsUI() {
+        val mappings = tokenManager.getTokenMappings()
+        llAuthorizedApps.removeAllViews()
+        
+        // Filter out manual tokens if they don't have a recognizable package name
+        // though usually we want to show all mappings except maybe the current test one if we want.
+        // Actually, let's show all.
+        
+        if (mappings.isEmpty()) {
+            tvAuthorizedLabel.visibility = View.GONE
+            return
+        }
+        
+        tvAuthorizedLabel.visibility = View.VISIBLE
+        mappings.forEach { (pkgName, token) ->
+            val itemView = layoutInflater.inflate(android.R.layout.simple_list_item_2, llAuthorizedApps, false)
+            itemView.setPadding(32, 16, 32, 16)
+            val text1 = itemView.findViewById<TextView>(android.R.id.text1)
+            val text2 = itemView.findViewById<TextView>(android.R.id.text2)
+            
+            text1.text = pkgName
+            text2.text = "Token: ${token.take(8)}... (Tap to Revoke)"
+            
+            itemView.setOnClickListener {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Revoke Access")
+                    .setMessage("Revoke API access for '$pkgName'? All active sessions for this token will be closed.")
+                    .setPositiveButton("Revoke") { _, _ ->
+                        val tokenToRevoke = mappings[pkgName]
+                        if (isBound && inferenceService != null && tokenToRevoke != null) {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                try {
+                                    val success = inferenceService?.revokeApiToken(tokenToRevoke) ?: false
+                                    withContext(Dispatchers.Main) {
+                                        if (success) {
+                                            appendLog("Successfully revoked access for $pkgName via service")
+                                        } else {
+                                            // Fallback to local if service failed
+                                            tokenManager.revokeTokenByPackage(pkgName)
+                                            appendLog("Revoked access for $pkgName (local fallback)")
+                                        }
+                                        if (currentToken == tokenToRevoke) {
+                                            currentToken = null
+                                            updateTokenUI()
+                                        }
+                                        updateAuthorizedAppsUI()
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        appendLog("Error revoking via service: ${e.message}")
+                                        tokenManager.revokeTokenByPackage(pkgName)
+                                        updateAuthorizedAppsUI()
+                                    }
+                                }
+                            }
+                        } else {
+                            tokenManager.revokeTokenByPackage(pkgName)
+                            if (currentToken == tokenToRevoke) {
+                                currentToken = null
+                                updateTokenUI()
+                            }
+                            updateAuthorizedAppsUI()
+                            appendLog("Revoked access for $pkgName (service not bound)")
+                        }
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            llAuthorizedApps.addView(itemView)
         }
     }
 
@@ -668,11 +755,65 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        appendLog("Preparing WAV audio inference request...")
+        appendLog("=== Starting Audio Auth Flow Test ===")
+        appendLog("Step 1: Requesting API token...")
+        
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // Step 1: Request token
+                val tokenResult = inferenceService?.generateApiToken() ?: "ERROR"
+                
+                withContext(Dispatchers.Main) {
+                    appendLog("Token request result: $tokenResult")
+                }
+                
+                if (tokenResult == "PENDING_USER_APPROVAL") {
+                    withContext(Dispatchers.Main) {
+                        appendLog("⏳ Waiting for user approval...")
+                        appendLog("Switching to Tokens tab for approval...")
+                        bottomNav.selectedItemId = R.id.nav_tokens
+                        tvStatus.text = getString(R.string.status_label) + " Awaiting Approval"
+                    }
+                    file.delete()
+                    return@launch
+                }
+                
+                if (tokenResult.startsWith("ERROR") || tokenResult.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("❌ Token generation failed: $tokenResult")
+                    }
+                    file.delete()
+                    return@launch
+                }
+                
+                val testToken = tokenResult
+                withContext(Dispatchers.Main) {
+                    appendLog("✅ Token approved: ${testToken.take(8)}...")
+                    appendLog("Step 2: Starting session...")
+                }
+                
+                // Step 2: Start session
+                val sessionJson = inferenceService?.startSession(testToken, 0) ?: ""
+                if (sessionJson.isEmpty() || sessionJson.contains("error")) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("❌ Session creation failed: $sessionJson")
+                    }
+                    file.delete()
+                    return@launch
+                }
+                
+                val json = JSONObject(sessionJson)
+                val sessionId = json.getString("session_id")
+                
+                // Step 3: Encode audio
                 val bytes = file.readBytes()
                 val base64Audio = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                
+                withContext(Dispatchers.Main) {
+                    appendLog("✅ Session created: ${sessionId.take(8)}...")
+                    appendLog("Step 3: Sending audio request (${bytes.size} bytes)...")
+                    appendLog("Response: ")
+                }
                 
                 val jsonInputString = """
                     {
@@ -689,44 +830,52 @@ class MainActivity : AppCompatActivity() {
                     }
                 """.trimIndent()
 
-                withContext(Dispatchers.Main) {
-                    appendLog("Sending audio request to service (${bytes.size} bytes)...")
-                    appendLog("Response: ")
-                }
+                inferenceService?.generateResponseAsyncWithSession(testToken, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
+                    override fun onToken(token: String) {
+                        runOnUiThread {
+                            val current = tvLogs.text.toString()
+                            tvLogs.text = current + token
+                        }
+                    }
 
-                ensureSession { sessionId ->
-                    inferenceService?.generateResponseAsyncWithSession(currentToken!!, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
-                        override fun onToken(token: String) {
-                            runOnUiThread {
-                                val current = tvLogs.text.toString()
-                                tvLogs.text = current + token
+                    override fun onComplete(fullResponse: String) {
+                        runOnUiThread {
+                            appendLog("\n---")
+                            appendLog("Step 4: Closing session...")
+                        }
+                        
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                val closeResult = inferenceService?.closeSession(testToken, sessionId)
+                                withContext(Dispatchers.Main) {
+                                    appendLog("✅ Session closed: $closeResult")
+                                    appendLog("=== Audio Auth Flow Test Complete ===")
+                                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    appendLog("⚠️ Session close error: ${e.message}")
+                                }
                             }
                         }
+                        file.delete()
+                    }
 
-                        override fun onComplete(fullResponse: String) {
-                            runOnUiThread {
-                                appendLog("\n---")
-                                appendLog("Final Response: $fullResponse")
-                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
-                            }
+                    override fun onError(error: String) {
+                        runOnUiThread {
+                            appendLog("\n❌ Audio Error: $error")
+                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                         }
-
-                        override fun onError(error: String) {
-                            runOnUiThread {
-                                appendLog("\nError: $error")
-                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
-                            }
-                        }
-                    })
-                }
+                        file.delete()
+                    }
+                })
 
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("Audio Request Failed: ${e.message}")
+                     appendLog("❌ Audio Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
-            } finally {
-                file.delete()
+                 file.delete()
             }
         }
     }
@@ -738,14 +887,63 @@ class MainActivity : AppCompatActivity() {
         }
 
         tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_selecting_image)
-        appendLog("Preparing multimodal request...")
+        appendLog("=== Starting Vision Auth Flow Test ===")
+        appendLog("Step 1: Requesting API token...")
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // Step 1: Request token
+                val tokenResult = inferenceService?.generateApiToken() ?: "ERROR"
+                
+                withContext(Dispatchers.Main) {
+                    appendLog("Token request result: $tokenResult")
+                }
+                
+                if (tokenResult == "PENDING_USER_APPROVAL") {
+                    withContext(Dispatchers.Main) {
+                        appendLog("⏳ Waiting for user approval...")
+                        appendLog("Switching to Tokens tab for approval...")
+                        bottomNav.selectedItemId = R.id.nav_tokens
+                        tvStatus.text = getString(R.string.status_label) + " Awaiting Approval"
+                    }
+                    return@launch
+                }
+                
+                if (tokenResult.startsWith("ERROR") || tokenResult.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("❌ Token generation failed: $tokenResult")
+                    }
+                    return@launch
+                }
+                
+                val testToken = tokenResult
+                withContext(Dispatchers.Main) {
+                    appendLog("✅ Token approved: ${testToken.take(8)}...")
+                    appendLog("Step 2: Starting session...")
+                }
+                
+                // Step 2: Start session
+                val sessionJson = inferenceService?.startSession(testToken, 0) ?: ""
+                if (sessionJson.isEmpty() || sessionJson.contains("error")) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("❌ Session creation failed: $sessionJson")
+                    }
+                    return@launch
+                }
+                
+                val json = JSONObject(sessionJson)
+                val sessionId = json.getString("session_id")
+                
+                withContext(Dispatchers.Main) {
+                    appendLog("✅ Session created: ${sessionId.take(8)}...")
+                    appendLog("Step 3: Encoding image...")
+                }
+                
+                // Encode image
                 val base64Image = getBase64EncodedImage(imageUri)
                 if (base64Image == null) {
                     withContext(Dispatchers.Main) {
-                        appendLog("Error: Could not encode image")
+                        appendLog("❌ Could not encode image")
                         tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
                     }
                     return@launch
@@ -767,39 +965,51 @@ class MainActivity : AppCompatActivity() {
                 """.trimIndent()
 
                 withContext(Dispatchers.Main) {
-                    appendLog("Sending vision request to service...")
+                    appendLog("Step 4: Sending vision request...")
                     appendLog("Response: ")
                 }
 
-                ensureSession { sessionId ->
-                    inferenceService?.generateResponseAsyncWithSession(currentToken!!, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
-                        override fun onToken(token: String) {
-                            runOnUiThread {
-                                val current = tvLogs.text.toString()
-                                tvLogs.text = current + token
-                            }
+                inferenceService?.generateResponseAsyncWithSession(testToken, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
+                    override fun onToken(token: String) {
+                        runOnUiThread {
+                            val current = tvLogs.text.toString()
+                            tvLogs.text = current + token
                         }
+                    }
 
-                        override fun onComplete(fullResponse: String) {
-                            runOnUiThread {
-                                appendLog("\n---")
-                                appendLog("Final Response: $fullResponse")
-                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                    override fun onComplete(fullResponse: String) {
+                        runOnUiThread {
+                            appendLog("\n---")
+                            appendLog("Step 5: Closing session...")
+                        }
+                        
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                val closeResult = inferenceService?.closeSession(testToken, sessionId)
+                                withContext(Dispatchers.Main) {
+                                    appendLog("✅ Session closed: $closeResult")
+                                    appendLog("=== Vision Auth Flow Test Complete ===")
+                                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    appendLog("⚠️ Session close error: ${e.message}")
+                                }
                             }
                         }
+                    }
 
-                        override fun onError(error: String) {
-                            runOnUiThread {
-                                appendLog("\nError: $error")
-                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
-                            }
+                    override fun onError(error: String) {
+                        runOnUiThread {
+                            appendLog("\n❌ Vision Error: $error")
+                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                         }
-                    })
-                }
+                    }
+                })
 
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("Vision Request Failed: ${e.message}")
+                     appendLog("❌ Vision Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
             }
@@ -932,7 +1142,9 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Start a new session
-                appendLog("Starting new test session...")
+                withContext(Dispatchers.Main) {
+                    appendLog("Starting new test session...")
+                }
                 val sessionJson = inferenceService?.startSession(token, 0) ?: ""
                 if (sessionJson.isEmpty() || sessionJson.contains("error")) {
                     withContext(Dispatchers.Main) {
@@ -973,50 +1185,109 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        appendLog("Sending test request via AIDL (Streaming)...")
+        appendLog("=== Starting Full Auth Flow Test ===")
+        appendLog("Step 1: Requesting API token (simulating external app)...")
+        
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // Step 1: Request a new token like an external app would
+                val tokenResult = inferenceService?.generateApiToken() ?: "ERROR"
+                
+                withContext(Dispatchers.Main) {
+                    appendLog("Token request result: $tokenResult")
+                }
+                
+                if (tokenResult == "PENDING_USER_APPROVAL") {
+                    withContext(Dispatchers.Main) {
+                        appendLog("⏳ Waiting for user approval...")
+                        appendLog("Switching to Tokens tab for approval...")
+                        bottomNav.selectedItemId = R.id.nav_tokens
+                        tvStatus.text = getString(R.string.status_label) + " Awaiting Approval"
+                    }
+                    return@launch
+                }
+                
+                if (tokenResult.startsWith("ERROR") || tokenResult.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("❌ Token generation failed: $tokenResult")
+                    }
+                    return@launch
+                }
+                
+                val testToken = tokenResult
+                withContext(Dispatchers.Main) {
+                    appendLog("✅ Token approved: ${testToken.take(8)}...")
+                    appendLog("Step 2: Starting session...")
+                }
+                
+                // Step 2: Start a session
+                val sessionJson = inferenceService?.startSession(testToken, 0) ?: ""
+                if (sessionJson.isEmpty() || sessionJson.contains("error")) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("❌ Session creation failed: $sessionJson")
+                    }
+                    return@launch
+                }
+                
+                val json = JSONObject(sessionJson)
+                val sessionId = json.getString("session_id")
+                
+                withContext(Dispatchers.Main) {
+                    appendLog("✅ Session created: ${sessionId.take(8)}...")
+                    appendLog("Step 3: Sending inference request...")
+                    appendLog("Response: ")
+                }
+                
+                // Step 3: Send inference request
                 val jsonInputString = """
                     {
                         "model": "gemma",
-                        "messages": [{"role": "user", "content": "Hello, are you working?"}]
+                        "messages": [{"role": "user", "content": "Hello! Please respond with a short greeting."}]
                     }
                 """.trimIndent()
+                
+                inferenceService?.generateResponseAsyncWithSession(testToken, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
+                    override fun onToken(token: String) {
+                        runOnUiThread {
+                            val current = tvLogs.text.toString()
+                            tvLogs.text = current + token
+                        }
+                    }
 
-                withContext(Dispatchers.Main) {
-                    appendLog("Response: ")
-                }
-
-                ensureSession { sessionId ->
-                    inferenceService?.generateResponseAsyncWithSession(currentToken!!, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
-                        override fun onToken(token: String) {
-                            runOnUiThread {
-                                val current = tvLogs.text.toString()
-                                tvLogs.text = current + token
+                    override fun onComplete(fullResponse: String) {
+                        runOnUiThread {
+                            appendLog("\n---")
+                            appendLog("Step 4: Closing session...")
+                        }
+                        
+                        // Step 4: Close the session
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                val closeResult = inferenceService?.closeSession(testToken, sessionId)
+                                withContext(Dispatchers.Main) {
+                                    appendLog("✅ Session closed: $closeResult")
+                                    appendLog("=== Auth Flow Test Complete ===")
+                                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) {
+                                    appendLog("⚠️ Session close error: ${e.message}")
+                                }
                             }
                         }
+                    }
 
-                        override fun onComplete(fullResponse: String) {
-                            runOnUiThread {
-                                // fullResponse is the JSON, we don't necessarily need to print it all if we streamed tokens
-                                appendLog("\n---")
-                                appendLog("Final Response: $fullResponse")
-                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
-                            }
+                    override fun onError(error: String) {
+                        runOnUiThread {
+                            appendLog("\n❌ Inference Error: $error")
+                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                         }
-
-                        override fun onError(error: String) {
-                            runOnUiThread {
-                                appendLog("\nError: $error")
-                                tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
-                            }
-                        }
-                    })
-                }
+                    }
+                })
 
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("Request Failed: ${e.message}")
+                     appendLog("❌ Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
             }

@@ -42,6 +42,7 @@ class InferenceService : Service() {
             if (result == TokenManager.STATUS_PENDING) {
                 // Notify UI that a request is pending
                 val intent = Intent(ACTION_TOKEN_REQUEST).apply {
+                    setPackage(packageName)
                     putExtra(EXTRA_PACKAGE_NAME, pkgName)
                 }
                 sendBroadcast(intent)

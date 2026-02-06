@@ -24,6 +24,9 @@ class AiEngineManager {
     private var engine: Engine? = null
     private var currentModelPath: String? = null
     private val inferenceMutex = Mutex()
+    // Track active conversations to support multi-session and handle hardware resource limits
+    private val activeConversations = java.util.Collections.synchronizedList(mutableListOf<Conversation>())
+
 
 
     suspend fun loadModel(modelPath: String, backendType: String = "GPU"): Unit = withContext(Dispatchers.IO) {
@@ -225,7 +228,46 @@ class AiEngineManager {
                 temperature = temperature ?: 0.8
             )
         )
-        return currentEngine.createConversation(conversationConfig)
+        
+        // Attempt to create. If hardware allows multiple (GPU), this succeeds.
+        // If not (some NPU/CPU versions), we close the oldest active one and retry.
+        return try {
+            val conv = currentEngine.createConversation(conversationConfig)
+            activeConversations.add(conv)
+            conv
+        } catch (e: Exception) {
+            if (e.message?.contains("FAILED_PRECONDITION", ignoreCase = true) == true || 
+                e.message?.contains("session already exists", ignoreCase = true) == true) {
+                
+                Log.w(TAG, "Hardware session limit reached. Closing oldest session(s) to make room...")
+                synchronized(activeConversations) {
+                    if (activeConversations.isNotEmpty()) {
+                        val oldest = activeConversations.removeAt(0)
+                        try { oldest.close() } catch (ex: Exception) { /* ignore */ }
+                    }
+                }
+                // Retry creation
+                val conv = currentEngine.createConversation(conversationConfig)
+                activeConversations.add(conv)
+                conv
+            } else {
+                throw e
+            }
+        }
+    }
+
+    /**
+     * Closes all active conversations. Used during model reload or service shutdown.
+     */
+    fun closeAllConversations() {
+        synchronized(activeConversations) {
+            val it = activeConversations.iterator()
+            while (it.hasNext()) {
+                val conv = it.next()
+                try { conv.close() } catch (e: Exception) { /* ignore */ }
+                it.remove()
+            }
+        }
     }
 
     /**
@@ -262,8 +304,10 @@ class AiEngineManager {
                 Pair(responseText, conversation)
             } catch (e: Exception) {
                 Log.e(TAG, "Error in session inference", e)
-                // If there's an error, we might need to recreate the conversation
-                conversation.close()
+                // If the conversation failed, remove it from tracking as it might be unstable
+                activeConversations.remove(conversation)
+                try { conversation.close() } catch (ex: Exception) { /* ignore */ }
+                session.conversation = null
                 throw e
             }
         }
@@ -337,7 +381,10 @@ class AiEngineManager {
                 conversation
             } catch (e: Exception) {
                 Log.e(TAG, "Error in session async inference", e)
-                conversation.close()
+                // If the conversation failed, remove it from tracking as it might be unstable
+                activeConversations.remove(conversation)
+                try { conversation.close() } catch (ex: Exception) { /* ignore */ }
+                session.conversation = null
                 throw e
             }
         }
@@ -409,6 +456,7 @@ class AiEngineManager {
     }
 
     fun close() {
+        closeAllConversations()
         engine?.close()
         engine = null
         currentModelPath = null

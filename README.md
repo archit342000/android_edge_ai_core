@@ -2,7 +2,7 @@
 
 This application provides a system-wide AI inference service via **AIDL (Android Interface Definition Language)** and a local **OpenAI-compatible HTTP Server**. 
 
-Starting from **v1.3.0**, Edge AI Core **only supports stateful, session-based inference**. This ensures high performance through KV cache reuse and robust resource management.
+Starting from **v1.3.4**, Edge AI Core **only supports stateful, session-based inference**. This ensures high performance through KV cache reuse and robust resource management.
 
 ---
 
@@ -172,7 +172,21 @@ Send images or audio as base64-encoded strings within the `content` array of a m
 
 ---
 
-## 5. Best Practices & Security
+## 5. Advanced Multi-Session Management
+
+Edge AI Core supports **true multi-session concurrency**. Multiple independent client applications can maintain their own conversation states simultaneously.
+
+### How it Works:
+1.  **Independent Contexts**: Each `sessionId` maps to a distinct `Conversation` instance in the LiteRT-LM engine.
+2.  **KV Cache Persistence**: The hardware KV cache is preserved for each session, enabling ultra-fast response times for multi-turn dialogues.
+3.  **Hardware Awareness**:
+    *   **GPU Backend**: Typically supports many parallel sessions without context switching.
+    *   **NPU/CPU Backend**: If hardware limits are reached (e.g., "session already exists" error), the engine intelligently identifies and **closes the oldest active session** (LRU) to make room for the new request.
+    *   **Lock Serialization**: While session states are parallel, actual hardware inference is serialized to ensure stability.
+
+---
+
+## 6. Best Practices & Security
 
 1.  **Session Hygiene**: Always call `closeSession()` when a conversation ends to free up NPU memory.
 2.  **KV Cache Reuse**: The model remembers context within a session. You only need to send the **latest** message in subsequent calls to the same session.
@@ -181,7 +195,7 @@ Send images or audio as base64-encoded strings within the `content` array of a m
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 - **"PENDING_USER_APPROVAL"**: The user hasn't approved your app in the Edge AI Core UI yet.
 - **"Invalid API token"**: The token has been revoked or was never approved.
