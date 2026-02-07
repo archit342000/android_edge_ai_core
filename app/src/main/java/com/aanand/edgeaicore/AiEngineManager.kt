@@ -30,13 +30,12 @@ class AiEngineManager {
     private var currentModelPath: String? = null
     private val inferenceMutex = Mutex()
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
-    private val activeConversations = java.util.Collections.synchronizedList(mutableListOf<Conversation>())
+    private var activeEngineConversation: Conversation? = null
 
-
+    // ...
 
     suspend fun loadModel(modelPath: String, backendType: String = "GPU"): Unit = withContext(Dispatchers.IO) {
         if (currentModelPath == modelPath && engine != null) {
-            // TODO: check if backend changed
             return@withContext
         }
 
@@ -56,7 +55,6 @@ class AiEngineManager {
                 backend = backendEnum,
                 visionBackend = backendEnum,
                 audioBackend = Backend.CPU
-                // maxContextSize = 32768 // Trying to see if this exists here
             )
 
             val newEngine = Engine(config)
@@ -76,6 +74,45 @@ class AiEngineManager {
         }
     }
 
+
+    fun closeAllConversations() {
+        try {
+            activeEngineConversation?.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing active conversation", e)
+        }
+        activeEngineConversation = null
+    }
+
+    /**
+     * Creates a new engine-level conversation, ensuring only one exists.
+     */
+    fun createEngineConversation(
+        temperature: Double? = null,
+        topP: Double? = null,
+        topK: Int? = null,
+        preamble: String? = null,
+        initialMessages: List<Message> = emptyList()
+    ): Conversation {
+        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
+        
+        // Enforce single-session limit
+        closeAllConversations()
+
+        val conversationConfig = ConversationConfig(
+            systemInstruction = Contents.of(Content.Text(preamble ?: "")),
+            initialMessages = initialMessages,
+            samplerConfig = SamplerConfig(
+                topK = topK ?: 40,
+                topP = topP ?: 0.95,
+                temperature = temperature ?: 0.8
+            )
+        )
+        val conversation = currentEngine.createConversation(conversationConfig)
+        activeEngineConversation = conversation
+        return conversation
+    }
+
     // ===================================================================
     // Stateless Inference (Legacy - creates new conversation each call)
     // ===================================================================
@@ -90,7 +127,6 @@ class AiEngineManager {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
 
         // Separate system, history and last message
-        val systemMessage = messages.find { it.role == "system" }
         val nonSystemMessages = messages.filter { it.role != "system" }
         
         val lastMessage = nonSystemMessages.lastOrNull() ?: return@withContext "No user message found"
@@ -101,29 +137,27 @@ class AiEngineManager {
         
         return@withContext inferenceMutex.withLock {
             Log.d(TAG, "Request starting inference (lock acquired)")
-            var conversation: Conversation? = null
             try {
-                val conversationConfig = ConversationConfig(
-                    systemInstruction = preamble?.let { Contents.of(Content.Text(it)) },
-                    initialMessages = lrtHistory,
-                    samplerConfig = SamplerConfig(
-                        topK = topK ?: 40,
-                        topP = topP ?: 0.95,
-                        temperature = temperature ?: 0.8
-                    )
+                val conversation = createEngineConversation(
+                    temperature = temperature, 
+                    topP = topP, 
+                    topK = topK, 
+                    preamble = preamble,
+                    initialMessages = lrtHistory
                 )
-                conversation = currentEngine.createConversation(conversationConfig)
-                val response = conversation!!.sendMessage(lrtLastMessage)
+                
+                val response = conversation.sendMessage(lrtLastMessage)
                 val content = response.contents
                 val responseText = extractText(content)
                 Log.d(TAG, "Received response from engine: $responseText")
+                
+                activeEngineConversation?.close()
+                activeEngineConversation = null
+                
                 responseText
             } catch (e: Exception) {
                  Log.e(TAG, "Error generating response", e)
                  throw e
-            } finally {
-                conversation?.close()
-                Log.d(TAG, "Inference finished (lock released)")
             }
         }
     }
@@ -140,136 +174,60 @@ class AiEngineManager {
     ) = withContext(Dispatchers.IO) {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
 
-        // Separate system, history and last message
-        val systemMessage = messages.find { it.role == "system" }
         val nonSystemMessages = messages.filter { it.role != "system" }
-        
         val lastMessage = nonSystemMessages.lastOrNull() ?: return@withContext Unit
         val history = nonSystemMessages.dropLast(1)
-
+        
         val lrtLastMessage = toLiteRTMessage(lastMessage)
         val lrtHistory = history.map { toLiteRTMessage(it) }
 
         inferenceMutex.withLock {
-            Log.d(TAG, "Request starting async inference (lock acquired)")
-            var conversation: Conversation? = null
-            try {
-                val conversationConfig = ConversationConfig(
-                    systemInstruction = preamble?.let { Contents.of(Content.Text(it)) },
-                    initialMessages = lrtHistory,
-                    samplerConfig = SamplerConfig(
-                        topK = topK ?: 40,
-                        topP = topP ?: 0.95,
-                        temperature = temperature ?: 0.8
-                    )
+             try {
+                val conversation = createEngineConversation(
+                    temperature = temperature, 
+                    topP = topP, 
+                    topK = topK, 
+                    preamble = preamble,
+                    initialMessages = lrtHistory
                 )
-                conversation = currentEngine.createConversation(conversationConfig)
-                var lastResponseText = ""
                 
-                suspendCancellableCoroutine<Unit> { cont ->
-                    conversation!!.sendMessageAsync(lrtLastMessage, object : MessageCallback {
+                var lastResponseText = ""
+                 suspendCancellableCoroutine<Unit> { cont ->
+                    conversation.sendMessageAsync(lrtLastMessage, object : MessageCallback {
                         override fun onMessage(message: Message) {
                             val fullText = extractText(message.contents)
-                            // Calculate the new token part. 
-                            // Note: Native SDK might provide full accumulated text each time.
                             val newToken = if (fullText.startsWith(lastResponseText)) {
                                 fullText.substring(lastResponseText.length)
                             } else {
                                 fullText
                             }
                             lastResponseText = fullText
-                            if (newToken.isNotEmpty()) {
-                                onToken(newToken)
-                            }
+                            if (newToken.isNotEmpty()) onToken(newToken)
                         }
-
                         override fun onDone() {
                             onComplete(lastResponseText)
                             if (cont.isActive) cont.resume(Unit)
+                            // Legacy cleanup
+                            activeEngineConversation?.close()
+                            activeEngineConversation = null
                         }
-
                         override fun onError(error: Throwable) {
-                            Log.e(TAG, "Async inference error", error)
                             onError(error)
                             if (cont.isActive) cont.resumeWithException(error)
                         }
                     })
-
-                    cont.invokeOnCancellation {
-                        // Attempt to cancel if possible, though LiteRT-LM might not support it directly here
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in generateResponseAsync", e)
-                onError(e)
-                throw e
-            } finally {
-                conversation?.close()
-                Log.d(TAG, "Async inference finished (lock released)")
-            }
+                 }
+             } catch (e: Exception) {
+                 Log.e(TAG, "Error in generateResponseAsync", e)
+                 onError(e)
+             }
         }
     }
 
-    fun closeAllConversations() {
-        synchronized(activeConversations) {
-            val it = activeConversations.iterator()
-            while (it.hasNext()) {
-                val conv = it.next()
-                try { conv.close() } catch (e: Exception) { /* ignore */ }
-                it.remove()
-            }
-        }
-    }
-
-    // ===================================================================
-    // Stateful Conversation Inference
-    // ===================================================================
-
-    /**
-     * Creates a new engine-level conversation with 32k context window.
-     */
-    fun createEngineConversation(
-        temperature: Double? = null,
-        topP: Double? = null,
-        topK: Int? = null,
-        preamble: String? = null
-    ): Conversation {
-        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
-        
-        // Enforce single-session limit: Close any existing conversations
-        synchronized(activeConversations) {
-            if (activeConversations.isNotEmpty()) {
-                Log.w(TAG, "Hardware Limit: Closing ${activeConversations.size} active conversation(s) to free resources for new session.")
-                val it = activeConversations.iterator()
-                while (it.hasNext()) {
-                    val existingParams = it.next()
-                    try {
-                        existingParams.close()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error closing existing conversation", e)
-                    }
-                    it.remove()
-                }
-            }
-        }
-
-        val conversationConfig = ConversationConfig(
-            systemInstruction = Contents.of(Content.Text(preamble ?: "")),
-            samplerConfig = SamplerConfig(
-                topK = topK ?: 40,
-                topP = topP ?: 0.95,
-                temperature = temperature ?: 0.8
-            )
-        )
-        val conversation = currentEngine.createConversation(conversationConfig)
-        activeConversations.add(conversation)
-        return conversation
-    }
 
     /**
      * Generates a streaming response in a stateful conversation.
-     * All but the last message are added via addMessage.
-     * The last message is sent via sendMessageAsync.
+     * Recreates the engine conversation from history on every request.
      */
     suspend fun generateConversationResponseAsync(
         state: ConversationState,
@@ -286,46 +244,42 @@ class AiEngineManager {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
         
         inferenceMutex.withLock {
-
-            var conversation = state.engineConversation
-            
-            if (conversation == null) {
-                // New Conversation: Use the system instruction stored in the state (from startConversation)
-                val preamble = state.systemInstruction
-                Log.d(TAG, "Creating new engine conversation for ID=${state.conversationId}. Preamble length=${preamble?.length ?: 0}")
-                conversation = createEngineConversation(preamble = preamble)
-                state.engineConversation = conversation
-            }
-
             try {
                 Log.d(TAG, "Processing request for ConversationId=${state.conversationId}. Total messages=${messages.size}")
                 
-                // Log all incoming messages first for full visibility
                 messages.forEachIndexed { index, msg ->
                     Log.d(TAG, "  Incoming Message[$index]: role=${msg.role}, content=${extractTextFromChatMessage(msg)}")
                 }
 
-                if (messages.isEmpty()) {
-                     onError(IllegalArgumentException("No messages to process"))
-                     return@withLock
-                }
+                // 1. Update Persistent History
+                state.history.addAll(messages)
+                val fullHistory = state.history
 
-                // All but the last message are added via sendMessage (sync)
-                // Note: The SDK does not seem to expose an explicit addMessage() method for silent appending.
-                // We fallback to sendMessage() which may trigger inference, but ensures history is updated.
-                val history = messages.dropLast(1)
-                history.forEachIndexed { index, msg ->
-                    Log.d(TAG, "Appending historical message to engine [$index/${history.size}]: role=${msg.role}")
-                    conversation!!.sendMessage(toLiteRTMessage(msg))
-                }
+                // 2. Prepare Engine Context
+                val lastMsg = fullHistory.last()
+                val initialMessages = fullHistory.dropLast(1)
 
-                // The last message is sent via sendMessageAsync
-                val lastMessage = messages.last()
-                Log.d(TAG, "Sending final message to engine: role=${lastMessage.role}")
+                // 3. Recreate Conversation (Implicitly closes old one via createEngineConversation)
+                Log.d(TAG, "Recreating conversation for ID=${state.conversationId}. History size: ${initialMessages.size}")
+                
+                val systemPrompt = state.systemInstruction ?: ""
+                
+                val conversation = createEngineConversation(
+                    temperature = 0.8,
+                    topP = 0.95,
+                    topK = 40,
+                    preamble = systemPrompt,
+                    initialMessages = initialMessages.map { toLiteRTMessage(it) }
+                )
+                state.engineConversation = conversation
+
+                // 4. Trigger Inference with the last message (Standard Flow)
+                Log.d(TAG, "Triggering inference with role=${lastMsg.role}")
+
                 var lastResponseText = ""
                 
                 suspendCancellableCoroutine<Unit> { cont ->
-                    conversation.sendMessageAsync(toLiteRTMessage(lastMessage), object : MessageCallback {
+                    conversation.sendMessageAsync(toLiteRTMessage(lastMsg), object : MessageCallback {
                         override fun onMessage(message: Message) {
                             val fullText = extractText(message.contents)
                             val newToken = if (fullText.startsWith(lastResponseText)) {
@@ -341,22 +295,26 @@ class AiEngineManager {
                         }
 
                         override fun onDone() {
-                            Log.d(TAG, "Inference completed for ID=${state.conversationId}. Full Response: $lastResponseText")
+                            Log.d(TAG, "Inference complete. Full response: $lastResponseText")
+                            // 5. Update History with Response
+                            if (lastResponseText.isNotEmpty()) {
+                                state.history.add(ChatMessage("assistant", com.google.gson.JsonPrimitive(lastResponseText)))
+                            }
                             onComplete(lastResponseText)
                             if (cont.isActive) cont.resume(Unit)
                         }
 
                         override fun onError(error: Throwable) {
-                            Log.e(TAG, "Inference error for ID=${state.conversationId}", error)
+                            Log.e(TAG, "Inference error", error)
                             onError(error)
                             if (cont.isActive) cont.resumeWithException(error)
                         }
                     })
                 }
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error in generateConversationResponseAsync", e)
                 onError(e)
-                throw e
             }
         }
     }

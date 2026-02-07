@@ -1,6 +1,14 @@
 {
   "versions": [
     {
+      "version": "1.6.0",
+      "changes": [
+        "Removed Assistant Message Continuation support (prefilling) due to engine limitations",
+        "Implemented 'Single-Conversation-Per-Turn' strategy for consistent state",
+        "Restored detailed debug logging for incoming messages and tokens"
+      ]
+    },
+    {
       "version": "1.5.2",
       "changes": [
         "Updated AIDL interface: startConversation() now accepts an optional systemInstruction parameter",
