@@ -236,8 +236,25 @@ class AiEngineManager {
     ): Conversation {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
         
+        // Enforce single-session limit: Close any existing conversations
+        synchronized(activeConversations) {
+            if (activeConversations.isNotEmpty()) {
+                Log.w(TAG, "Hardware Limit: Closing ${activeConversations.size} active conversation(s) to free resources for new session.")
+                val it = activeConversations.iterator()
+                while (it.hasNext()) {
+                    val existingParams = it.next()
+                    try {
+                        existingParams.close()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error closing existing conversation", e)
+                    }
+                    it.remove()
+                }
+            }
+        }
+
         val conversationConfig = ConversationConfig(
-            systemInstruction = preamble?.let { Contents.of(Content.Text(it)) },
+            systemInstruction = Contents.of(Content.Text(preamble ?: "")),
             samplerConfig = SamplerConfig(
                 topK = topK ?: 40,
                 topP = topP ?: 0.95,
@@ -269,39 +286,51 @@ class AiEngineManager {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
         
         inferenceMutex.withLock {
-            val nonSystemMessages = messages.filter { it.role != "system" }
-            if (nonSystemMessages.isEmpty()) {
-                onError(IllegalArgumentException("No user or assistant messages found"))
-                return@withLock
-            }
 
-            val conversation = state.engineConversation ?: run {
-                val preamble = messages.find { it.role == "system" }?.let {
-                    if (it.content.isJsonPrimitive) it.content.asString else it.content.toString()
-                }
+            var conversation = state.engineConversation
+            var messagesToProcess = messages
+
+            if (conversation == null) {
+                // New Conversation: Check for system prompt to use as preamble
+                // This is the desired behavior for "System Instructions"
+                val systemMsg = messages.find { it.role == "system" }
+                val preamble = systemMsg?.let { extractTextFromChatMessage(it) }
+                
                 Log.d(TAG, "Creating new engine conversation for ID=${state.conversationId}. Preamble length=${preamble?.length ?: 0}")
-                val newConv = createEngineConversation(preamble = preamble)
-                state.engineConversation = newConv
-                newConv
+                conversation = createEngineConversation(preamble = preamble)
+                state.engineConversation = conversation
+
+                // If we used the system message as preamble, exclude it from the message stream to avoid duplication
+                // Any OTHER system messages will still be processed (as User fallback)
+                if (systemMsg != null) {
+                    messagesToProcess = messages.filter { it !== systemMsg }
+                }
             }
 
             try {
-                Log.d(TAG, "Processing request for ConversationId=${state.conversationId}. Total messages=${messages.size}")
+                Log.d(TAG, "Processing request for ConversationId=${state.conversationId}. Total messages=${messages.size}. Messages to process=${messagesToProcess.size}")
                 
-                // Log each message
+                // Log all incoming messages first for full visibility
                 messages.forEachIndexed { index, msg ->
-                    Log.d(TAG, "  Message[$index]: role=${msg.role}, content=${extractTextFromChatMessage(msg)}")
+                    Log.d(TAG, "  Incoming Message[$index]: role=${msg.role}, content=${extractTextFromChatMessage(msg)}")
+                }
+
+                if (messagesToProcess.isEmpty()) {
+                     onError(IllegalArgumentException("No messages to process after preamble extraction"))
+                     return@withLock
                 }
 
                 // All but the last message are added via sendMessage (sync)
-                val history = nonSystemMessages.dropLast(1)
+                // Note: The SDK does not seem to expose an explicit addMessage() method for silent appending.
+                // We fallback to sendMessage() which may trigger inference, but ensures history is updated.
+                val history = messagesToProcess.dropLast(1)
                 history.forEachIndexed { index, msg ->
                     Log.d(TAG, "Appending historical message to engine [$index/${history.size}]: role=${msg.role}")
-                    conversation.sendMessage(toLiteRTMessage(msg))
+                    conversation!!.sendMessage(toLiteRTMessage(msg))
                 }
 
                 // The last message is sent via sendMessageAsync
-                val lastMessage = nonSystemMessages.last()
+                val lastMessage = messagesToProcess.last()
                 Log.d(TAG, "Sending final message to engine: role=${lastMessage.role}")
                 var lastResponseText = ""
                 
