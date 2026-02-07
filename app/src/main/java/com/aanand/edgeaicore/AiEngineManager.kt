@@ -15,6 +15,7 @@ import com.google.ai.edge.litertlm.MessageCallback
 import com.google.ai.edge.litertlm.InputData
 import com.google.ai.edge.litertlm.SessionConfig
 import com.google.ai.edge.litertlm.Session as LiteRTSession
+import com.aanand.edgeaicore.ConversationState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -22,6 +23,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.launch
 
 class AiEngineManager {
     private var engine: Engine? = null
@@ -29,7 +31,6 @@ class AiEngineManager {
     private val inferenceMutex = Mutex()
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
     private val activeConversations = java.util.Collections.synchronizedList(mutableListOf<Conversation>())
-    private val activeSessions = java.util.Collections.synchronizedList(mutableListOf<LiteRTSession>())
 
 
 
@@ -55,6 +56,7 @@ class AiEngineManager {
                 backend = backendEnum,
                 visionBackend = backendEnum,
                 audioBackend = Backend.CPU
+                // maxContextSize = 32768 // Trying to see if this exists here
             )
 
             val newEngine = Engine(config)
@@ -208,59 +210,6 @@ class AiEngineManager {
         }
     }
 
-    // ===================================================================
-    // Session-Based Inference (Uses existing conversation for KV cache)
-    // ===================================================================
-
-    /**
-     * Creates a new conversation for a session.
-     * The returned conversation should be stored in the Session object.
-     */
-    /**
-     * Creates a new LiteRT Session.
-     */
-    fun createLiteRTSession(
-        temperature: Double? = null,
-        topP: Double? = null,
-        topK: Int? = null
-    ): LiteRTSession {
-        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
-
-        val samplerConfig = SamplerConfig(
-            topK = topK ?: 40,
-            topP = topP ?: 0.95,
-            temperature = temperature ?: 0.8
-        )
-        val sessionConfig = SessionConfig(samplerConfig)
-
-        return try {
-            val session = currentEngine.createSession(sessionConfig)
-            activeSessions.add(session)
-            session
-        } catch (e: Exception) {
-             if (e.message?.contains("FAILED_PRECONDITION", ignoreCase = true) == true || 
-                e.message?.contains("session already exists", ignoreCase = true) == true) {
-                
-                Log.w(TAG, "Hardware session limit reached. Closing oldest session(s) to make room...")
-                synchronized(activeSessions) {
-                    if (activeSessions.isNotEmpty()) {
-                        val oldest = activeSessions.removeAt(0)
-                        try { oldest.close() } catch (ex: Exception) { /* ignore */ }
-                    }
-                }
-                // Retry creation
-                val session = currentEngine.createSession(sessionConfig)
-                activeSessions.add(session)
-                session
-            } else {
-                throw e
-            }
-        }
-    }
-
-    /**
-     * Closes all active conversations. Used during model reload or service shutdown.
-     */
     fun closeAllConversations() {
         synchronized(activeConversations) {
             val it = activeConversations.iterator()
@@ -270,297 +219,158 @@ class AiEngineManager {
                 it.remove()
             }
         }
-        synchronized(activeSessions) {
-            val it = activeSessions.iterator()
-            while (it.hasNext()) {
-                val session = it.next()
-                try { session.close() } catch (e: Exception) { /* ignore */ }
-                it.remove()
-            }
-        }
     }
 
+    // ===================================================================
+    // Stateful Conversation Inference
+    // ===================================================================
+
     /**
-     * Generates a response using an existing session conversation.
-     * This reuses the KV cache from previous messages in the session.
+     * Creates a new engine-level conversation with 32k context window.
      */
-    suspend fun generateResponseWithSession(
-        session: Session,
-        messages: List<ChatMessage>,
+    fun createEngineConversation(
         temperature: Double? = null,
         topP: Double? = null,
         topK: Int? = null,
         preamble: String? = null
-    ): Pair<String, Any?> = withContext(Dispatchers.IO) {
+    ): Conversation {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
-
-        val paramNonSystemMessages = messages.filter { it.role != "system" }
-        if (paramNonSystemMessages.isEmpty()) {
-            throw IllegalArgumentException("No user or assistant messages found in request")
-        }
         
-        return@withContext inferenceMutex.withLock {
-            var lrtSession = session.engineSession
-            var isNewSession = false
-            
-            val currentCount = session.processedMessageCount
-            val requestCount = paramNonSystemMessages.size
-            
-            // Determine if we can append or need to reset
-            // We implementation strict append-only logic. If request has fewer messages or same count 
-            // (but we are re-calling), we assume history modification and reset.
-            if (lrtSession != null && requestCount <= currentCount) {
-                Log.i(TAG, "Session history mismatch (req=$requestCount, cur=$currentCount). Resetting session.")
-                try { lrtSession.close() } catch (e: Exception) { /* ignore */ }
-                lrtSession = null
-                session.engineSession = null
-                session.processedMessageCount = 0
-            }
-            
-            val messagesToProcess: List<ChatMessage>
-            
-            if (lrtSession == null) {
-                Log.d(TAG, "Creating new LiteRT session for session ${session.sessionId.take(8)}...")
-                lrtSession = createLiteRTSession(temperature, topP, topK)
-                session.engineSession = lrtSession
-                session.processedMessageCount = 0
-                isNewSession = true
-                messagesToProcess = paramNonSystemMessages
-            } else {
-                 // Append only new messages
-                 messagesToProcess = paramNonSystemMessages.drop(currentCount)
-            }
-            
-            if (messagesToProcess.isEmpty()) {
-                 return@withLock Pair("", null)
-            }
-
-            val inputDataList = mutableListOf<InputData>()
-            
-            // If new session and preamble exists, prefill it
-            if (isNewSession && preamble != null && preamble.isNotEmpty()) {
-               inputDataList.add(InputData.Text("<start_of_turn>system\n$preamble<end_of_turn>\n"))
-            }
-
-             // Identify if the LAST message in the NEW batch is an Assistant Prefill
-            val lastMsg = messagesToProcess.last()
-            val isAssistantPrefill = lastMsg.role.equals("assistant", ignoreCase = true)
-            
-            val lastIndex = messagesToProcess.size - 1
-            messagesToProcess.forEachIndexed { index, msg ->
-                val isLast = index == lastIndex
-                val treatAsPrefill = isLast && isAssistantPrefill
-                processMessageToInputData(msg, inputDataList, treatAsPrefill)
-            }
-            
-            if (!isAssistantPrefill) {
-                inputDataList.add(InputData.Text("<start_of_turn>model\n"))
-            }
-            
-            Log.d(TAG, "Session running prefill with ${inputDataList.size} InputData items")
-            
-            try {
-                // 1. Run Prefill
-                if (inputDataList.isNotEmpty()) {
-                    lrtSession?.runPrefill(inputDataList)
-                }
-                
-                // 2. Run Decode
-                val responseText = lrtSession?.runDecode() ?: ""
-                Log.d(TAG, "Session inference complete: $responseText")
-                
-                // Update processed count
-                // If prefill (Assistant last), we simply caught up to the request.
-                // If normal (User last), we generated a NEW assistant turn.
-                if (isAssistantPrefill) {
-                    session.processedMessageCount = requestCount
-                } else {
-                    session.processedMessageCount = requestCount + 1
-                }
-                
-                Pair(responseText, null)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in session inference", e)
-                activeSessions.remove(lrtSession)
-                try { lrtSession?.close() } catch (ex: Exception) { /* ignore */ }
-                session.engineSession = null
-                session.processedMessageCount = 0
-                throw e
-            }
-        }
-    }
-    
-    private fun formatTurn(role: String, content: String): String {
-        return "<start_of_turn>$role\n$content<end_of_turn>\n"
-    }
-
-    private fun formatPartialTurn(role: String, content: String): String {
-        return "<start_of_turn>$role\n$content"
+        val conversationConfig = ConversationConfig(
+            systemInstruction = preamble?.let { Contents.of(Content.Text(it)) },
+            samplerConfig = SamplerConfig(
+                topK = topK ?: 40,
+                topP = topP ?: 0.95,
+                temperature = temperature ?: 0.8
+            )
+        )
+        val conversation = currentEngine.createConversation(conversationConfig)
+        activeConversations.add(conversation)
+        return conversation
     }
 
     /**
-     * Generates a streaming response using an existing session conversation.
-     * This reuses the KV cache from previous messages in the session.
+     * Generates a streaming response in a stateful conversation.
+     * All but the last message are added via addMessage.
+     * The last message is sent via sendMessageAsync.
      */
-    /**
-     * Generates a streaming response using an existing session.
-     * This reuses the KV cache from previous messages.
-     */
-    suspend fun generateResponseAsyncWithSession(
-        session: Session,
+    suspend fun generateConversationResponseAsync(
+        state: ConversationState,
         messages: List<ChatMessage>,
         onToken: (String) -> Unit,
         onComplete: (String) -> Unit,
-        onError: (Throwable) -> Unit,
-        temperature: Double? = null,
-        topP: Double? = null,
-        topK: Int? = null,
-        preamble: String? = null
-    ): Any? = withContext(Dispatchers.IO) {
-        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
-
-        val paramNonSystemMessages = messages.filter { it.role != "system" }
-        if (paramNonSystemMessages.isEmpty()) {
-            throw IllegalArgumentException("No user or assistant messages found in request")
+        onError: (Throwable) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        if (messages.isEmpty()) {
+            onError(IllegalArgumentException("No messages provided"))
+            return@withContext
         }
 
-        return@withContext inferenceMutex.withLock {
-            var lrtSession = session.engineSession
-            var isNewSession = false
-            
-            val currentCount = session.processedMessageCount
-            val requestCount = paramNonSystemMessages.size
-            
-            if (lrtSession != null && requestCount <= currentCount) {
-                Log.i(TAG, "Session async history mismatch (req=$requestCount, cur=$currentCount). Resetting session.")
-                try { lrtSession.close() } catch (e: Exception) { /* ignore */ }
-                lrtSession = null
-                session.engineSession = null
-                session.processedMessageCount = 0
-            }
-            
-            val messagesToProcess: List<ChatMessage>
-            
-            if (lrtSession == null) {
-                Log.d(TAG, "Creating new LiteRT session for session ${session.sessionId.take(8)}...")
-                lrtSession = createLiteRTSession(temperature, topP, topK)
-                session.engineSession = lrtSession
-                session.processedMessageCount = 0
-                isNewSession = true
-                messagesToProcess = paramNonSystemMessages
-            } else {
-                 messagesToProcess = paramNonSystemMessages.drop(currentCount)
-            }
-            
-            if (messagesToProcess.isEmpty()) {
-                 return@withLock null
+        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
+        
+        inferenceMutex.withLock {
+            val nonSystemMessages = messages.filter { it.role != "system" }
+            if (nonSystemMessages.isEmpty()) {
+                onError(IllegalArgumentException("No user or assistant messages found"))
+                return@withLock
             }
 
-            val inputDataList = mutableListOf<InputData>()
-            if (isNewSession && preamble != null && preamble.isNotEmpty()) {
-               inputDataList.add(InputData.Text("<start_of_turn>system\n$preamble<end_of_turn>\n"))
+            val conversation = state.engineConversation ?: run {
+                val preamble = messages.find { it.role == "system" }?.let {
+                    if (it.content.isJsonPrimitive) it.content.asString else it.content.toString()
+                }
+                Log.d(TAG, "Creating new engine conversation for ID=${state.conversationId}. Preamble length=${preamble?.length ?: 0}")
+                val newConv = createEngineConversation(preamble = preamble)
+                state.engineConversation = newConv
+                newConv
             }
-            
-            val lastMsg = messagesToProcess.last()
-            val isAssistantPrefill = lastMsg.role.equals("assistant", ignoreCase = true)
-            
-            val lastIndex = messagesToProcess.size - 1
-            messagesToProcess.forEachIndexed { index, msg ->
-                val isLast = index == lastIndex
-                val treatAsPrefill = isLast && isAssistantPrefill
-                processMessageToInputData(msg, inputDataList, treatAsPrefill)
-            }
-            
-            if (!isAssistantPrefill) {
-                inputDataList.add(InputData.Text("<start_of_turn>model\n"))
-            }
-            
-            Log.d(TAG, "Session async running prefill with ${inputDataList.size} InputData items")
-            
+
             try {
-                val responseSb = StringBuilder()
+                Log.d(TAG, "Processing request for ConversationId=${state.conversationId}. Total messages=${messages.size}")
                 
-                // Branching logic based on turn type
-                if (!isAssistantPrefill) {
-                     // Standard User Turn: Pass everything to generateContentStream.
-                     // It handles prefill + decode internally.
-                     suspendCancellableCoroutine<Unit> { cont ->
-                        try {
-                            lrtSession?.generateContentStream(inputDataList, object : com.google.ai.edge.litertlm.ResponseCallback {
-                                override fun onNext(chunk: String) {
-                                    responseSb.append(chunk)
-                                    onToken(chunk)
-                                }
-                                override fun onDone() {
-                                    onComplete(responseSb.toString())
-                                    if (cont.isActive) cont.resume(Unit)
-                                }
-                                override fun onError(error: Throwable) {
-                                    Log.e(TAG, "Session async inference error", error)
-                                    onError(error)
-                                    if (cont.isActive) cont.resume(Unit)
-                                }
-                            })
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Exception calling generateContentStream", e)
-                            onError(e)
+                // Log each message
+                messages.forEachIndexed { index, msg ->
+                    Log.d(TAG, "  Message[$index]: role=${msg.role}, content=${extractTextFromChatMessage(msg)}")
+                }
+
+                // All but the last message are added via sendMessage (sync)
+                val history = nonSystemMessages.dropLast(1)
+                history.forEachIndexed { index, msg ->
+                    Log.d(TAG, "Appending historical message to engine [$index/${history.size}]: role=${msg.role}")
+                    conversation.sendMessage(toLiteRTMessage(msg))
+                }
+
+                // The last message is sent via sendMessageAsync
+                val lastMessage = nonSystemMessages.last()
+                Log.d(TAG, "Sending final message to engine: role=${lastMessage.role}")
+                var lastResponseText = ""
+                
+                suspendCancellableCoroutine<Unit> { cont ->
+                    conversation.sendMessageAsync(toLiteRTMessage(lastMessage), object : MessageCallback {
+                        override fun onMessage(message: Message) {
+                            val fullText = extractText(message.contents)
+                            val newToken = if (fullText.startsWith(lastResponseText)) {
+                                fullText.substring(lastResponseText.length)
+                            } else {
+                                fullText
+                            }
+                            lastResponseText = fullText
+                            if (newToken.isNotEmpty()) {
+                                Log.d(TAG, "Token received: [$newToken]")
+                                onToken(newToken)
+                            }
+                        }
+
+                        override fun onDone() {
+                            Log.d(TAG, "Inference completed for ID=${state.conversationId}. Full Response: $lastResponseText")
+                            onComplete(lastResponseText)
                             if (cont.isActive) cont.resume(Unit)
                         }
-                    }
-                } else {
-                    // Assistant Continuation: Use Advanced Control (Split Prefill & Decode).
-                    // 1. Manually run prefill with the partial assistant message.
-                    if (inputDataList.isNotEmpty()) {
-                        lrtSession?.runPrefill(inputDataList)
-                    }
 
-                    // 2. Trigger streaming decode.
-                    // We need a dummy input to satisfy the API. A single space is inclusive and usually harmless.
-                    // Empty string ("") causes a tokenizer error.
-                    val triggerInput = listOf(InputData.Text(" ")) 
-                    
-                    suspendCancellableCoroutine<Unit> { cont ->
-                        try {
-                            lrtSession?.generateContentStream(triggerInput, object : com.google.ai.edge.litertlm.ResponseCallback {
-                                override fun onNext(chunk: String) {
-                                    responseSb.append(chunk)
-                                    onToken(chunk)
-                                }
-                                override fun onDone() {
-                                    onComplete(responseSb.toString())
-                                    if (cont.isActive) cont.resume(Unit)
-                                }
-                                override fun onError(error: Throwable) {
-                                    Log.e(TAG, "Session async inference error", error)
-                                    onError(error)
-                                    if (cont.isActive) cont.resume(Unit)
-                                }
-                            })
-                        } catch (e: Exception) {
-                             Log.e(TAG, "Exception calling generateContentStream (continuation)", e)
-                             onError(e)
-                             if (cont.isActive) cont.resume(Unit)
+                        override fun onError(error: Throwable) {
+                            Log.e(TAG, "Inference error for ID=${state.conversationId}", error)
+                            onError(error)
+                            if (cont.isActive) cont.resumeWithException(error)
                         }
-                    }
+                    })
                 }
-                
-                // Update processed count (same logic as sync)
-                if (isAssistantPrefill) {
-                    session.processedMessageCount = requestCount
-                } else {
-                    session.processedMessageCount = requestCount + 1
-                }
-                
-                null 
             } catch (e: Exception) {
-                Log.e(TAG, "Error in session async inference", e)
-                activeSessions.remove(lrtSession)
-                try { lrtSession?.close() } catch (ex: Exception) { /* ignore */ }
-                session.engineSession = null
-                session.processedMessageCount = 0
+                Log.e(TAG, "Error in generateConversationResponseAsync", e)
+                onError(e)
                 throw e
             }
         }
+    }
+
+
+    /**
+     * Resets the streaming state for a session.
+     */
+    fun resetStreamingState(session: LiteRTSession) {
+        // No-op for primitive API as state is managed by LiteRTSession itself
+    }
+
+
+    private fun collapseInputData(list: List<InputData>): List<InputData> {
+        if (list.isEmpty()) return list
+        val result = mutableListOf<InputData>()
+        val currentText = StringBuilder()
+        
+        for (item in list) {
+            if (item is InputData.Text) {
+                currentText.append(item.text)
+            } else {
+                if (currentText.isNotEmpty()) {
+                    result.add(InputData.Text(currentText.toString()))
+                    currentText.clear()
+                }
+                result.add(item)
+            }
+        }
+        if (currentText.isNotEmpty()) {
+            result.add(InputData.Text(currentText.toString()))
+        }
+        return result
     }
 
     // ===================================================================

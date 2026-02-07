@@ -1,6 +1,27 @@
 {
   "versions": [
     {
+      "version": "1.5.0",
+      "changes": [
+        "Major architecture overhaul: Transitioned to a stateful conversation-based model",
+        "Implemented unique Conversation IDs with persistent engine state",
+        "Support for 32k context window (32,768 tokens)",
+        "Raw message appending: All messages in a request are added to the engine state",
+        "Sync/Async hybrid flow for reliable multi-message processing",
+        "Added TTL (Time-To-Live) management with automatic resource cleanup",
+        "Refactored AIDL interface for stateful conversation lifecycle"
+      ]
+    },
+    {
+      "version": "1.4.1",
+      "changes": [
+        "Implemented fully manual Prefill+Decode streaming for maximum control",
+        "Assistant message continuation now works correctly with true token-by-token streaming",
+        "Replaced high-level generateContentStream with direct runPrefill/runDecode calls",
+        "Added comprehensive debug logging for inference pipeline visibility"
+      ]
+    },
+    {
       "version": "1.4.0",
       "changes": [
         "Added 'Test Multi-Turn' and 'Test Contin.' buttons to the main UI",

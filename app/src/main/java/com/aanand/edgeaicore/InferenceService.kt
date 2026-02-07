@@ -24,7 +24,7 @@ class InferenceService : Service() {
 
     private val aiEngineManager = AiEngineManager()
     private lateinit var tokenManager: TokenManager
-    private val sessionManager = SessionManager()
+    private val conversationManager = ConversationManager()
     private val gson = Gson()
 
     private val binder = object : IInferenceService.Stub() {
@@ -64,93 +64,92 @@ class InferenceService : Service() {
                 return false
             }
 
-            // Close all sessions for this token first
-            sessionManager.closeAllSessionsForToken(apiToken)
+            // Close all conversations for this token first
+            conversationManager.closeAllForToken(apiToken)
             val revoked = tokenManager.revokeToken(apiToken)
             Log.i(TAG, "Revoked API token: ${apiToken.take(8)}... -> $revoked")
             return revoked
         }
         
         // =====================
-        // Session Management
+        // Conversation Management
         // =====================
         
-        override fun startSession(apiToken: String, ttlMs: Long): String {
+        override fun startConversation(apiToken: String): String {
             val sanitizedToken = apiToken.trim()
-            logIpcRequest("startSession", sanitizedToken, "ttl=$ttlMs")
+            logIpcRequest("startConversation", sanitizedToken)
             
             return try {
                 // Validate token
                 if (!tokenManager.isValidToken(sanitizedToken)) {
-                    Log.w(TAG, "startSession failed: invalid token ${sanitizedToken.take(8)}...")
+                    Log.w(TAG, "startConversation failed: invalid token ${sanitizedToken.take(8)}...")
                     return gson.toJson(ErrorResponse("Invalid API token"))
                 }
                 
-                val actualTtl = if (ttlMs <= 0) SessionManager.DEFAULT_SESSION_TTL_MS else ttlMs
-                val session = sessionManager.createSession(sanitizedToken, actualTtl)
+                val state = conversationManager.createConversation(sanitizedToken)
                 
-                val response = SessionResponse(
-                    session_id = session.sessionId,
-                    ttl_ms = session.ttlMs,
-                    created_at = session.createdAt,
-                    expires_at = session.createdAt + session.ttlMs
+                val response = ConversationResponse(
+                    conversation_id = state.conversationId,
+                    ttl_ms = state.ttlMs,
+                    created_at = state.createdAt,
+                    expires_at = state.createdAt + state.ttlMs
                 )
                 
-                val msg = "Started session ${session.sessionId.take(8)}... for ${sanitizedToken.take(8)}..."
+                val msg = "Started conversation ${state.conversationId.take(8)}... for ${sanitizedToken.take(8)}..."
                 Log.i(TAG, msg)
                 sendStatusBroadcast(msg)
                 gson.toJson(response)
             } catch (e: Exception) {
-                Log.e(TAG, "Internal error in startSession", e)
+                Log.e(TAG, "Internal error in startConversation", e)
                 gson.toJson(ErrorResponse("Internal server error: ${e.message}"))
             }
         }
         
-        override fun closeSession(apiToken: String, sessionId: String): String {
+        override fun closeConversation(apiToken: String, conversationId: String): String {
             val sanitizedToken = apiToken.trim()
-            logIpcRequest("closeSession", sanitizedToken, "session=${sessionId.take(8)}...")
+            logIpcRequest("closeConversation", sanitizedToken, "conv=${conversationId.take(8)}...")
             
             // Validate token
             if (!tokenManager.isValidToken(sanitizedToken)) {
-                Log.w(TAG, "closeSession failed: invalid token ${sanitizedToken.take(8)}...")
+                Log.w(TAG, "closeConversation failed: invalid token ${sanitizedToken.take(8)}...")
                 return gson.toJson(ErrorResponse("Invalid API token"))
             }
             
-            val closed = sessionManager.closeSession(sessionId, sanitizedToken)
+            val closed = conversationManager.closeConversation(conversationId, sanitizedToken)
             return if (closed) {
-                val msg = "Closed session ${sessionId.take(8)}..."
+                val msg = "Closed conversation ${conversationId.take(8)}..."
                 Log.i(TAG, msg)
                 sendStatusBroadcast(msg)
                 gson.toJson(SuccessResponse(true))
             } else {
-                Log.w(TAG, "Failed to close session ${sessionId.take(8)}...")
-                gson.toJson(ErrorResponse("Session not found or unauthorized"))
+                Log.w(TAG, "Failed to close conversation ${conversationId.take(8)}...")
+                gson.toJson(ErrorResponse("Conversation not found or unauthorized"))
             }
         }
         
-        override fun getSessionInfo(apiToken: String, sessionId: String): String {
+        override fun getConversationInfo(apiToken: String, conversationId: String): String {
             val sanitizedToken = apiToken.trim()
-            logIpcRequest("getSessionInfo", sanitizedToken, "session=${sessionId.take(8)}...")
+            logIpcRequest("getConversationInfo", sanitizedToken, "conv=${conversationId.take(8)}...")
             
             // Validate token
             if (!tokenManager.isValidToken(sanitizedToken)) {
                 return gson.toJson(ErrorResponse("Invalid API token"))
             }
             
-            val session = sessionManager.getSession(sessionId, sanitizedToken)
-            return if (session != null) {
+            val state = conversationManager.getConversation(conversationId, sanitizedToken)
+            return if (state != null) {
                 val now = System.currentTimeMillis()
-                val response = SessionInfoResponse(
-                    session_id = session.sessionId,
-                    ttl_ms = session.ttlMs,
-                    created_at = session.createdAt,
-                    last_access_time = session.lastAccessTime,
-                    expires_at = session.lastAccessTime + session.ttlMs,
-                    remaining_ttl_ms = (session.lastAccessTime + session.ttlMs) - now
+                val response = ConversationInfoResponse(
+                    conversation_id = state.conversationId,
+                    ttl_ms = state.ttlMs,
+                    created_at = state.createdAt,
+                    last_access_time = state.lastAccessTime,
+                    expires_at = state.lastAccessTime + state.ttlMs,
+                    remaining_ttl_ms = (state.lastAccessTime + state.ttlMs) - now
                 )
                 gson.toJson(response)
             } else {
-                gson.toJson(ErrorResponse("Session not found, expired, or unauthorized"))
+                gson.toJson(ErrorResponse("Conversation not found, expired, or unauthorized"))
             }
         }
         
@@ -159,62 +158,21 @@ class InferenceService : Service() {
 
         
         // =====================
-        // Session-Based Inference
+        // Conversation-Based Inference
         // =====================
         
-        override fun generateResponseWithSession(apiToken: String, sessionId: String, jsonRequest: String): String {
-            val sanitizedToken = apiToken.trim()
-            logIpcRequest("generateResponseWithSession", sanitizedToken, "session=${sessionId.take(8)}...")
-            
-            // Validate token
-            if (!tokenManager.isValidToken(sanitizedToken)) {
-                Log.w(TAG, "generateResponseWithSession failed: invalid token")
-                return gson.toJson(ErrorResponse("Invalid API token"))
-            }
-            
-            // Get session (this also validates ownership and resets TTL)
-            val session = sessionManager.getSession(sessionId, sanitizedToken)
-            if (session == null) {
-                Log.w(TAG, "generateResponseWithSession failed: session not found or expired")
-                return gson.toJson(ErrorResponse("Session not found, expired, or unauthorized"))
-            }
-            
-            return try {
-                Log.d(TAG, "Received session request for ${sessionId.take(8)}...: $jsonRequest")
-                val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
-                
-                val preamble = extractSystemPreamble(request.messages)
-                val (responseText, _) = runBlocking {
-                    aiEngineManager.generateResponseWithSession(
-                        session = session,
-                        messages = request.messages,
-                        temperature = request.temperature,
-                        topP = request.top_p,
-                        topK = request.top_k,
-                        preamble = preamble
-                    )
-                }
-
-                val response = createChatCompletionResponse(request, responseText)
-                gson.toJson(response)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing session request", e)
-                gson.toJson(ErrorResponse(e.message ?: "Unknown error"))
-            }
-        }
-        
-        override fun generateResponseAsyncWithSession(
+        override fun generateConversationResponseAsync(
             apiToken: String, 
-            sessionId: String, 
+            conversationId: String, 
             jsonRequest: String, 
             callback: IInferenceCallback
         ) {
             val sanitizedToken = apiToken.trim()
-            logIpcRequest("generateResponseAsyncWithSession", sanitizedToken, "session=${sessionId.take(8)}...")
+            logIpcRequest("generateConversationResponseAsync", sanitizedToken, "conv=${conversationId.take(8)}...")
             
             // Validate token
             if (!tokenManager.isValidToken(sanitizedToken)) {
-                Log.w(TAG, "generateResponseAsyncWithSession failed: invalid token")
+                Log.w(TAG, "generateConversationResponseAsync failed: invalid token")
                 try {
                     callback.onError("Invalid API token")
                 } catch (e: Exception) {
@@ -223,12 +181,12 @@ class InferenceService : Service() {
                 return
             }
             
-            // Get session (this also validates ownership and resets TTL)
-            val session = sessionManager.getSession(sessionId, sanitizedToken)
-            if (session == null) {
-                Log.w(TAG, "generateResponseAsyncWithSession failed: session not found or expired")
+            // Get conversation (this also validates ownership and resets TTL)
+            val state = conversationManager.getConversation(conversationId, sanitizedToken)
+            if (state == null) {
+                Log.w(TAG, "generateConversationResponseAsync failed: conversation not found or expired")
                 try {
-                    callback.onError("Session not found, expired, or unauthorized")
+                    callback.onError("Conversation not found, expired, or unauthorized")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error calling onError callback", e)
                 }
@@ -237,12 +195,11 @@ class InferenceService : Service() {
             
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    Log.d(TAG, "Received session async request for ${sessionId.take(8)}...: $jsonRequest")
+                    Log.d(TAG, "Received conversation request for ${conversationId.take(8)}...: $jsonRequest")
                     val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
                     
-                    val preamble = extractSystemPreamble(request.messages)
-                    aiEngineManager.generateResponseAsyncWithSession(
-                        session = session,
+                    aiEngineManager.generateConversationResponseAsync(
+                        state = state,
                         messages = request.messages,
                         onToken = { token ->
                             try {
@@ -265,15 +222,11 @@ class InferenceService : Service() {
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error calling onError callback", e)
                             }
-                        },
-                        temperature = request.temperature,
-                        topP = request.top_p,
-                        topK = request.top_k,
-                        preamble = preamble
+                        }
                     )
                     
                 } catch (e: Exception) {
-                    Log.e(TAG, "Internal error in session async request", e)
+                    Log.e(TAG, "Internal error in conversation async request", e)
                     try {
                         callback.onError(e.message ?: "Unknown internal error")
                     } catch (ce: Exception) {
@@ -408,8 +361,8 @@ class InferenceService : Service() {
     }
 
     override fun onDestroy() {
-        // Clean up sessions (tokens persist across restarts)
-        sessionManager.shutdown()
+        // Clean up conversations (tokens persist across restarts)
+        conversationManager.shutdown()
         aiEngineManager.close()
         super.onDestroy()
     }
