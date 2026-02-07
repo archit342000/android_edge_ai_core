@@ -43,24 +43,24 @@ data class Usage(
 )
 
 // ===========================
-// Session Management Models
+// Conversation Management Models
 // ===========================
 
 /**
- * Response for session creation
+ * Response for conversation creation
  */
-data class SessionResponse(
-    val session_id: String,
+data class ConversationResponse(
+    val conversation_id: String,
     val ttl_ms: Long,
     val created_at: Long,
     val expires_at: Long
 )
 
 /**
- * Response for session info query
+ * Response for conversation info query
  */
-data class SessionInfoResponse(
-    val session_id: String,
+data class ConversationInfoResponse(
+    val conversation_id: String,
     val ttl_ms: Long,
     val created_at: Long,
     val last_access_time: Long,

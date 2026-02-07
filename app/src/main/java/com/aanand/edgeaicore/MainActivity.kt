@@ -548,7 +548,7 @@ class MainActivity : AppCompatActivity() {
             itemView.setOnClickListener {
                 androidx.appcompat.app.AlertDialog.Builder(this)
                     .setTitle("Revoke Access")
-                    .setMessage("Revoke API access for '$pkgName'? All active sessions for this token will be closed.")
+                    .setMessage("Revoke API access for '$pkgName'? All active conversations for this token will be closed.")
                     .setPositiveButton("Revoke") { _, _ ->
                         val tokenToRevoke = mappings[pkgName]
                         if (isBound && inferenceService != null && tokenToRevoke != null) {
@@ -808,25 +808,25 @@ class MainActivity : AppCompatActivity() {
                     appendLog("Step 2: Starting session...")
                 }
                 
-                // Step 2: Start session
-                val sessionJson = inferenceService?.startSession(testToken, 0) ?: ""
-                if (sessionJson.isEmpty() || sessionJson.contains("error")) {
+                // Step 2: Start conversation
+                val convJson = inferenceService?.startConversation(testToken) ?: ""
+                if (convJson.isEmpty() || convJson.contains("error")) {
                     withContext(Dispatchers.Main) {
-                        appendLog("❌ Session creation failed: $sessionJson")
+                        appendLog("❌ Conversation creation failed: $convJson")
                     }
                     file.delete()
                     return@launch
                 }
                 
-                val json = JSONObject(sessionJson)
-                val sessionId = json.getString("session_id")
+                val json = JSONObject(convJson)
+                val conversationId = json.getString("conversation_id")
                 
                 // Step 3: Encode audio
                 val bytes = file.readBytes()
                 val base64Audio = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                 
                 withContext(Dispatchers.Main) {
-                    appendLog("✅ Session created: ${sessionId.take(8)}...")
+                    appendLog("✅ Conversation created: ${conversationId.take(8)}...")
                     appendLog("Step 3: Sending audio request (${bytes.size} bytes)...")
                     appendLog("Response: ")
                 }
@@ -846,7 +846,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 """.trimIndent()
 
-                inferenceService?.generateResponseAsyncWithSession(testToken, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
+                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : IInferenceCallback.Stub() {
                     override fun onToken(token: String) {
                         runOnUiThread {
                             val current = tvLogs.text.toString()
@@ -857,20 +857,20 @@ class MainActivity : AppCompatActivity() {
                     override fun onComplete(fullResponse: String) {
                         runOnUiThread {
                             appendLog("\n---")
-                            appendLog("Step 4: Closing session...")
+                            appendLog("Step 4: Closing conversation...")
                         }
                         
                         CoroutineScope(Dispatchers.IO).launch {
                             try {
-                                val closeResult = inferenceService?.closeSession(testToken, sessionId)
+                                val closeResult = inferenceService?.closeConversation(testToken, conversationId)
                                 withContext(Dispatchers.Main) {
-                                    appendLog("✅ Session closed: $closeResult")
+                                    appendLog("✅ Conversation closed: $closeResult")
                                     appendLog("=== Audio Auth Flow Test Complete ===")
                                     tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
                                 }
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
-                                    appendLog("⚠️ Session close error: ${e.message}")
+                                    appendLog("⚠️ Conversation close error: ${e.message}")
                                 }
                             }
                         }
@@ -938,20 +938,20 @@ class MainActivity : AppCompatActivity() {
                     appendLog("Step 2: Starting session...")
                 }
                 
-                // Step 2: Start session
-                val sessionJson = inferenceService?.startSession(testToken, 0) ?: ""
-                if (sessionJson.isEmpty() || sessionJson.contains("error")) {
+                // Step 2: Start conversation
+                val convJson = inferenceService?.startConversation(testToken) ?: ""
+                if (convJson.isEmpty() || convJson.contains("error")) {
                     withContext(Dispatchers.Main) {
-                        appendLog("❌ Session creation failed: $sessionJson")
+                        appendLog("❌ Conversation creation failed: $convJson")
                     }
                     return@launch
                 }
                 
-                val json = JSONObject(sessionJson)
-                val sessionId = json.getString("session_id")
+                val json = JSONObject(convJson)
+                val conversationId = json.getString("conversation_id")
                 
                 withContext(Dispatchers.Main) {
-                    appendLog("✅ Session created: ${sessionId.take(8)}...")
+                    appendLog("✅ Conversation created: ${conversationId.take(8)}...")
                     appendLog("Step 3: Encoding image...")
                 }
                 
@@ -985,7 +985,7 @@ class MainActivity : AppCompatActivity() {
                     appendLog("Response: ")
                 }
 
-                inferenceService?.generateResponseAsyncWithSession(testToken, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
+                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : IInferenceCallback.Stub() {
                     override fun onToken(token: String) {
                         runOnUiThread {
                             val current = tvLogs.text.toString()
@@ -996,20 +996,20 @@ class MainActivity : AppCompatActivity() {
                     override fun onComplete(fullResponse: String) {
                         runOnUiThread {
                             appendLog("\n---")
-                            appendLog("Step 5: Closing session...")
+                            appendLog("Step 5: Closing conversation...")
                         }
                         
                         CoroutineScope(Dispatchers.IO).launch {
                             try {
-                                val closeResult = inferenceService?.closeSession(testToken, sessionId)
+                                val closeResult = inferenceService?.closeConversation(testToken, conversationId)
                                 withContext(Dispatchers.Main) {
-                                    appendLog("✅ Session closed: $closeResult")
+                                    appendLog("✅ Conversation closed: $closeResult")
                                     appendLog("=== Vision Auth Flow Test Complete ===")
                                     tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
                                 }
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
-                                    appendLog("⚠️ Session close error: ${e.message}")
+                                    appendLog("⚠️ Conversation close error: ${e.message}")
                                 }
                             }
                         }
@@ -1128,13 +1128,13 @@ class MainActivity : AppCompatActivity() {
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
-    private var testSessionId: String? = null
+    private var testConversationId: String? = null
 
     /**
-     * Helper to ensure we have a valid session before running inference.
-     * Starts a new session if needed.
+     * Helper to ensure we have a valid conversation before running inference.
+     * Starts a new conversation if needed.
      */
-    private fun ensureSession(onReady: (sessionId: String) -> Unit) {
+    private fun ensureConversation(onReady: (conversationId: String) -> Unit) {
         val token = currentToken
         if (token == null) {
             appendLog("Error: No API token available for testing.")
@@ -1148,37 +1148,37 @@ class MainActivity : AppCompatActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // If we already have a session, check if it's still alive
-                if (testSessionId != null) {
-                    val info = inferenceService?.getSessionInfo(token, testSessionId!!)
+                // If we already have a conversation, check if it's still alive
+                if (testConversationId != null) {
+                    val info = inferenceService?.getConversationInfo(token, testConversationId!!)
                     if (info != null && !info.contains("error")) {
-                        withContext(Dispatchers.Main) { onReady(testSessionId!!) }
+                        withContext(Dispatchers.Main) { onReady(testConversationId!!) }
                         return@launch
                     }
                 }
 
-                // Start a new session
+                // Start a new conversation
                 withContext(Dispatchers.Main) {
-                    appendLog("Starting new test session...")
+                    appendLog("Starting new test conversation...")
                 }
-                val sessionJson = inferenceService?.startSession(token, 0) ?: ""
-                if (sessionJson.isEmpty() || sessionJson.contains("error")) {
+                val convJson = inferenceService?.startConversation(token) ?: ""
+                if (convJson.isEmpty() || convJson.contains("error")) {
                     withContext(Dispatchers.Main) {
-                        appendLog("Failed to start session: $sessionJson")
+                        appendLog("Failed to start conversation: $convJson")
                     }
                     return@launch
                 }
 
-                val json = JSONObject(sessionJson)
-                testSessionId = json.getString("session_id")
+                val json = JSONObject(convJson)
+                testConversationId = json.getString("conversation_id")
                 
                 withContext(Dispatchers.Main) {
-                    appendLog("Session started: ${testSessionId?.take(8)}...")
-                    onReady(testSessionId!!)
+                    appendLog("Conversation started: ${testConversationId?.take(8)}...")
+                    onReady(testConversationId!!)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    appendLog("Session management error: ${e.message}")
+                    appendLog("Conversation management error: ${e.message}")
                 }
             }
         }
@@ -1233,23 +1233,23 @@ class MainActivity : AppCompatActivity() {
                 val testToken = tokenResult
                 withContext(Dispatchers.Main) {
                     appendLog("✅ Token approved: ${testToken.take(8)}...")
-                    appendLog("Step 2: Starting session...")
+                    appendLog("Step 2: Starting conversation...")
                 }
                 
-                // Step 2: Start a session
-                val sessionJson = inferenceService?.startSession(testToken, 0) ?: ""
-                if (sessionJson.isEmpty() || sessionJson.contains("error")) {
+                // Step 2: Start a conversation
+                val convJson = inferenceService?.startConversation(testToken) ?: ""
+                if (convJson.isEmpty() || convJson.contains("error")) {
                     withContext(Dispatchers.Main) {
-                        appendLog("❌ Session creation failed: $sessionJson")
+                        appendLog("❌ Conversation creation failed: $convJson")
                     }
                     return@launch
                 }
                 
-                val json = JSONObject(sessionJson)
-                val sessionId = json.getString("session_id")
+                val json = JSONObject(convJson)
+                val conversationId = json.getString("conversation_id")
                 
                 withContext(Dispatchers.Main) {
-                    appendLog("✅ Session created: ${sessionId.take(8)}...")
+                    appendLog("✅ Conversation created: ${conversationId.take(8)}...")
                     appendLog("Step 3: Sending inference request...")
                     appendLog("Response: ")
                 }
@@ -1262,7 +1262,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 """.trimIndent()
                 
-                inferenceService?.generateResponseAsyncWithSession(testToken, sessionId, jsonInputString, object : IInferenceCallback.Stub() {
+                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : IInferenceCallback.Stub() {
                     override fun onToken(token: String) {
                         runOnUiThread {
                             val current = tvLogs.text.toString()
@@ -1273,21 +1273,21 @@ class MainActivity : AppCompatActivity() {
                     override fun onComplete(fullResponse: String) {
                         runOnUiThread {
                             appendLog("\n---")
-                            appendLog("Step 4: Closing session...")
+                            appendLog("Step 4: Closing conversation...")
                         }
                         
-                        // Step 4: Close the session
+                        // Step 4: Close the conversation
                         CoroutineScope(Dispatchers.IO).launch {
                             try {
-                                val closeResult = inferenceService?.closeSession(testToken, sessionId)
+                                val closeResult = inferenceService?.closeConversation(testToken, conversationId)
                                 withContext(Dispatchers.Main) {
-                                    appendLog("✅ Session closed: $closeResult")
+                                    appendLog("✅ Conversation closed: $closeResult")
                                     appendLog("=== Auth Flow Test Complete ===")
                                     tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
                                 }
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
-                                    appendLog("⚠️ Session close error: ${e.message}")
+                                    appendLog("⚠️ Conversation close error: ${e.message}")
                                 }
                             }
                         }
@@ -1325,44 +1325,43 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
                 
-                // 2. Start Session
-                val sessionJson = inferenceService?.startSession(token, 0) ?: ""
-                if (sessionJson.contains("error")) {
-                    withContext(Dispatchers.Main) { appendLog("❌ Session Failed: $sessionJson") }
+                // 2. Start Conversation
+                val convJson = inferenceService?.startConversation(token) ?: ""
+                if (convJson.contains("error")) {
+                    withContext(Dispatchers.Main) { appendLog("❌ Conversation Failed: $convJson") }
                     return@launch
                 }
-                val sessionId = JSONObject(sessionJson).getString("session_id")
-                withContext(Dispatchers.Main) { appendLog("✅ Session Started: ${sessionId.take(8)}...") }
+                val conversationId = JSONObject(convJson).getString("conversation_id")
+                withContext(Dispatchers.Main) { appendLog("✅ Conversation Started: ${conversationId.take(8)}...") }
                 
                 // 3. First Turn: "Hello"
                 withContext(Dispatchers.Main) { appendLog("User: Hello! Who are you?") }
                 val req1 = """{"messages": [{"role": "user", "content": "Hello! Who are you?"}]}"""
                 
                 var firstResponse = ""
-                inferenceService?.generateResponseAsyncWithSession(token, sessionId, req1, object : IInferenceCallback.Stub() {
-                    override fun onToken(token: String) {
-                         firstResponse += token
-                         runOnUiThread {
-                             // Optional: stream to log
-                         }
+                inferenceService?.generateConversationResponseAsync(token, conversationId, req1, object : IInferenceCallback.Stub() {
+                    override fun onToken(t: String) {
+                         firstResponse += t
                     }
                     override fun onComplete(fullResponse: String) {
-                        runOnUiThread { appendLog("Assistant: ${JSONObject(fullResponse).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")}") }
+                        runOnUiThread { appendLog("Assistant: $fullResponse") }
                         
                         // 4. Second Turn: "What did I just ask you?"
                         CoroutineScope(Dispatchers.IO).launch {
                             delay(1000)
                             withContext(Dispatchers.Main) { appendLog("User: What is 2 + 2?") }
-                            val req2 = """{"messages": [{"role": "user", "content": "Hello! Who are you?"}, {"role": "assistant", "content": "$firstResponse"}, {"role": "user", "content": "What is 2 + 2?"}]}"""
+                            // CRITICAL: We only send the NEW turn. 
+                            // The server appends this to the engine's conversation state.
+                            val req2 = """{"messages": [{"role": "user", "content": "What is 2 + 2?"}]}"""
                             
-                            inferenceService?.generateResponseAsyncWithSession(token, sessionId, req2, object : IInferenceCallback.Stub() {
+                            inferenceService?.generateConversationResponseAsync(token, conversationId, req2, object : IInferenceCallback.Stub() {
                                 override fun onToken(t: String) {}
                                 override fun onComplete(res: String) {
                                      runOnUiThread { 
-                                         appendLog("Assistant: ${JSONObject(res).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")}")
+                                         appendLog("Assistant: $res")
                                          appendLog("=== Multi-Turn Test Complete ===")
                                      }
-                                     inferenceService?.closeSession(token, sessionId)
+                                     inferenceService?.closeConversation(token, conversationId)
                                 }
                                 override fun onError(e: String) {
                                     runOnUiThread { appendLog("❌ Turn 2 Error: $e") }
@@ -1395,12 +1394,12 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
                 
-                val sessionJson = inferenceService?.startSession(token, 0) ?: ""
-                 if (sessionJson.contains("error")) {
-                    withContext(Dispatchers.Main) { appendLog("❌ Session Failed: $sessionJson") }
+                val convJson = inferenceService?.startConversation(token) ?: ""
+                 if (convJson.contains("error")) {
+                    withContext(Dispatchers.Main) { appendLog("❌ Conversation Failed: $convJson") }
                     return@launch
                 }
-                val sessionId = JSONObject(sessionJson).getString("session_id")
+                val conversationId = JSONObject(convJson).getString("conversation_id")
                 
                 withContext(Dispatchers.Main) { 
                     appendLog("User: Write a poem about rust.")
@@ -1417,7 +1416,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 """.trimIndent()
                 
-                inferenceService?.generateResponseAsyncWithSession(token, sessionId, req, object : IInferenceCallback.Stub() {
+                inferenceService?.generateConversationResponseAsync(token, conversationId, req, object : IInferenceCallback.Stub() {
                     override fun onToken(token: String) {
                         runOnUiThread {
                             val current = tvLogs.text.toString()
@@ -1428,7 +1427,7 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread { 
                             appendLog("\n=== Continuation Test Complete ===")
                         }
-                        inferenceService?.closeSession(token, sessionId)
+                        inferenceService?.closeConversation(token, conversationId)
                     }
                     override fun onError(error: String) {
                         runOnUiThread { appendLog("❌ Error: $error") }
