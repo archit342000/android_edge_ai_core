@@ -1,6 +1,16 @@
 {
   "versions": [
     {
+      "version": "1.5.1",
+      "changes": [
+        "Restored System Preamble logic: First system message is used as session instruction",
+        "Subsequent system messages are gracefully handled as user messages to preserve context",
+        "Updated AiEngineManager to use synchronous sendMessage for history updates (workaround for missing addMessage)",
+        "Fixed critical issue where system instructions were treated as duplicate user messages",
+        "Ensured ConversationConfig systemInstruction is never null"
+      ]
+    },
+    {
       "version": "1.5.0",
       "changes": [
         "Major architecture overhaul: Transitioned to a stateful conversation-based model",

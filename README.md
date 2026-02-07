@@ -135,6 +135,13 @@ Each conversation has a **TTL (Time-To-Live)**.
 - If a conversation is inactive beyond the TTL, it is automatically closed to free up hardware resources.
 - You can manually close a conversation using `closeConversation()`.
 
+### System Instructions & Message Handling
+- **System Preamble**: The **first** system message provided when starting a *new* conversation is extracted and set as the engine's `systemInstruction`. This sets the behavior for the entire session.
+- **Subsequent System Messages**: Any system messages sent *after* the initial turn (or multiple system messages in the first turn) are treated as **User** messages to ensure they are injected into the context stream.
+- **Message Processing**: 
+    - Historical messages (if any) are processed synchronously to update the context.
+    - The **final** message in the request triggers the asynchronous response generation.
+
 ### Assistant Message Continuation (Continuation Mode)
 You can guide the model by prefilling its response. If the last message in your request has the role `assistant`, the model will continue generating from that point.
 
