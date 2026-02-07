@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
 data class ConversationState(
     val conversationId: String,
     val apiToken: String,
+    val systemInstruction: String? = null,
     var engineConversation: Conversation?,
     val ttlMs: Long,
     var lastAccessTime: Long = System.currentTimeMillis(),
@@ -45,16 +46,17 @@ class ConversationManager(
         startCleanupTask()
     }
 
-    fun createConversation(apiToken: String, ttlMs: Long = defaultTtlMs): ConversationState {
+    fun createConversation(apiToken: String, systemInstruction: String? = null, ttlMs: Long = defaultTtlMs): ConversationState {
         val conversationId = UUID.randomUUID().toString()
         val state = ConversationState(
             conversationId = conversationId,
             apiToken = apiToken,
+            systemInstruction = systemInstruction,
             engineConversation = null,
             ttlMs = ttlMs
         )
         conversations[conversationId] = state
-        Log.i(TAG, "Created conversation: ${conversationId.take(8)}... for token: ${apiToken.take(8)}...")
+        Log.i(TAG, "Created conversation: ${conversationId.take(8)}... for token: ${apiToken.take(8)}... SystemInstruction: ${systemInstruction?.take(20) ?: "None"}")
         return state
     }
 

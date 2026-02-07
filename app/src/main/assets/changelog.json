@@ -1,6 +1,15 @@
 {
   "versions": [
     {
+      "version": "1.5.2",
+      "changes": [
+        "Updated AIDL interface: startConversation() now accepts an optional systemInstruction parameter",
+        "System Prompts are now set explicitly at conversation start, rather than inferred from the first message",
+        "Removed message filtering logic: All messages sent during inference are processed (system messages fallback to user role)",
+        "Updated documentation to reflect new conversation initialization workflow"
+      ]
+    },
+    {
       "version": "1.5.1",
       "changes": [
         "Restored System Preamble logic: First system message is used as session instruction",

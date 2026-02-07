@@ -75,9 +75,10 @@ class InferenceService : Service() {
         // Conversation Management
         // =====================
         
-        override fun startConversation(apiToken: String): String {
+        override fun startConversation(apiToken: String, systemInstruction: String?): String {
             val sanitizedToken = apiToken.trim()
-            logIpcRequest("startConversation", sanitizedToken)
+            val safeSystemInstruction = systemInstruction?.takeIf { it.isNotBlank() }
+            logIpcRequest("startConversation", sanitizedToken, "systemInstruction=${safeSystemInstruction?.take(20) ?: "None"}")
             
             return try {
                 // Validate token
@@ -86,7 +87,7 @@ class InferenceService : Service() {
                     return gson.toJson(ErrorResponse("Invalid API token"))
                 }
                 
-                val state = conversationManager.createConversation(sanitizedToken)
+                val state = conversationManager.createConversation(sanitizedToken, safeSystemInstruction)
                 
                 val response = ConversationResponse(
                     conversation_id = state.conversationId,

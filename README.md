@@ -31,7 +31,7 @@ interface IInferenceService {
     /**
      * Starts a new stateful conversation. Returns conversation_id and TTL info.
      */
-    String startConversation(String apiToken);
+    String startConversation(String apiToken, String systemInstruction);
 
     /**
      * Closes a conversation, releasing hardware resources.
@@ -95,7 +95,8 @@ val result = aiService?.generateApiToken()
 Conversations maintain state and allow **32k tokens** of context.
 
 ```kotlin
-val convJson = aiService?.startConversation(apiToken)
+val systemPrompt = "You are a helpful assistant."
+val convJson = aiService?.startConversation(apiToken, systemPrompt)
 val conversationId = JSONObject(convJson).getString("conversation_id")
 ```
 
@@ -136,8 +137,8 @@ Each conversation has a **TTL (Time-To-Live)**.
 - You can manually close a conversation using `closeConversation()`.
 
 ### System Instructions & Message Handling
-- **System Preamble**: The **first** system message provided when starting a *new* conversation is extracted and set as the engine's `systemInstruction`. This sets the behavior for the entire session.
-- **Subsequent System Messages**: Any system messages sent *after* the initial turn (or multiple system messages in the first turn) are treated as **User** messages to ensure they are injected into the context stream.
+- **System Preamble**: The `systemInstruction` string provided in `startConversation()` is used as the **System Prompt** for the entire session. It cannot be changed once the conversation starts.
+- **In-Chat System Messages**: Any messages with role 'system' sent *during* the conversation via `generateConversationResponseAsync` are treated as **User** messages to ensure they are seen by the model.
 - **Message Processing**: 
     - Historical messages (if any) are processed synchronously to update the context.
     - The **final** message in the request triggers the asynchronous response generation.

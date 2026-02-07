@@ -288,49 +288,39 @@ class AiEngineManager {
         inferenceMutex.withLock {
 
             var conversation = state.engineConversation
-            var messagesToProcess = messages
-
+            
             if (conversation == null) {
-                // New Conversation: Check for system prompt to use as preamble
-                // This is the desired behavior for "System Instructions"
-                val systemMsg = messages.find { it.role == "system" }
-                val preamble = systemMsg?.let { extractTextFromChatMessage(it) }
-                
+                // New Conversation: Use the system instruction stored in the state (from startConversation)
+                val preamble = state.systemInstruction
                 Log.d(TAG, "Creating new engine conversation for ID=${state.conversationId}. Preamble length=${preamble?.length ?: 0}")
                 conversation = createEngineConversation(preamble = preamble)
                 state.engineConversation = conversation
-
-                // If we used the system message as preamble, exclude it from the message stream to avoid duplication
-                // Any OTHER system messages will still be processed (as User fallback)
-                if (systemMsg != null) {
-                    messagesToProcess = messages.filter { it !== systemMsg }
-                }
             }
 
             try {
-                Log.d(TAG, "Processing request for ConversationId=${state.conversationId}. Total messages=${messages.size}. Messages to process=${messagesToProcess.size}")
+                Log.d(TAG, "Processing request for ConversationId=${state.conversationId}. Total messages=${messages.size}")
                 
                 // Log all incoming messages first for full visibility
                 messages.forEachIndexed { index, msg ->
                     Log.d(TAG, "  Incoming Message[$index]: role=${msg.role}, content=${extractTextFromChatMessage(msg)}")
                 }
 
-                if (messagesToProcess.isEmpty()) {
-                     onError(IllegalArgumentException("No messages to process after preamble extraction"))
+                if (messages.isEmpty()) {
+                     onError(IllegalArgumentException("No messages to process"))
                      return@withLock
                 }
 
                 // All but the last message are added via sendMessage (sync)
                 // Note: The SDK does not seem to expose an explicit addMessage() method for silent appending.
                 // We fallback to sendMessage() which may trigger inference, but ensures history is updated.
-                val history = messagesToProcess.dropLast(1)
+                val history = messages.dropLast(1)
                 history.forEachIndexed { index, msg ->
                     Log.d(TAG, "Appending historical message to engine [$index/${history.size}]: role=${msg.role}")
                     conversation!!.sendMessage(toLiteRTMessage(msg))
                 }
 
                 // The last message is sent via sendMessageAsync
-                val lastMessage = messagesToProcess.last()
+                val lastMessage = messages.last()
                 Log.d(TAG, "Sending final message to engine: role=${lastMessage.role}")
                 var lastResponseText = ""
                 
