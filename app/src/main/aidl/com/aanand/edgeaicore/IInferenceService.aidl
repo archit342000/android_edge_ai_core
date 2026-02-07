@@ -32,7 +32,7 @@ interface IInferenceService {
      * @return JSON string containing conversation info: {"conversation_id": "...", "ttl_ms": N, "created_at": N}
      *         or error: {"error": "..."}
      */
-    String startConversation(String apiToken);
+    String startConversation(String apiToken, String systemInstruction);
 
     /**
      * Closes a conversation, releasing its resources and invalidating the ID.
