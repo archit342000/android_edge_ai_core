@@ -143,19 +143,7 @@ Each conversation has a **TTL (Time-To-Live)**.
     - Historical messages (if any) are processed synchronously to update the context.
     - The **final** message in the request triggers the asynchronous response generation.
 
-### Assistant Message Continuation (Continuation Mode)
-You can guide the model by prefilling its response. If the last message in your request has the role `assistant`, the model will continue generating from that point.
 
-**Example:**
-```json
-{
-  "messages": [
-    { "role": "user", "content": "Write a JSON object for a user named Alice." },
-    { "role": "assistant", "content": "{\n  \"name\": \"Alice\"," }
-  ]
-}
-```
-*The service will continue generating the JSON from that point.*
 
 ---
 

@@ -17,6 +17,7 @@ data class ConversationState(
     val conversationId: String,
     val apiToken: String,
     val systemInstruction: String? = null,
+    val history: MutableList<ChatMessage> = mutableListOf(),
     var engineConversation: Conversation?,
     val ttlMs: Long,
     var lastAccessTime: Long = System.currentTimeMillis(),
