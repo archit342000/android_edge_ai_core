@@ -32,6 +32,7 @@ class AiEngineManager {
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
     private var activeEngineConversation: Conversation? = null
     private var activeConversationId: String? = null
+    private var activeConversationParams: Triple<Double, Double, Int>? = null
 
     // ...
 
@@ -84,6 +85,7 @@ class AiEngineManager {
         }
         activeEngineConversation = null
         activeConversationId = null
+        activeConversationParams = null
     }
 
     /**
@@ -257,12 +259,16 @@ class AiEngineManager {
                 state.history.addAll(messages)
                 val fullHistory = state.history
 
+                val currentParams = Triple(state.temperature, state.topP, state.topK)
+                
                 // Check if we can reuse the active conversation
                 // Optimization: If the incoming request is for the *current* active conversation 
                 // AND it's a simple append (1 new message), we reuse the session (KV Cache).
+                // AND the sampling parameters haven't changed.
                 val isReuse = (activeConversationId == state.conversationId) && 
                               (activeEngineConversation != null) && 
-                              (messages.size == 1)
+                              (messages.size == 1) &&
+                              (activeConversationParams == currentParams)
 
                 val conversation: Conversation
 
@@ -283,14 +289,15 @@ class AiEngineManager {
                     val systemPrompt = state.systemInstruction ?: ""
                     
                     conversation = createEngineConversation(
-                        temperature = 0.8,
-                        topP = 0.95,
-                        topK = 40,
+                        temperature = state.temperature,
+                        topP = state.topP,
+                        topK = state.topK,
                         preamble = systemPrompt,
                         initialMessages = initialMessages.map { toLiteRTMessage(it) }
                     )
                     state.engineConversation = conversation
                     activeConversationId = state.conversationId
+                    activeConversationParams = currentParams
                 }
 
                 // 4. Trigger Inference with the last message (Standard Flow)

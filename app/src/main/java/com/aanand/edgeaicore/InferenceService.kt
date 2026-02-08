@@ -198,6 +198,11 @@ class InferenceService : Service() {
                 try {
                     Log.d(TAG, "Received conversation request for ${conversationId.take(8)}...: $jsonRequest")
                     val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
+
+                    // Update conversation state with request parameters if provided
+                    if (request.temperature != null) state.temperature = request.temperature
+                    if (request.top_p != null) state.topP = request.top_p
+                    if (request.top_k != null) state.topK = request.top_k
                     
                     aiEngineManager.generateConversationResponseAsync(
                         state = state,

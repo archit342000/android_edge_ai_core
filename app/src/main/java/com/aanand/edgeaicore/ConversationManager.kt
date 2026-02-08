@@ -21,7 +21,10 @@ data class ConversationState(
     var engineConversation: Conversation?,
     val ttlMs: Long,
     var lastAccessTime: Long = System.currentTimeMillis(),
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    var temperature: Double = 0.8,
+    var topP: Double = 0.95,
+    var topK: Int = 40
 ) {
     fun isExpired(): Boolean {
         return System.currentTimeMillis() - lastAccessTime > ttlMs

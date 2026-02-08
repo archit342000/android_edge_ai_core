@@ -107,7 +107,10 @@ It is the **client's sole responsibility** to ensure that old messages are not s
 
 ```kotlin
 val request = """{
-    "messages": [{"role": "user", "content": "Tell me a story."}]
+    "messages": [{"role": "user", "content": "Tell me a story."}],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "top_k": 40
 }"""
 
 aiService?.generateConversationResponseAsync(apiToken, conversationId, request, object : IInferenceCallback.Stub() {
@@ -142,6 +145,15 @@ Each conversation has a **TTL (Time-To-Live)**.
 - **Message Processing**: 
     - Historical messages (if any) are processed synchronously to update the context.
     - The **final** message in the request triggers the asynchronous response generation.
+
+### Sampling Parameters
+You can customize the model's creativity and diversity by including the following optional parameters in your JSON request:
+
+- **`temperature`** (Defaults to 0.8): Controls randomness. Higher values (e.g., 1.0) make output more random, lower values (e.g., 0.2) make it more deterministic.
+- **`top_p`** (Defaults to 0.95): Nucleus sampling. Limits the next token selection to a subset of tokens with a cumulative probability of `p`.
+- **`top_k`** (Defaults to 40): Limits the next token selection to the top `k` most probable tokens.
+
+These parameters are stored with the conversation state. If provided in a request, they update the conversation's settings for that and subsequent turns.
 
 
 
