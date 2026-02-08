@@ -1,6 +1,14 @@
 {
   "versions": [
     {
+      "version": "1.7.0",
+      "changes": [
+        "Implemented Smart Session Reuse: Reuses active engine session for consecutive messages in the same conversation",
+        "Enabled KV Cache persistence for multi-turn chats, significantly improving response speed",
+        "Optimized resource usage by avoiding full context reconstruction when not switching users"
+      ]
+    },
+    {
       "version": "1.6.0",
       "changes": [
         "Removed Assistant Message Continuation support (prefilling) due to engine limitations",
