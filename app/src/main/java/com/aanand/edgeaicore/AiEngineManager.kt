@@ -31,6 +31,7 @@ class AiEngineManager {
     private val inferenceMutex = Mutex()
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
     private var activeEngineConversation: Conversation? = null
+    private var activeConversationId: String? = null
 
     // ...
 
@@ -82,6 +83,7 @@ class AiEngineManager {
             Log.e(TAG, "Error closing active conversation", e)
         }
         activeEngineConversation = null
+        activeConversationId = null
     }
 
     /**
@@ -255,25 +257,44 @@ class AiEngineManager {
                 state.history.addAll(messages)
                 val fullHistory = state.history
 
-                // 2. Prepare Engine Context
-                val lastMsg = fullHistory.last()
-                val initialMessages = fullHistory.dropLast(1)
+                // Check if we can reuse the active conversation
+                // Optimization: If the incoming request is for the *current* active conversation 
+                // AND it's a simple append (1 new message), we reuse the session (KV Cache).
+                val isReuse = (activeConversationId == state.conversationId) && 
+                              (activeEngineConversation != null) && 
+                              (messages.size == 1)
 
-                // 3. Recreate Conversation (Implicitly closes old one via createEngineConversation)
-                Log.d(TAG, "Recreating conversation for ID=${state.conversationId}. History size: ${initialMessages.size}")
-                
-                val systemPrompt = state.systemInstruction ?: ""
-                
-                val conversation = createEngineConversation(
-                    temperature = 0.8,
-                    topP = 0.95,
-                    topK = 40,
-                    preamble = systemPrompt,
-                    initialMessages = initialMessages.map { toLiteRTMessage(it) }
-                )
-                state.engineConversation = conversation
+                val conversation: Conversation
+
+                if (isReuse) {
+                    Log.d(TAG, "Reusing active conversation for ID=${state.conversationId}")
+                    conversation = activeEngineConversation!!
+                    // Ensure state reference is sync'd (though it should be)
+                    state.engineConversation = conversation
+                } else {
+                    // 2. Prepare Engine Context (Standard/Switch Flow)
+                    val lastMsg = fullHistory.last()
+                    // History excluding the new message(s) which will be sent now
+                    val initialMessages = fullHistory.dropLast(messages.size)
+
+                    // 3. Recreate Conversation (Implicitly closes old one via createEngineConversation)
+                    Log.d(TAG, "Recreating conversation for ID=${state.conversationId}. History size: ${initialMessages.size}")
+                    
+                    val systemPrompt = state.systemInstruction ?: ""
+                    
+                    conversation = createEngineConversation(
+                        temperature = 0.8,
+                        topP = 0.95,
+                        topK = 40,
+                        preamble = systemPrompt,
+                        initialMessages = initialMessages.map { toLiteRTMessage(it) }
+                    )
+                    state.engineConversation = conversation
+                    activeConversationId = state.conversationId
+                }
 
                 // 4. Trigger Inference with the last message (Standard Flow)
+                val lastMsg = fullHistory.last()
                 Log.d(TAG, "Triggering inference with role=${lastMsg.role}")
 
                 var lastResponseText = ""

@@ -2,7 +2,7 @@
 
 This application provides a system-wide AI inference service via **AIDL (Android Interface Definition Language)**. 
 
-Starting from **v1.5.0**, Edge AI Core introduces a **stateful conversation architecture**. This ensures high performance through KV cache reuse, supports a **32k context window**, and simplifies multi-turn interactions.
+Starting from **v1.7.0**, Edge AI Core implements **Smart Session Reuse** within its stateful architecture. This enables **KV Cache persistence** for consecutive messages, significantly reducing latency in multi-turn conversations while maintaining strict user isolation.
 
 ---
 
