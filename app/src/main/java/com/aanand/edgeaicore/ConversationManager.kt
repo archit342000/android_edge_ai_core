@@ -1,7 +1,7 @@
 package com.aanand.edgeaicore
 
 import android.util.Log
-import com.google.ai.edge.litertlm.Conversation
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -18,9 +18,8 @@ data class ConversationState(
     val apiToken: String,
     val systemInstruction: String? = null,
     val history: MutableList<ChatMessage> = mutableListOf(),
-    var engineConversation: Conversation?,
     val ttlMs: Long,
-    var lastAccessTime: Long = System.currentTimeMillis(),
+    @Volatile var lastAccessTime: Long = System.currentTimeMillis(),
     val createdAt: Long = System.currentTimeMillis(),
     var temperature: Double = 0.8,
     var topP: Double = 0.95,
@@ -40,7 +39,8 @@ data class ConversationState(
  */
 class ConversationManager(
     private val defaultTtlMs: Long = DEFAULT_TTL_MS,
-    private val cleanupIntervalMs: Long = CLEANUP_INTERVAL_MS
+    private val cleanupIntervalMs: Long = CLEANUP_INTERVAL_MS,
+    private val onConversationRemoved: ((String) -> Unit)? = null
 ) {
     private val conversations = ConcurrentHashMap<String, ConversationState>()
     private var cleanupJob: Job? = null
@@ -56,11 +56,10 @@ class ConversationManager(
             conversationId = conversationId,
             apiToken = apiToken,
             systemInstruction = systemInstruction,
-            engineConversation = null,
             ttlMs = ttlMs
         )
         conversations[conversationId] = state
-        Log.i(TAG, "Created conversation: ${conversationId.take(8)}... for token: ${apiToken.take(8)}... SystemInstruction: ${systemInstruction?.take(20) ?: "None"}")
+        Log.i(TAG, "Created conversation: ${conversationId.take(8)}... for token: ${apiToken.take(8)}... SystemInstruction: ${systemInstruction ?: "None"}")
         return state
     }
 
@@ -98,11 +97,7 @@ class ConversationManager(
     private fun removeConversation(conversationId: String): Boolean {
         val state = conversations.remove(conversationId)
         if (state != null) {
-            try {
-                state.engineConversation?.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing engine conversation", e)
-            }
+            onConversationRemoved?.invoke(conversationId)
             Log.i(TAG, "Removed conversation: ${conversationId.take(8)}...")
             return true
         }
@@ -113,8 +108,11 @@ class ConversationManager(
         cleanupJob = scope.launch {
             while (true) {
                 delay(cleanupIntervalMs)
-                val expired = conversations.filter { it.value.isExpired() }.keys
-                expired.forEach { removeConversation(it) }
+                val expiredKeys = conversations.filter { it.value.isExpired() }.keys
+                if (expiredKeys.isNotEmpty()) {
+                    Log.i(TAG, "Cleanup: Removing ${expiredKeys.size} expired conversations")
+                    expiredKeys.forEach { removeConversation(it) }
+                }
             }
         }
     }
