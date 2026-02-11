@@ -14,18 +14,25 @@ import androidx.core.app.NotificationCompat
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import java.util.UUID
 
 class InferenceService : Service() {
 
     private val aiEngineManager = AiEngineManager()
     private lateinit var tokenManager: TokenManager
-    private val conversationManager = ConversationManager()
+    private val conversationManager = ConversationManager(
+        onConversationRemoved = { id -> aiEngineManager.closeConversation(id) }
+    )
     private val gson = Gson()
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val binder = object : IInferenceService.Stub() {
         
@@ -78,7 +85,7 @@ class InferenceService : Service() {
         override fun startConversation(apiToken: String, systemInstruction: String?): String {
             val sanitizedToken = apiToken.trim()
             val safeSystemInstruction = systemInstruction?.takeIf { it.isNotBlank() }
-            logIpcRequest("startConversation", sanitizedToken, "systemInstruction=${safeSystemInstruction?.take(20) ?: "None"}")
+            logIpcRequest("startConversation", sanitizedToken, "systemInstruction={(length=${safeSystemInstruction?.length ?: 0})}")
             
             return try {
                 // Validate token
@@ -194,9 +201,10 @@ class InferenceService : Service() {
                 return
             }
             
-            CoroutineScope(Dispatchers.IO).launch {
+            serviceScope.launch {
                 try {
-                    Log.d(TAG, "Received conversation request for ${conversationId.take(8)}...: $jsonRequest")
+                    Log.d(TAG, "Received conversation request for ${conversationId.take(8)}... (Length: ${jsonRequest.length})")
+                    Log.d(TAG, "Request: $jsonRequest")
                     val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
 
                     // Update conversation state with request parameters if provided
@@ -222,7 +230,7 @@ class InferenceService : Service() {
                                 Log.e(TAG, "Error calling onComplete callback", e)
                             }
                         },
-                        onError = { error ->
+                        onErrorCallback = { error ->
                             try {
                                 callback.onError(error.message ?: "Unknown inference error")
                             } catch (e: Exception) {
@@ -311,7 +319,7 @@ class InferenceService : Service() {
             // Current loadModel takes (String, Boolean) for GPU. We might need to refactor loadModel first.
             // For now, let's map "GPU" -> true, others -> false AND we need to support NPU.
             
-            CoroutineScope(Dispatchers.IO).launch {
+            serviceScope.launch {
                 try {
                     // Update AiEngineManager.loadModel to accept backend string
                     Log.d(TAG, "Attempting to load model with backend: $backend")
@@ -325,23 +333,51 @@ class InferenceService : Service() {
                     sendStatusBroadcast("Verifying model readiness...")
                     
                     var isReady = false
+                    val dummyState = ConversationState(
+                        conversationId = "ping_session_${UUID.randomUUID()}",
+                        apiToken = "internal_ping",
+                        ttlMs = 60000L
+                    )
                     val dummyMessage = listOf(ChatMessage(role = "user", content = com.google.gson.JsonPrimitive("Hello")))
-                    Log.d(TAG, "Created dummy message: $dummyMessage. Entering loop...")
+                    Log.d(TAG, "Created dummy session: ${dummyState.conversationId}. Entering loop...")
                     
                     for (i in 1..10) {
                         try {
-                             val response = aiEngineManager.generateResponse(dummyMessage)
-                             Log.d(TAG, "Ping response (attempt $i): $response")
-                             sendStatusBroadcast("Ping success ($i): $response")
-                             isReady = true
-                             break
+                             // Reset history for retry
+                             dummyState.history.clear()
+                             
+                             var responseText = ""
+                             // generateConversationResponseAsync suspends until inference completes
+                             val newDummyState = ConversationState(
+                                 conversationId = "ping_${System.currentTimeMillis()}",
+                                 apiToken = "self_test",
+                                 ttlMs = 60000
+                             )
+                             aiEngineManager.generateConversationResponseAsync(
+                                 state = newDummyState,
+                                 messages = dummyMessage,
+                                 onToken = {},
+                                 onComplete = { responseText = it },
+                                 onErrorCallback = { throw it }
+                             )                       
+                             if (responseText.isNotEmpty()) {
+                                 Log.d(TAG, "Ping response (attempt $i): Success. Length: ${responseText.length}")
+                                 sendStatusBroadcast("Ping success ($i)")
+                                 isReady = true
+                                 break
+                             } else {
+                                 throw Exception("Empty response")
+                             }
                         } catch (e: Exception) {
                             val msg = "Ping failed ($i): ${e.message}"
                             Log.d(TAG, msg)
                             sendStatusBroadcast(msg)
-                            delay(1000)
+                            delay(2000)
                         }
                     }
+
+                    // Cleanup the dummy session
+                    aiEngineManager.closeConversation(dummyState.conversationId)
 
                     if (isReady) {
                         sendStatusBroadcast("Model loaded successfully ($backend)")
@@ -367,6 +403,8 @@ class InferenceService : Service() {
     }
 
     override fun onDestroy() {
+        // Cancel all ongoing coroutines
+        serviceScope.cancel()
         // Clean up conversations (tokens persist across restarts)
         conversationManager.shutdown()
         aiEngineManager.close()

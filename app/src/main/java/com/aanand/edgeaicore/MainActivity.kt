@@ -56,7 +56,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnTestVision: MaterialButton
     private lateinit var btnTestAudio: MaterialButton
     private lateinit var btnTestMultiTurn: MaterialButton
-    private lateinit var btnTestContinuation: MaterialButton
     private lateinit var tvLogs: TextView
     
     // API Token UI
@@ -111,7 +110,6 @@ class MainActivity : AppCompatActivity() {
                      btnTestVision.isEnabled = true
                      btnTestAudio.isEnabled = true
                      btnTestMultiTurn.isEnabled = true
-                     btnTestContinuation.isEnabled = true
                      
                      if (!isBound) {
                         val intent = Intent(this@MainActivity, InferenceService::class.java)
@@ -126,7 +124,6 @@ class MainActivity : AppCompatActivity() {
                      btnTestVision.isEnabled = false
                      btnTestAudio.isEnabled = false
                      btnTestMultiTurn.isEnabled = false
-                     btnTestContinuation.isEnabled = false
                 }
             } else if (intent.action == InferenceService.ACTION_TOKEN_REQUEST) {
                 val pkgName = intent.getStringExtra(InferenceService.EXTRA_PACKAGE_NAME) ?: "unknown"
@@ -201,7 +198,6 @@ class MainActivity : AppCompatActivity() {
         btnTestVision = findViewById(R.id.btn_test_vision)
         btnTestAudio = findViewById(R.id.btn_test_audio)
         btnTestMultiTurn = findViewById(R.id.btn_test_multiturn)
-        btnTestContinuation = findViewById(R.id.btn_test_continuation)
         tvLogs = findViewById(R.id.tv_logs)
         
         // Navigation UI
@@ -339,7 +335,6 @@ class MainActivity : AppCompatActivity() {
         }
         
         btnTestMultiTurn.setOnClickListener { runTestMultiTurn() }
-        btnTestContinuation.setOnClickListener { runTestContinuation() }
         
         checkAndRequestPermissions()
         requestIgnoreBatteryOptimizations()
@@ -1380,65 +1375,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun runTestContinuation() {
-        if (!isBound || inferenceService == null) {
-            appendLog("Error: Service not bound")
-            return
-        }
-        appendLog("=== Starting Continuation Test ===")
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val token = inferenceService?.generateApiToken() ?: "ERROR"
-                 if (token.startsWith("ERROR") || token == "PENDING_USER_APPROVAL") {
-                    withContext(Dispatchers.Main) { appendLog("❌ Token Check Failed: $token") }
-                    return@launch
-                }
-                
-                val convJson = inferenceService?.startConversation(token, "") ?: ""
-                 if (convJson.contains("error")) {
-                    withContext(Dispatchers.Main) { appendLog("❌ Conversation Failed: $convJson") }
-                    return@launch
-                }
-                val conversationId = JSONObject(convJson).getString("conversation_id")
-                
-                withContext(Dispatchers.Main) { 
-                    appendLog("User: Write a poem about rust.")
-                    appendLog("Assistant (Prefill): Rust is a language safe and fast,")
-                    appendLog("Streaming Continuation...")
-                }
-                
-                val req = """
-                    {
-                        "messages": [
-                            {"role": "user", "content": "Write a poem about rust."},
-                            {"role": "assistant", "content": "Rust is a language safe and fast,"}
-                        ]
-                    }
-                """.trimIndent()
-                
-                inferenceService?.generateConversationResponseAsync(token, conversationId, req, object : IInferenceCallback.Stub() {
-                    override fun onToken(token: String) {
-                        runOnUiThread {
-                            val current = tvLogs.text.toString()
-                             tvLogs.text = current + token
-                        }
-                    }
-                    override fun onComplete(fullResponse: String) {
-                        runOnUiThread { 
-                            appendLog("\n=== Continuation Test Complete ===")
-                        }
-                        inferenceService?.closeConversation(token, conversationId)
-                    }
-                    override fun onError(error: String) {
-                        runOnUiThread { appendLog("❌ Error: $error") }
-                    }
-                })
-                
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { appendLog("❌ Error: ${e.message}") }
-            }
-        }
-    }
+
 
     private fun appendLog(msg: String) {
         val current = tvLogs.text.toString()
