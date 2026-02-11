@@ -1,10 +1,42 @@
-# Edge AI Core - Developer Integration Guide
+# Edge AI Core 🚀
 
-This application provides a system-wide AI inference service via **AIDL (Android Interface Definition Language)**. 
-
-Starting from **v1.7.0**, Edge AI Core implements **Smart Session Reuse** within its stateful architecture. This enables **KV Cache persistence** for consecutive messages, significantly reducing latency in multi-turn conversations while maintaining strict user isolation.
+**Edge AI Core** is a high-performance Android system service that brings state-of-the-art AI inference directly to your device. Built on **LiteRT-LM (TFLite)**, it provides a secure, private, and extremely low-latency API for local AI processing.
 
 ---
+
+## ✨ Features
+
+- 🧠 **Multi-Modal Support**: Optimized for Text, Vision, and Audio inference.
+- ⚡ **Hardware Acceleration**: Seamlessly switch between **CPU**, **GPU**, and **NPU** backends.
+- 🔄 **Smart Session Reuse**: Persistent KV Cache for ultra-fast multi-turn conversations.
+- 🛡️ **Hardened Security**: Robust API Token management with granular per-app permissions.
+- 🌌 **32k Context**: Massive context window for processing large documents and long chats.
+
+---
+
+## 📱 App Usage Guide
+
+### 1. Initial Setup
+1. **Grant Permissions**: Upon first launch, the app will request permissions for **Microphone** (audio inference), **Storage** (loading models), and **Battery Optimization** (to ensure the service stays alive in the background).
+2. **Select a Model**: Go to the **Backend Settings** tab. Tap **Select Model** and choose your `.bin` or `.tflite` model file.
+3. **Choose Backend**: Select your preferred hardware accelerator (**CPU**, **GPU**, or **NPU**) depending on your device's capabilities.
+
+### 2. Managing the Service
+- **Switch On**: In the **Server** tab, toggle the **Enable AI Server** switch. The status will change to `Loading...` and then `Ready` once the model is initialized.
+- **Diagnostics**: Use the **Test Inference** or **Multi-Turn Test** buttons to verify the model is responding correctly.
+
+### 3. API Token Management
+The service requires an API token for all external app requests.
+- **Generate Token**: In the **Tokens** tab, tap **Generate New Token**.
+- **App Approval**: When an external app requests access, you will see a notification in the **Pending Access Requests** section. You can **Approve** or **Deny** these requests manually.
+- **Revoke Access**: At any time, you can view **Authorized Apps** and revoke their specific API tokens.
+- **Backup/Restore**: Securely export your authorized tokens to a JSON file for backup or transfer between devices.
+
+---
+
+## 🛠️ Developer Integration Guide
+
+This section is for developers who want to integrate Edge AI Core into their own apps.
 
 ## 1. Project Configuration
 
@@ -106,14 +138,24 @@ val conversationId = JSONObject(convJson).getString("conversation_id")
 It is the **client's sole responsibility** to ensure that old messages are not sent again. Sending the full history in every request will result in duplicated context strings and rapidly fill the context window.
 
 ```kotlin
-val request = """{
+// Example: Basic Text Request
+val textRequest = """{
     "messages": [{"role": "user", "content": "Tell me a story."}],
-    "temperature": 0.7,
-    "top_p": 0.9,
-    "top_k": 40
+    "temperature": 0.7
 }"""
 
-aiService?.generateConversationResponseAsync(apiToken, conversationId, request, object : IInferenceCallback.Stub() {
+// Example: Multi-Modal Vision Request
+val visionRequest = """{
+    "messages": [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "What is in this image?"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,...base64_data..."}}
+        ]
+    }]
+}"""
+
+aiService?.generateConversationResponseAsync(apiToken, conversationId, textRequest, object : IInferenceCallback.Stub() {
     override fun onToken(token: String) {
         // Handle token-by-token streaming
     }
