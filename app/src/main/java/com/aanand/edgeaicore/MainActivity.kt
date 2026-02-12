@@ -349,9 +349,10 @@ class MainActivity : AppCompatActivity() {
                 appendLog("Error: Service not bound")
                 return@setOnClickListener
             }
+            val token = currentToken ?: ""
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val result = inferenceService?.health() ?: "Error"
+                    val result = inferenceService?.health(token) ?: "Error"
                     withContext(Dispatchers.Main) {
                         appendLog("Health Check: $result")
                     }
@@ -368,9 +369,10 @@ class MainActivity : AppCompatActivity() {
                 appendLog("Error: Service not bound")
                 return@setOnClickListener
             }
+            val token = currentToken ?: ""
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val load = inferenceService?.getLoad() ?: -1
+                    val load = inferenceService?.getLoad(token) ?: -1
                     withContext(Dispatchers.Main) {
                         appendLog("Current Server Load: $load active requests")
                     }

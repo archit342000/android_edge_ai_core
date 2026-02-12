@@ -264,18 +264,30 @@ class InferenceService : Service() {
             }
         }
 
-        override fun ping(): String {
-            logIpcRequest("ping", "none")
+        override fun ping(apiToken: String): String {
+            val sanitizedToken = apiToken.trim()
+            logIpcRequest("ping", sanitizedToken)
+            if (!tokenManager.isValidToken(sanitizedToken)) {
+                return "error: invalid token"
+            }
             return "pong"
         }
 
-        override fun health(): String {
-            logIpcRequest("health", "none")
+        override fun health(apiToken: String): String {
+            val sanitizedToken = apiToken.trim()
+            logIpcRequest("health", sanitizedToken)
+            if (!tokenManager.isValidToken(sanitizedToken)) {
+                return "error: invalid token"
+            }
             return "ok"
         }
 
-        override fun getLoad(): Int {
-            logIpcRequest("getLoad", "none")
+        override fun getLoad(apiToken: String): Int {
+            val sanitizedToken = apiToken.trim()
+            logIpcRequest("getLoad", sanitizedToken)
+            if (!tokenManager.isValidToken(sanitizedToken)) {
+                return -1
+            }
             return activeRequests.get()
         }
 

@@ -1,6 +1,14 @@
 {
   "versions": [
     {
+      "version": "1.9.2",
+      "changes": [
+        "Enforced mandatory API token authentication for 'ping', 'health', and 'getLoad' endpoints",
+        "Achieved 'Zero-Communication' policy: No server interaction possible without a valid token",
+        "Updated AIDL interface to include apiToken parameter for all diagnostic queries"
+      ]
+    },
+    {
       "version": "1.9.1",
       "changes": [
         "Expanded 'Verification & Tests' UI with dedicated Health Check and Get Load buttons",
