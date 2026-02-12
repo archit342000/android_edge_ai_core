@@ -29,9 +29,9 @@ class InferenceService : Service() {
 
     private val aiEngineManager = AiEngineManager()
     private lateinit var tokenManager: TokenManager
-    private val conversationManager = ConversationManager(
-        onConversationRemoved = { id -> aiEngineManager.closeConversation(id) }
-    )
+    private val aiEngineManager = AiEngineManager()
+    private lateinit var tokenManager: TokenManager
+    private lateinit var conversationManager: ConversationManager
     private val gson = Gson()
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val activeRequests = AtomicInteger(0)
@@ -69,14 +69,14 @@ class InferenceService : Service() {
             // Security Check: Only allow revocation from the Edge AI Core app itself
             val callingUid = getCallingUid()
             if (callingUid != android.os.Process.myUid()) {
-                Log.w(TAG, "Security: Blocked external client attempt to revoke token: ${apiToken.take(8)}... (Caller UID: $callingUid)")
+                Log.w(TAG, "Security: Blocked external client attempt to revoke token: ${sanitizedToken.take(8)}... (Caller UID: $callingUid)")
                 return false
             }
 
             // Close all conversations for this token first
-            conversationManager.closeAllForToken(apiToken)
-            val revoked = tokenManager.revokeToken(apiToken)
-            Log.i(TAG, "Revoked API token: ${apiToken.take(8)}... -> $revoked")
+            conversationManager.closeAllForToken(sanitizedToken)
+            val revoked = tokenManager.revokeToken(sanitizedToken)
+            Log.i(TAG, "Revoked API token: ${sanitizedToken.take(8)}... -> $revoked")
             return revoked
         }
         
@@ -167,6 +167,7 @@ class InferenceService : Service() {
             }
         }
         
+
 
 
 
@@ -265,6 +266,9 @@ class InferenceService : Service() {
                         }
                     )
                     
+                    // After successful inference, persist the updated conversation state
+                    conversationManager.saveConversation(state)
+                    
                 } catch (e: Exception) {
                     Log.e(TAG, "Internal error in conversation async request", e)
                     try {
@@ -345,6 +349,10 @@ class InferenceService : Service() {
     override fun onCreate() {
         super.onCreate()
         tokenManager = TokenManager.getInstance(this)
+        conversationManager = ConversationManager(
+            context = this,
+            onConversationRemoved = { id -> aiEngineManager.closeConversation(id) }
+        )
         createNotificationChannel()
     }
 
@@ -352,6 +360,7 @@ class InferenceService : Service() {
         Log.d(TAG, "onStartCommand called with intent: $intent")
         val action = intent?.action
         if (action == ACTION_STOP) {
+            conversationManager.deleteAllConversations()
             stopSelf()
             return START_NOT_STICKY
         }
@@ -389,26 +398,20 @@ class InferenceService : Service() {
                     sendStatusBroadcast("Verifying model readiness...")
                     
                     var isReady = false
-                    val dummyState = ConversationState(
-                        conversationId = "ping_session_${UUID.randomUUID()}",
-                        apiToken = "internal_ping",
-                        ttlMs = 60000L
-                    )
-                    val dummyMessage = listOf(ChatMessage(role = "user", content = com.google.gson.JsonPrimitive("Hello")))
-                    Log.d(TAG, "Created dummy session: ${dummyState.conversationId}. Entering loop...")
+                    var lastDummyId: String? = null
                     
                     for (i in 1..10) {
                         try {
-                             // Reset history for retry
-                             dummyState.history.clear()
-                             
                              var responseText = ""
-                             // generateConversationResponseAsync suspends until inference completes
+                             // Create a new dummy session for each attempt
                              val newDummyState = ConversationState(
                                  conversationId = "ping_${System.currentTimeMillis()}",
                                  apiToken = "self_test",
                                  ttlMs = 60000
                              )
+                             lastDummyId = newDummyState.conversationId
+                             val dummyMessage = listOf(ChatMessage(role = "user", content = com.google.gson.JsonPrimitive("Hello")))
+
                              aiEngineManager.generateConversationResponseAsync(
                                  state = newDummyState,
                                  messages = dummyMessage,
@@ -432,8 +435,8 @@ class InferenceService : Service() {
                         }
                     }
 
-                    // Cleanup the dummy session
-                    aiEngineManager.closeConversation(dummyState.conversationId)
+                    // Cleanup the last dummy session
+                    lastDummyId?.let { aiEngineManager.closeConversation(it) }
 
                     if (isReady) {
                         sendStatusBroadcast("Model loaded successfully ($backend)")
@@ -462,7 +465,9 @@ class InferenceService : Service() {
         // Cancel all ongoing coroutines
         serviceScope.cancel()
         // Clean up conversations (tokens persist across restarts)
-        conversationManager.shutdown()
+        if (::conversationManager.isInitialized) {
+            conversationManager.shutdown()
+        }
         aiEngineManager.close()
         super.onDestroy()
     }
@@ -492,12 +497,7 @@ class InferenceService : Service() {
             .build()
     }
 
-    private fun extractSystemPreamble(messages: List<ChatMessage>): String? {
-        return messages.firstOrNull { it.role == "system" }?.let {
-            if (it.content.isJsonPrimitive) it.content.asString
-            else it.content.toString()
-        }
-    }
+
 
     companion object {
         private const val TAG = "InferenceService"

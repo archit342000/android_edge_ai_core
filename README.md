@@ -12,6 +12,7 @@
 - 🛡️ **Hardened Security**: Robust API Token management with granular per-app permissions.
 - 🌌 **32k Context**: Massive context window for processing large documents and long chats.
 - ⏳ **Customizable TTL**: Clients can specify custom Time-To-Live for conversations via the API.
+- 💾 **Crash Recovery**: Conversations are persisted to local storage and reloaded automatically after restarts.
 
 ---
 
@@ -19,7 +20,7 @@
 
 ### 1. Initial Setup
 1. **Grant Permissions**: Upon first launch, the app will request permissions for **Microphone** (audio inference), **Storage** (loading models), and **Battery Optimization** (to ensure the service stays alive in the background).
-2. **Select a Model**: Go to the **Backend Settings** tab. Tap **Select Model** and choose your `.bin` or `.tflite` model file.
+2. **Select a Model**: Go to the **Backend Settings** tab. Tap **Select Model** and choose your `.litertlm`, `.bin`, or `.tflite` model file.
 3. **Choose Backend**: Select your preferred hardware accelerator (**CPU**, **GPU**, or **NPU**) depending on your device's capabilities.
 
 ### 2. Managing the Service
@@ -202,6 +203,12 @@ Each conversation has a **TTL (Time-To-Live)**.
 - **Reset on Access**: The TTL resets automatically every time a new request is sent to that conversation.
 - **Cleanup**: If a conversation is inactive beyond the TTL, it is automatically closed to free up hardware resources.
 - You can manually close a conversation using `closeConversation()`.
+
+### Local Persistence & Recovery
+Edge AI Core now automatically persists all active conversations to secure internal storage.
+- **Crash Recovery**: If the service process is killed or the device restarts, all non-expired conversations are reloaded into memory upon service initialization.
+- **Auto-Sync**: Any change to a conversation (new messages, sampling parameter updates, or last access time) is immediately mirrored to the local copy.
+- **Expired Data Cleanup**: During the recovery process, conversations that have exceeded their TTL are permanently deleted from storage to protect privacy and free up disk space.
 
 ### System Instructions & Message Handling
 - **System Preamble**: The `systemInstruction` string provided in `startConversation()` is used as the **System Prompt** for the entire session. It cannot be changed once the conversation starts.

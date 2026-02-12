@@ -157,14 +157,15 @@ class AiEngineManager {
             try {
                 Log.d(TAG, "Processing request for ConversationId=${state.conversationId}. Total messages=${messages.size}")
                 
-                messages.forEachIndexed { index, msg ->
-                    Log.d(TAG, "  Incoming Message[$index]: role=${msg.role}, content_length=${extractTextFromChatMessage(msg).length}")
-                    Log.d(TAG, "  Incoming Message[$index]: content=${extractTextFromChatMessage(msg)}")
-                }
+                // Sensitive Logging Removed
 
                 // 1. Update Persistent History
-                state.history.addAll(messages)
-                val fullHistory = state.history
+                // Critical: Synchronize history modification to safely interact with ConversationManager.saveConversation
+                val fullHistory = synchronized(state) {
+                    state.history.addAll(messages)
+                    // Return a copy for thread-safe iteration during context recreation
+                    state.history.toMutableList()
+                }
 
                 val currentParams = Triple(state.temperature, state.topP, state.topK)
                 
@@ -235,10 +236,12 @@ class AiEngineManager {
 
                         override fun onDone() {
                             Log.d(TAG, "Inference complete for ID=${state.conversationId}. Total Response Length: ${lastResponseText.length}")
-                            Log.v(TAG, "Full response: $lastResponseText")
+                            
                             // 5. Update History with Response
-                            if (lastResponseText.isNotEmpty()) {
-                                state.history.add(ChatMessage("assistant", com.google.gson.JsonPrimitive(lastResponseText)))
+                            synchronized(state) {
+                                if (lastResponseText.isNotEmpty()) {
+                                    state.history.add(ChatMessage("assistant", com.google.gson.JsonPrimitive(lastResponseText)))
+                                }
                             }
                             onComplete(lastResponseText)
                             if (cont.isActive) cont.resume(Unit)
@@ -246,7 +249,8 @@ class AiEngineManager {
 
                         override fun onError(error: Throwable) {
                             Log.e(TAG, "Inference error", error)
-                            onErrorCallback(error)
+                            // Resolve the double-error callback issue by only calling resumeWithException
+                            // The outer try-catch will handle calling onErrorCallback
                             if (cont.isActive) cont.resumeWithException(error)
                         }
                     })
