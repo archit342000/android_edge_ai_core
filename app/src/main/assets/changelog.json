@@ -1,6 +1,16 @@
 {
   "versions": [
     {
+      "version": "1.10.3",
+      "changes": [
+        "Implemented 'getLastStatus()' in IInferenceService to solve UI synchronization issues",
+        "Updated MainActivity to automatically sync state with the service on resume and connection",
+        "Added robust keyword-based UI state transitions to eliminate 'Initializing' stuck state",
+        "Fixed race conditions during concurrent model loading and service restarts",
+        "Improved model verification logic with mandatory response validation"
+      ]
+    },
+    {
       "version": "1.10.2",
       "changes": [
         "Ensured InferenceService stays online by persisting model configuration across sticky restarts",

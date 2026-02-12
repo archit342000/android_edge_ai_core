@@ -33,6 +33,8 @@ class InferenceService : Service() {
     private val gson = Gson()
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val activeRequests = AtomicInteger(0)
+    private var lastStatus: String = "Idle"
+    private var isModelLoading = false
 
     private val binder = object : IInferenceService.Stub() {
         
@@ -323,6 +325,10 @@ class InferenceService : Service() {
             Log.i(TAG, msg)
             sendStatusBroadcast(msg)
         }
+
+        override fun getLastStatus(): String {
+            return lastStatus
+        }
     }
 
     private fun createChatCompletionResponse(request: ChatCompletionRequest, content: String): ChatCompletionResponse {
@@ -399,6 +405,12 @@ class InferenceService : Service() {
             
             serviceScope.launch {
                 try {
+                    if (isModelLoading) {
+                        Log.i(TAG, "Model load already in progress, skipping duplicate request")
+                        return@launch
+                    }
+                    isModelLoading = true
+
                     Log.d(TAG, "Attempting to load model with backend: $finalBackend")
                     sendStatusBroadcast("Initializing engine...")
                     
@@ -459,6 +471,8 @@ class InferenceService : Service() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to initialize in service", e)
                     sendStatusBroadcast("Error loading model: ${e.message}")
+                } finally {
+                    isModelLoading = false
                 }
             }
         }
@@ -467,6 +481,7 @@ class InferenceService : Service() {
     }
 
     private fun sendStatusBroadcast(status: String) {
+        lastStatus = status
         val intent = Intent(ACTION_STATUS_UPDATE)
         intent.setPackage(packageName)
         intent.putExtra(EXTRA_STATUS, status)
