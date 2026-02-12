@@ -37,4 +37,6 @@
     <string name="tokens_restored">Tokens restored successfully</string>
     <string name="backup_error">Error backing up tokens</string>
     <string name="restore_error">Error restoring tokens</string>
+    <string name="test_health">Health Check</string>
+    <string name="test_load">Get Load</string>
 </resources>

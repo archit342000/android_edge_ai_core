@@ -24,7 +24,7 @@
 
 ### 2. Managing the Service
 - **Switch On**: In the **Server** tab, toggle the **Enable AI Server** switch. The status will change to `Loading...` and then `Ready` once the model is initialized.
-- **Diagnostics**: Use the **Test Inference** or **Multi-Turn Test** buttons to verify the model is responding correctly.
+- **Diagnostics**: Use the **Test Inference**, **Multi-Turn Test**, **Health Check**, or **Get Load** buttons to verify the model and server status.
 
 ### 3. API Token Management
 The service requires an API token for all external app requests.

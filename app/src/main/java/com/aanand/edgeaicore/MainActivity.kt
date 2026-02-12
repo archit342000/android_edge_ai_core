@@ -56,6 +56,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnTestVision: MaterialButton
     private lateinit var btnTestAudio: MaterialButton
     private lateinit var btnTestMultiTurn: MaterialButton
+    private lateinit var btnTestHealth: MaterialButton
+    private lateinit var btnTestLoad: MaterialButton
     private lateinit var tvLogs: TextView
     
     // API Token UI
@@ -110,6 +112,8 @@ class MainActivity : AppCompatActivity() {
                      btnTestVision.isEnabled = true
                      btnTestAudio.isEnabled = true
                      btnTestMultiTurn.isEnabled = true
+                     btnTestHealth.isEnabled = true
+                     btnTestLoad.isEnabled = true
                      
                      if (!isBound) {
                         val intent = Intent(this@MainActivity, InferenceService::class.java)
@@ -124,6 +128,8 @@ class MainActivity : AppCompatActivity() {
                      btnTestVision.isEnabled = false
                      btnTestAudio.isEnabled = false
                      btnTestMultiTurn.isEnabled = false
+                     btnTestHealth.isEnabled = false
+                     btnTestLoad.isEnabled = false
                 }
             } else if (intent.action == InferenceService.ACTION_TOKEN_REQUEST) {
                 val pkgName = intent.getStringExtra(InferenceService.EXTRA_PACKAGE_NAME) ?: "unknown"
@@ -198,6 +204,8 @@ class MainActivity : AppCompatActivity() {
         btnTestVision = findViewById(R.id.btn_test_vision)
         btnTestAudio = findViewById(R.id.btn_test_audio)
         btnTestMultiTurn = findViewById(R.id.btn_test_multiturn)
+        btnTestHealth = findViewById(R.id.btn_test_health)
+        btnTestLoad = findViewById(R.id.btn_test_load)
         tvLogs = findViewById(R.id.tv_logs)
         
         // Navigation UI
@@ -335,6 +343,44 @@ class MainActivity : AppCompatActivity() {
         }
         
         btnTestMultiTurn.setOnClickListener { runTestMultiTurn() }
+        
+        btnTestHealth.setOnClickListener {
+            if (!isBound || inferenceService == null) {
+                appendLog("Error: Service not bound")
+                return@setOnClickListener
+            }
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val result = inferenceService?.health() ?: "Error"
+                    withContext(Dispatchers.Main) {
+                        appendLog("Health Check: $result")
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("Health Check Failed: ${e.message}")
+                    }
+                }
+            }
+        }
+        
+        btnTestLoad.setOnClickListener {
+            if (!isBound || inferenceService == null) {
+                appendLog("Error: Service not bound")
+                return@setOnClickListener
+            }
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val load = inferenceService?.getLoad() ?: -1
+                    withContext(Dispatchers.Main) {
+                        appendLog("Current Server Load: $load active requests")
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("Get Load Failed: ${e.message}")
+                    }
+                }
+            }
+        }
         
         checkAndRequestPermissions()
         requestIgnoreBatteryOptimizations()
