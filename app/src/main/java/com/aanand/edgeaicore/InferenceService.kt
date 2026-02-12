@@ -23,6 +23,7 @@ import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 class InferenceService : Service() {
 
@@ -33,6 +34,7 @@ class InferenceService : Service() {
     )
     private val gson = Gson()
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val activeRequests = AtomicInteger(0)
 
     private val binder = object : IInferenceService.Stub() {
         
@@ -182,6 +184,8 @@ class InferenceService : Service() {
             val sanitizedToken = apiToken.trim()
             logIpcRequest("generateConversationResponseAsync", sanitizedToken, "conv=${conversationId.take(8)}...")
             
+            activeRequests.incrementAndGet()
+            
             // Validate token
             if (!tokenManager.isValidToken(sanitizedToken)) {
                 Log.w(TAG, "generateConversationResponseAsync failed: invalid token")
@@ -189,6 +193,8 @@ class InferenceService : Service() {
                     callback.onError("Invalid API token")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error calling onError callback", e)
+                } finally {
+                    activeRequests.decrementAndGet()
                 }
                 return
             }
@@ -201,6 +207,8 @@ class InferenceService : Service() {
                     callback.onError("Conversation not found, expired, or unauthorized")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error calling onError callback", e)
+                } finally {
+                    activeRequests.decrementAndGet()
                 }
                 return
             }
@@ -250,6 +258,8 @@ class InferenceService : Service() {
                     } catch (ce: Exception) {
                         Log.e(TAG, "Error notifying client of internal failure", ce)
                     }
+                } finally {
+                    activeRequests.decrementAndGet()
                 }
             }
         }
@@ -257,6 +267,16 @@ class InferenceService : Service() {
         override fun ping(): String {
             logIpcRequest("ping", "none")
             return "pong"
+        }
+
+        override fun health(): String {
+            logIpcRequest("health", "none")
+            return "ok"
+        }
+
+        override fun getLoad(): Int {
+            logIpcRequest("getLoad", "none")
+            return activeRequests.get()
         }
 
         private fun logIpcRequest(methodName: String, apiToken: String, extras: String = "") {

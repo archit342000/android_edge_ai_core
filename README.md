@@ -87,8 +87,21 @@ interface IInferenceService {
 
     /**
      * Diagnostic check.
+     * @return "pong"
      */
     String ping();
+
+    /**
+     * Health check to confirm the AI server is up and running.
+     * @return "ok" if the service is responsive.
+     */
+    String health();
+
+    /**
+     * Returns the current load on the server (number of active requests).
+     * @return Number of requests currently being processed or waiting in queue.
+     */
+    int getLoad();
 }
 ```
 
@@ -203,6 +216,11 @@ You can customize the model's creativity and diversity by including the followin
 These parameters are stored with the conversation state. If provided in a request, they update the conversation's settings for that and subsequent turns.
 
 
+
+### Diagnostic & Health Endpoints
+- **`ping()`**: Simple connectivity test. Returns `"pong"`.
+- **`health()`**: Recommended for checking if the AI server is active and ready for requests. Returns `"ok"`.
+- **`getLoad()`**: Returns an integer representing the total number of inference requests currently being processed or sitting in the service's execution queue. Perfect for load balancing or showing wait times in client apps.
 
 ---
 
