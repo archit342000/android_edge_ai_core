@@ -29,8 +29,6 @@ class InferenceService : Service() {
 
     private val aiEngineManager = AiEngineManager()
     private lateinit var tokenManager: TokenManager
-    private val aiEngineManager = AiEngineManager()
-    private lateinit var tokenManager: TokenManager
     private lateinit var conversationManager: ConversationManager
     private val gson = Gson()
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
