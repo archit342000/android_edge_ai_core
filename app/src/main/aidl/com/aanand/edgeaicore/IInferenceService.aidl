@@ -75,4 +75,16 @@ interface IInferenceService {
      * @return The string "pong"
      */
     String ping();
+
+    /**
+     * Health check to confirm the AI server is up and running.
+     * @return "ok" if the service is responsive.
+     */
+    String health();
+
+    /**
+     * Returns the current load on the server (number of active requests).
+     * @return Number of requests currently being processed or waiting in queue.
+     */
+    int getLoad();
 }

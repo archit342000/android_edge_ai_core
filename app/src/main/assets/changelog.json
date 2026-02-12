@@ -1,6 +1,15 @@
 {
   "versions": [
     {
+      "version": "1.9.0",
+      "changes": [
+        "Added 'health' endpoint to AIDL interface for instantaneous server status checks",
+        "Added 'getLoad' endpoint to track active and pending inference requests",
+        "Implemented Atomic request tracking for accurate real-time load reporting",
+        "Ensured diagnostic requests are non-blocking and served even during heavy inference"
+      ]
+    },
+    {
       "version": "1.8.0",
       "changes": [
         "Implemented Custom TTL (Time-To-Live) for conversations",
