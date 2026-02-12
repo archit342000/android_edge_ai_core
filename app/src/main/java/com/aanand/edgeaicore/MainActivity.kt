@@ -99,8 +99,10 @@ class MainActivity : AppCompatActivity() {
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            Log.d(TAG, "Broadcast received: ${intent.action}")
             if (intent.action == InferenceService.ACTION_STATUS_UPDATE) {
                 val status = intent.getStringExtra(InferenceService.EXTRA_STATUS)
+                Log.d(TAG, "Received STATUS_UPDATE: $status")
                 appendLog("Status Update: $status")
                 updateUIForStatus(status ?: "")
 
@@ -1161,12 +1163,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncStatusWithService() {
-        val service = inferenceService ?: return
+        val service = inferenceService
+        if (service == null) {
+            Log.w(TAG, "syncStatusWithService: Service is null")
+            return
+        }
         try {
-            val lastStatus = service.lastStatus
-            if (lastStatus != null) {
-                updateUIForStatus(lastStatus)
-                appendLog("Synced status: $lastStatus")
+            val currentStatus = service.lastStatus
+            Log.d(TAG, "syncStatusWithService: Retrieved status = $currentStatus")
+            if (currentStatus != null) {
+                updateUIForStatus(currentStatus)
+                appendLog("Synced status: $currentStatus")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync status", e)

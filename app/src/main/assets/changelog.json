@@ -1,6 +1,15 @@
 {
   "versions": [
     {
+      "version": "1.10.5",
+      "changes": [
+        "Fixed critical crash loop on startup by detecting and preventing consecutive initialization failures",
+        "Resolved StackOverflowError in status reporting that caused UI synchronization issues",
+        "Buffered native model loading errors to prevent app crashes on invalid model files",
+        "Improved diagnostic logging for service status and broadcast reliability"
+      ]
+    },
+    {
       "version": "1.10.3",
       "changes": [
         "Implemented 'getLastStatus()' in IInferenceService to solve UI synchronization issues",

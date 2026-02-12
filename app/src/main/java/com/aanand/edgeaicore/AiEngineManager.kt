@@ -49,6 +49,12 @@ class AiEngineManager {
         close()
         Log.d(TAG, "Loading model from $modelPath with Backend=$backendType")
 
+        val file = java.io.File(modelPath)
+        if (!file.exists()) {
+            Log.e(TAG, "Model file does not exist: $modelPath")
+            throw java.io.FileNotFoundException("Model file not found: $modelPath")
+        }
+
         try {
             val backendEnum = when (backendType.uppercase()) {
                 "CPU" -> Backend.CPU
@@ -64,19 +70,21 @@ class AiEngineManager {
                 audioBackend = Backend.CPU
             )
 
+            Log.d(TAG, "Initializing Engine with config: $config")
             val newEngine = Engine(config)
+            Log.d(TAG, "Calling engine.initialize()...")
             newEngine.initialize()
             engine = newEngine
             currentModelPath = modelPath
 
             Log.d(TAG, "Model loaded successfully with Backend=$backendType")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load model with Backend=$backendType", e)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to load model with Backend=$backendType. Error: ${t.message}", t)
             if (backendType.equals("GPU", ignoreCase = true)) {
                  Log.w(TAG, "Retrying with CPU backend...")
                  loadModel(modelPath, "CPU")
             } else {
-                throw e
+                if (t is Exception) throw t else throw Exception(t)
             }
         }
     }
