@@ -4,6 +4,11 @@
 
 ---
 
+## 📥 Download
+
+> **[Download Latest APK (v1.10.5)](app/release/app-release.apk)**
+
+
 ## ✨ Features
 
 - 🧠 **Multi-Modal Support**: Optimized for Text, Vision, and Audio inference.
