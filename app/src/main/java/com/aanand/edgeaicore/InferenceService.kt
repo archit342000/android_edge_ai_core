@@ -358,6 +358,7 @@ class InferenceService : Service() {
         Log.d(TAG, "onStartCommand called with intent: $intent")
         val action = intent?.action
         if (action == ACTION_STOP) {
+            getSharedPreferences("inference_service_prefs", Context.MODE_PRIVATE).edit().clear().apply()
             conversationManager.deleteAllConversations()
             stopSelf()
             return START_NOT_STICKY
@@ -372,24 +373,37 @@ class InferenceService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        val modelPath = intent?.getStringExtra(EXTRA_MODEL_PATH)
-        val backend = intent?.getStringExtra(EXTRA_BACKEND) ?: "GPU"
+        val prefs = getSharedPreferences("inference_service_prefs", Context.MODE_PRIVATE)
+        var modelPath = intent?.getStringExtra(EXTRA_MODEL_PATH)
+        var backend = intent?.getStringExtra(EXTRA_BACKEND)
+
+        if (modelPath != null) {
+            // Save to prefs for sticky restarts
+            prefs.edit()
+                .putString("saved_model_path", modelPath)
+                .putString("saved_backend", backend ?: "GPU")
+                .apply()
+        } else {
+            // Restore from prefs if this is a sticky restart
+            modelPath = prefs.getString("saved_model_path", null)
+            backend = prefs.getString("saved_backend", "GPU")
+            if (modelPath != null) {
+                Log.i(TAG, "Restored model path from prefs: $modelPath")
+                sendStatusBroadcast("Restoring service state...")
+            }
+        }
         
         if (modelPath != null) {
             sendStatusBroadcast("Loading model from path: $modelPath")
-            val useGpu = backend.equals("GPU", ignoreCase = true)
-            // We pass the backend string. The logic for NPU/CPU/GPU needs to be handled in Manager or passed as enum/config.
-            // Current loadModel takes (String, Boolean) for GPU. We might need to refactor loadModel first.
-            // For now, let's map "GPU" -> true, others -> false AND we need to support NPU.
+            val finalBackend = backend ?: "GPU"
             
             serviceScope.launch {
                 try {
-                    // Update AiEngineManager.loadModel to accept backend string
-                    Log.d(TAG, "Attempting to load model with backend: $backend")
+                    Log.d(TAG, "Attempting to load model with backend: $finalBackend")
                     sendStatusBroadcast("Initializing engine...")
                     
                     withTimeout(300000) { // 5 minutes timeout
-                        aiEngineManager.loadModel(modelPath, backend)
+                        aiEngineManager.loadModel(modelPath, finalBackend)
                     }
 
                     Log.d(TAG, "loadModel returned. Starting readiness verification...")
@@ -437,7 +451,7 @@ class InferenceService : Service() {
                     lastDummyId?.let { aiEngineManager.closeConversation(it) }
 
                     if (isReady) {
-                        sendStatusBroadcast("Model loaded successfully ($backend)")
+                        sendStatusBroadcast("Model loaded successfully ($finalBackend)")
                     } else {
                         sendStatusBroadcast("Error: Model verification failed")
                     }
