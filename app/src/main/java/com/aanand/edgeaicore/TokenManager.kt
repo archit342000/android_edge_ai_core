@@ -21,6 +21,9 @@ class TokenManager private constructor(private val context: Context) {
     
     // Mapping of packageName -> token
     private val tokenMap = ConcurrentHashMap<String, String>()
+    // Optimization: Fast O(1) lookup set for valid tokens
+    private val validTokens = ConcurrentHashMap.newKeySet<String>()
+    
     // Set of packageNames waiting for approval
     private val pendingRequests = ConcurrentHashMap.newKeySet<String>()
     
@@ -76,7 +79,9 @@ class TokenManager private constructor(private val context: Context) {
         // 3. Update Memory
         if (!loadedTokens.isNullOrEmpty()) {
             tokenMap.clear()
+            validTokens.clear()
             tokenMap.putAll(loadedTokens)
+            validTokens.addAll(loadedTokens.values)
         }
         
         // Load pending requests (less critical, stick to Prefs)
@@ -144,9 +149,6 @@ class TokenManager private constructor(private val context: Context) {
     /**
      * Adds a package to the pending requests list if it doesn't already have a token.
      */
-    /**
-     * Adds a package to the pending requests list if it doesn't already have a token.
-     */
     fun requestToken(packageName: String): String = synchronized(dataLock) {
         val existingToken = tokenMap[packageName]
         if (existingToken != null) {
@@ -168,6 +170,7 @@ class TokenManager private constructor(private val context: Context) {
         val token = UUID.randomUUID().toString()
         val packageName = "manual_${System.currentTimeMillis()}"
         tokenMap[packageName] = token
+        validTokens.add(token)
         persistTokens()
         Log.i(TAG, "Manually generated token: ${token.take(8)}...")
         return token
@@ -176,14 +179,12 @@ class TokenManager private constructor(private val context: Context) {
     /**
      * Approves a pending request from a package.
      */
-    /**
-     * Approves a pending request from a package.
-     */
     fun approveRequest(packageName: String): String? = synchronized(dataLock) {
         // If it was pending, remove it and generate a token
         if (pendingRequests.contains(packageName)) {
             val token = UUID.randomUUID().toString()
             tokenMap[packageName] = token
+            validTokens.add(token)
             pendingRequests.remove(packageName)
             @Suppress("DEPRECATION")
             persistData() // Update both as we modified both
@@ -206,7 +207,7 @@ class TokenManager private constructor(private val context: Context) {
     fun isValidToken(token: String?): Boolean = synchronized(dataLock) {
         if (token.isNullOrBlank()) return false
         val sanitized = token.trim()
-        val valid = tokenMap.values.contains(sanitized)
+        val valid = validTokens.contains(sanitized)
         if (!valid) {
             Log.w(TAG, "Token validation failed for: ${sanitized.take(8)}...")
         }
@@ -224,6 +225,7 @@ class TokenManager private constructor(private val context: Context) {
         
         if (removedKey != null) {
             tokenMap.remove(removedKey)
+            validTokens.remove(token)
             persistTokens()
             Log.i(TAG, "Revoked token for $removedKey")
             true
@@ -233,7 +235,9 @@ class TokenManager private constructor(private val context: Context) {
     }
 
     fun revokeTokenByPackage(packageName: String): Boolean = synchronized(dataLock) {
-        if (tokenMap.remove(packageName) != null) {
+        val token = tokenMap.remove(packageName)
+        if (token != null) {
+            validTokens.remove(token)
             persistTokens()
             Log.i(TAG, "Revoked token for $packageName")
             true
@@ -258,6 +262,7 @@ class TokenManager private constructor(private val context: Context) {
         tokens.forEach { token ->
             val pkg = "imported_${UUID.randomUUID().toString().take(4)}"
             tokenMap[pkg] = token
+            validTokens.add(token)
         }
         persistTokens()
     }
@@ -265,6 +270,7 @@ class TokenManager private constructor(private val context: Context) {
     fun clearAllData() {
         synchronized(dataLock) {
             tokenMap.clear()
+            validTokens.clear()
             pendingRequests.clear()
             @Suppress("DEPRECATION")
             persistData()

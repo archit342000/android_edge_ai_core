@@ -1,6 +1,26 @@
 {
   "versions": [
     {
+      "version": "1.10.1",
+      "changes": [
+        "Fixed critical initialization order bug in InferenceService to prevent potential crashes",
+        "Enhanced security: Restricted token revocation to internal app only",
+        "Optimized TokenManager validation performance with O(1) lookup",
+        "Fixed UI bug with duplicate button state updates",
+        "Added support for .bin and .tflite model file extensions in model selector",
+        "Improved concurrency safety in ConversationManager and AiEngineManager"
+      ]
+    },
+    {
+      "version": "1.10.0",
+      "changes": [
+        "Implemented local persistence for all active conversations",
+        "Conversations are now automatically reloaded from disk after service restarts or crashes",
+        "TTL (Time-To-Live) is strictly validated during recovery to ensure stale data is discarded",
+        "Synchronization: Every message addition or setting change is mirrored to secure internal storage"
+      ]
+    },
+    {
       "version": "1.9.4",
       "changes": [
         "Enabled real-time response logging in the UI console",

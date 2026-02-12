@@ -108,8 +108,6 @@ class MainActivity : AppCompatActivity() {
                      switchEnableServer.isChecked = true
                      btnTestInference.isEnabled = true
                      btnTestVision.isEnabled = true
-                     btnTestInference.isEnabled = true
-                     btnTestVision.isEnabled = true
                      btnTestAudio.isEnabled = true
                      btnTestMultiTurn.isEnabled = true
                      btnTestHealth.isEnabled = true
@@ -122,8 +120,6 @@ class MainActivity : AppCompatActivity() {
                 } else if (status?.contains("Error", ignoreCase = true) == true) {
                      switchEnableServer.isEnabled = true
                      switchEnableServer.isChecked = false
-                     btnTestInference.isEnabled = false
-                     btnTestVision.isEnabled = false
                      btnTestInference.isEnabled = false
                      btnTestVision.isEnabled = false
                      btnTestAudio.isEnabled = false
@@ -1096,8 +1092,12 @@ class MainActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val fileName = getFileName(uri) ?: "model.litertlm"
-                // Ensure it ends with .litertlm
-                val validFileName = if (fileName.endsWith(".litertlm")) fileName else "$fileName.litertlm"
+                // Ensure it ends with a valid extension, or append .litertlm as default
+                val validFileName = if (fileName.endsWith(".litertlm") || fileName.endsWith(".bin") || fileName.endsWith(".tflite")) {
+                    fileName
+                } else {
+                    "$fileName.litertlm"
+                }
 
                 val destinationFile = File(filesDir, validFileName)
 
