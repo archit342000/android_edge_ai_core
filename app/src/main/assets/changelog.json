@@ -1,6 +1,14 @@
 {
   "versions": [
     {
+      "version": "1.9.1",
+      "changes": [
+        "Expanded 'Verification & Tests' UI with dedicated Health Check and Get Load buttons",
+        "Improved server diagnostic visibility for internal testing and verification",
+        "Fixed method binding for getLoad() in Kotlin MainActivity"
+      ]
+    },
+    {
       "version": "1.9.0",
       "changes": [
         "Added 'health' endpoint to AIDL interface for instantaneous server status checks",
