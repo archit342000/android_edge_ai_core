@@ -1,6 +1,14 @@
 {
   "versions": [
     {
+      "version": "1.10.2",
+      "changes": [
+        "Ensured InferenceService stays online by persisting model configuration across sticky restarts",
+        "Implemented automatic model reloading if the service process is killed and restarted by the OS",
+        "Added explicit cleanup of service preferences on user-initiated stop actions"
+      ]
+    },
+    {
       "version": "1.10.1",
       "changes": [
         "Fixed critical initialization order bug in InferenceService to prevent potential crashes",
