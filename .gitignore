@@ -16,7 +16,6 @@ captures/
 .cxx
 *.jks
 *.keystore
-*.apk
 *.ap_
 *.dex
 *.class
