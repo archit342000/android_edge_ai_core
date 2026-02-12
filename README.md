@@ -95,7 +95,7 @@ interface IInferenceService {
     /**
      * Health check to confirm the AI server is up and running.
      * @param apiToken The API token for authentication
-     * @return "ok" if the service is responsive.
+     * @return "ok" if the service is responsive and model is loaded.
      */
     String health(String apiToken);
 
@@ -103,6 +103,7 @@ interface IInferenceService {
      * Returns the current load on the server (number of active requests).
      * @param apiToken The API token for authentication
      * @return Number of requests currently being processed or waiting in queue.
+     *         Returns -1 for invalid token, -2 for model not loaded.
      */
     int getLoad(String apiToken);
 }
@@ -224,8 +225,8 @@ These parameters are stored with the conversation state. If provided in a reques
 **Note:** All diagnostic endpoints now require a valid API token for authentication.
 
 - **`ping(apiToken)`**: Simple connectivity test. Returns `"pong"`.
-- **`health(apiToken)`**: Recommended for checking if the AI server is active and ready for requests. Returns `"ok"`.
-- **`getLoad(apiToken)`**: Returns an integer representing the total number of inference requests currently being processed or sitting in the service's execution queue. Perfect for load balancing or showing wait times in client apps.
+- **`health(apiToken)`**: Recommended for checking if the AI server is active and the model is loaded. Returns `"ok"`.
+- **`getLoad(apiToken)`**: Returns an integer representing the total number of inference requests currently being processed. Returns `-2` if the model is not loaded.
 
 ---
 

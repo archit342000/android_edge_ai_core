@@ -80,7 +80,8 @@ interface IInferenceService {
     /**
      * Health check to confirm the AI server is up and running.
      * @param apiToken The API token for authentication
-     * @return "ok" if the service is responsive.
+     * @return "ok" if the service is responsive and model is loaded, 
+     *         "error: model not loaded" or "error: invalid token" otherwise.
      */
     String health(String apiToken);
 
@@ -88,6 +89,7 @@ interface IInferenceService {
      * Returns the current load on the server (number of active requests).
      * @param apiToken The API token for authentication
      * @return Number of requests currently being processed or waiting in queue.
+     *         Returns -1 for invalid token, -2 for model not loaded.
      */
     int getLoad(String apiToken);
 }

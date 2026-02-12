@@ -279,6 +279,9 @@ class InferenceService : Service() {
             if (!tokenManager.isValidToken(sanitizedToken)) {
                 return "error: invalid token"
             }
+            if (!aiEngineManager.isModelLoaded) {
+                return "error: model not loaded"
+            }
             return "ok"
         }
 
@@ -287,6 +290,9 @@ class InferenceService : Service() {
             logIpcRequest("getLoad", sanitizedToken)
             if (!tokenManager.isValidToken(sanitizedToken)) {
                 return -1
+            }
+            if (!aiEngineManager.isModelLoaded) {
+                return -2
             }
             return activeRequests.get()
         }

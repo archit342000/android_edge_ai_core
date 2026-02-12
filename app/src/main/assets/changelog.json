@@ -1,6 +1,13 @@
 {
   "versions": [
     {
+      "version": "1.9.3",
+      "changes": [
+        "Enhanced 'health' and 'getLoad' to verify model state: Returns error if engine is not initialized",
+        "Improved diagnostic reliability by preventing false 'ok' status during model loading or failure"
+      ]
+    },
+    {
       "version": "1.9.2",
       "changes": [
         "Enforced mandatory API token authentication for 'ping', 'health', and 'getLoad' endpoints",
