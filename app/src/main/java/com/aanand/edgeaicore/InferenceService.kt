@@ -82,10 +82,10 @@ class InferenceService : Service() {
         // Conversation Management
         // =====================
         
-        override fun startConversation(apiToken: String, systemInstruction: String?): String {
+        override fun startConversation(apiToken: String, systemInstruction: String?, ttlMs: Long): String {
             val sanitizedToken = apiToken.trim()
             val safeSystemInstruction = systemInstruction?.takeIf { it.isNotBlank() }
-            logIpcRequest("startConversation", sanitizedToken, "systemInstruction={(length=${safeSystemInstruction?.length ?: 0})}")
+            logIpcRequest("startConversation", sanitizedToken, "systemInstruction={(length=${safeSystemInstruction?.length ?: 0})}, ttlMs=$ttlMs")
             
             return try {
                 // Validate token
@@ -94,7 +94,11 @@ class InferenceService : Service() {
                     return gson.toJson(ErrorResponse("Invalid API token"))
                 }
                 
-                val state = conversationManager.createConversation(sanitizedToken, safeSystemInstruction)
+                val state = if (ttlMs > 0) {
+                    conversationManager.createConversation(sanitizedToken, safeSystemInstruction, ttlMs)
+                } else {
+                    conversationManager.createConversation(sanitizedToken, safeSystemInstruction)
+                }
                 
                 val response = ConversationResponse(
                     conversation_id = state.conversationId,
@@ -103,7 +107,7 @@ class InferenceService : Service() {
                     expires_at = state.createdAt + state.ttlMs
                 )
                 
-                val msg = "Started conversation ${state.conversationId.take(8)}... for ${sanitizedToken.take(8)}..."
+                val msg = "Started conversation ${state.conversationId.take(8)}... for ${sanitizedToken.take(8)}... (TTL: ${state.ttlMs}ms)"
                 Log.i(TAG, msg)
                 sendStatusBroadcast(msg)
                 gson.toJson(response)

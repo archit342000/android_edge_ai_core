@@ -1,11 +1,11 @@
 {
   "versions": [
     {
-      "version": "1.7.1",
+      "version": "1.8.0",
       "changes": [
-        "Codebase Quality and Security Audit: Enhanced robustness and removed legacy patterns",
-        "Refactored InferenceService to enforce stateful conversation flows",
-        "Internal cleanup of AiEngineManager for better maintainability"
+        "Implemented Custom TTL (Time-To-Live) for conversations",
+        "Updated AIDL interface: startConversation() now accepts a custom ttlMs parameter",
+        "Maintained default 30-minute expiration for backward compatibility"
       ]
     },
     {

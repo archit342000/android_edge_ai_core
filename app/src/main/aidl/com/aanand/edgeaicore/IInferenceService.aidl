@@ -29,10 +29,12 @@ interface IInferenceService {
      * Starts a new stateful conversation for the client.
      * 
      * @param apiToken The API token for authentication
+     * @param systemInstruction The system instruction for the AI
+     * @param ttlMs The custom TTL in milliseconds. Pass 0 or less to use the default (30 mins).
      * @return JSON string containing conversation info: {"conversation_id": "...", "ttl_ms": N, "created_at": N}
      *         or error: {"error": "..."}
      */
-    String startConversation(String apiToken, String systemInstruction);
+    String startConversation(String apiToken, String systemInstruction, long ttlMs);
 
     /**
      * Closes a conversation, releasing its resources and invalidating the ID.

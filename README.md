@@ -11,6 +11,7 @@
 - 🔄 **Smart Session Reuse**: Persistent KV Cache for ultra-fast multi-turn conversations.
 - 🛡️ **Hardened Security**: Robust API Token management with granular per-app permissions.
 - 🌌 **32k Context**: Massive context window for processing large documents and long chats.
+- ⏳ **Customizable TTL**: Clients can specify custom Time-To-Live for conversations via the API.
 
 ---
 
@@ -62,8 +63,9 @@ interface IInferenceService {
     // =====================
     /**
      * Starts a new stateful conversation. Returns conversation_id and TTL info.
+     * @param ttlMs Custom TTL in ms. Pass 0 or less to use default (30 mins).
      */
-    String startConversation(String apiToken, String systemInstruction);
+    String startConversation(String apiToken, String systemInstruction, long ttlMs);
 
     /**
      * Closes a conversation, releasing hardware resources.
@@ -128,7 +130,8 @@ Conversations maintain state and allow **32k tokens** of context.
 
 ```kotlin
 val systemPrompt = "You are a helpful assistant."
-val convJson = aiService?.startConversation(apiToken, systemPrompt)
+val customTtlMs = 60000L // 1 minute
+val convJson = aiService?.startConversation(apiToken, systemPrompt, customTtlMs)
 val conversationId = JSONObject(convJson).getString("conversation_id")
 ```
 
@@ -177,8 +180,10 @@ Initial conversations are initialized with a 32,768 token context window, allowi
 
 ### TTL & Auto-Cleanup
 Each conversation has a **TTL (Time-To-Live)**. 
-- The TTL resets automatically every time a new request is sent to that conversation.
-- If a conversation is inactive beyond the TTL, it is automatically closed to free up hardware resources.
+- **Customizable**: You can set a custom TTL (in ms) when starting a conversation via `startConversation(..., ttlMs)`.
+- **Default behavior**: If `ttlMs` is 0 or less, the system defaults to **30 minutes**.
+- **Reset on Access**: The TTL resets automatically every time a new request is sent to that conversation.
+- **Cleanup**: If a conversation is inactive beyond the TTL, it is automatically closed to free up hardware resources.
 - You can manually close a conversation using `closeConversation()`.
 
 ### System Instructions & Message Handling

@@ -804,7 +804,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 
                 // Step 2: Start conversation
-                val convJson = inferenceService?.startConversation(testToken, "") ?: ""
+                // Pass 0L for TTL to use default (30 mins)
+                val convJson = inferenceService?.startConversation(testToken, "", 0L) ?: ""
                 if (convJson.isEmpty() || convJson.contains("error")) {
                     withContext(Dispatchers.Main) {
                         appendLog("❌ Conversation creation failed: $convJson")
@@ -934,7 +935,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 
                 // Step 2: Start conversation
-                val convJson = inferenceService?.startConversation(testToken, "") ?: ""
+                // Pass 0L for TTL to use default (30 mins)
+                val convJson = inferenceService?.startConversation(testToken, "", 0L) ?: ""
                 if (convJson.isEmpty() || convJson.contains("error")) {
                     withContext(Dispatchers.Main) {
                         appendLog("❌ Conversation creation failed: $convJson")
@@ -1156,7 +1158,9 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     appendLog("Starting new test conversation...")
                 }
-                val convJson = inferenceService?.startConversation(token, "") ?: ""
+                // Step 2: Start conversation
+                // Pass 0L for TTL to use default (30 mins)
+                val convJson = inferenceService?.startConversation(token, "", 0L) ?: ""
                 if (convJson.isEmpty() || convJson.contains("error")) {
                     withContext(Dispatchers.Main) {
                         appendLog("Failed to start conversation: $convJson")
@@ -1232,7 +1236,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 
                 // Step 2: Start a conversation
-                val convJson = inferenceService?.startConversation(testToken, "") ?: ""
+                // Pass 0L for TTL to use default (30 mins)
+                val convJson = inferenceService?.startConversation(testToken, "", 0L) ?: ""
                 if (convJson.isEmpty() || convJson.contains("error")) {
                     withContext(Dispatchers.Main) {
                         appendLog("❌ Conversation creation failed: $convJson")
@@ -1321,7 +1326,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 
                 // 2. Start Conversation
-                val convJson = inferenceService?.startConversation(token, "") ?: ""
+                // Pass 0L for TTL to use default (30 mins)
+                val convJson = inferenceService?.startConversation(token, "", 0L) ?: ""
                 if (convJson.contains("error")) {
                     withContext(Dispatchers.Main) { appendLog("❌ Conversation Failed: $convJson") }
                     return@launch
