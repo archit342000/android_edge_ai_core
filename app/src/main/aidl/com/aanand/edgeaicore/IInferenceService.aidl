@@ -72,19 +72,22 @@ interface IInferenceService {
 
     /**
      * Diagnostic method to check if the service is alive and responsive.
+     * @param apiToken The API token for authentication
      * @return The string "pong"
      */
-    String ping();
+    String ping(String apiToken);
 
     /**
      * Health check to confirm the AI server is up and running.
+     * @param apiToken The API token for authentication
      * @return "ok" if the service is responsive.
      */
-    String health();
+    String health(String apiToken);
 
     /**
      * Returns the current load on the server (number of active requests).
+     * @param apiToken The API token for authentication
      * @return Number of requests currently being processed or waiting in queue.
      */
-    int getLoad();
+    int getLoad(String apiToken);
 }
