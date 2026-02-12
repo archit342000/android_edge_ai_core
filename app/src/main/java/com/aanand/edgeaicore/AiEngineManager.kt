@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 
 class AiEngineManager {
     private var engine: Engine? = null
+    val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
     private val inferenceMutex = Mutex()
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
