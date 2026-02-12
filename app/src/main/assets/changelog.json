@@ -1,6 +1,14 @@
 {
   "versions": [
     {
+      "version": "1.9.4",
+      "changes": [
+        "Enabled real-time response logging in the UI console",
+        "Added 'Generating response...' status indicator when inference begins",
+        "Full AI responses are now logged directly to the UI console for complete diagnostic visibility"
+      ]
+    },
+    {
       "version": "1.9.3",
       "changes": [
         "Enhanced 'health' and 'getLoad' to verify model state: Returns error if engine is not initialized",

@@ -224,11 +224,18 @@ class InferenceService : Service() {
                     if (request.top_p != null) state.topP = request.top_p
                     if (request.top_k != null) state.topK = request.top_k
                     
+                    var responseStarted = false
                     aiEngineManager.generateConversationResponseAsync(
                         state = state,
                         messages = request.messages,
                         onToken = { token ->
                             try {
+                                if (!responseStarted) {
+                                    responseStarted = true
+                                    val logMsg = "Generating response [${conversationId.take(8)}]..."
+                                    Log.i(TAG, logMsg)
+                                    sendStatusBroadcast(logMsg)
+                                }
                                 callback.onToken(token)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error calling onToken callback", e)
@@ -236,6 +243,10 @@ class InferenceService : Service() {
                         },
                         onComplete = { fullText ->
                             try {
+                                val msg = "Response [${conversationId.take(8)}]: $fullText"
+                                Log.i(TAG, msg)
+                                sendStatusBroadcast(msg)
+                                
                                 val response = createChatCompletionResponse(request, fullText)
                                 callback.onComplete(gson.toJson(response))
                             } catch (e: Exception) {
@@ -243,6 +254,9 @@ class InferenceService : Service() {
                             }
                         },
                         onErrorCallback = { error ->
+                            val msg = "Error [${conversationId.take(8)}]: ${error.message}"
+                            Log.e(TAG, msg)
+                            sendStatusBroadcast(msg)
                             try {
                                 callback.onError(error.message ?: "Unknown inference error")
                             } catch (e: Exception) {
