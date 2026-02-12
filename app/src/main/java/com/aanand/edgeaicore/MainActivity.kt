@@ -87,6 +87,7 @@ class MainActivity : AppCompatActivity() {
             inferenceService = IInferenceService.Stub.asInterface(service)
             isBound = true
             appendLog("Connected to Inference Service")
+            syncStatusWithService()
         }
 
         override fun onServiceDisconnected(arg0: ComponentName) {
@@ -100,32 +101,12 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == InferenceService.ACTION_STATUS_UPDATE) {
                 val status = intent.getStringExtra(InferenceService.EXTRA_STATUS)
-                tvStatus.text = getString(R.string.status_label) + " " + (status ?: "Unknown")
                 appendLog("Status Update: $status")
+                updateUIForStatus(status ?: "")
 
-                if (status?.contains("loaded", ignoreCase = true) == true) {
-                     switchEnableServer.isEnabled = true
-                     switchEnableServer.isChecked = true
-                     btnTestInference.isEnabled = true
-                     btnTestVision.isEnabled = true
-                     btnTestAudio.isEnabled = true
-                     btnTestMultiTurn.isEnabled = true
-                     btnTestHealth.isEnabled = true
-                     btnTestLoad.isEnabled = true
-                     
-                     if (!isBound) {
-                        val intent = Intent(this@MainActivity, InferenceService::class.java)
-                        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-                     }
-                } else if (status?.contains("Error", ignoreCase = true) == true) {
-                     switchEnableServer.isEnabled = true
-                     switchEnableServer.isChecked = false
-                     btnTestInference.isEnabled = false
-                     btnTestVision.isEnabled = false
-                     btnTestAudio.isEnabled = false
-                     btnTestMultiTurn.isEnabled = false
-                     btnTestHealth.isEnabled = false
-                     btnTestLoad.isEnabled = false
+                if (status?.contains("loaded", ignoreCase = true) == true && !isBound) {
+                    val bindingIntent = Intent(this@MainActivity, InferenceService::class.java)
+                    bindService(bindingIntent, serviceConnection, Context.BIND_AUTO_CREATE)
                 }
             } else if (intent.action == InferenceService.ACTION_TOKEN_REQUEST) {
                 val pkgName = intent.getStringExtra(InferenceService.EXTRA_PACKAGE_NAME) ?: "unknown"
@@ -180,6 +161,9 @@ class MainActivity : AppCompatActivity() {
             addAction(InferenceService.ACTION_TOKEN_REQUEST)
         }
         ContextCompat.registerReceiver(this, statusReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        if (isBound) {
+            syncStatusWithService()
+        }
     }
 
     override fun onPause() {
@@ -286,6 +270,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Try to bind if service is already running to sync status
+        val bindIntent = Intent(this, InferenceService::class.java)
+        bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+
         btnSelectModel.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
@@ -310,8 +298,7 @@ class MainActivity : AppCompatActivity() {
              } else {
                  // Stop server
                  stopInferenceService()
-                 tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_idle)
-                 btnTestInference.isEnabled = false
+                 updateUIForStatus("Idle")
                  appendLog("Stopping server...")
              }
         }
@@ -1171,6 +1158,54 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+    }
+
+    private fun syncStatusWithService() {
+        val service = inferenceService ?: return
+        try {
+            val lastStatus = service.lastStatus
+            if (lastStatus != null) {
+                updateUIForStatus(lastStatus)
+                appendLog("Synced status: $lastStatus")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync status", e)
+        }
+    }
+
+    private fun updateUIForStatus(status: String) {
+        tvStatus.text = getString(R.string.status_label) + " " + status
+        
+        if (status.contains("loaded", ignoreCase = true)) {
+            switchEnableServer.isEnabled = true
+            switchEnableServer.isChecked = true
+            btnTestInference.isEnabled = true
+            btnTestVision.isEnabled = true
+            btnTestAudio.isEnabled = true
+            btnTestMultiTurn.isEnabled = true
+            btnTestHealth.isEnabled = true
+            btnTestLoad.isEnabled = true
+        } else if (status.contains("Error", ignoreCase = true)) {
+            switchEnableServer.isEnabled = true
+            switchEnableServer.isChecked = false
+            btnTestInference.isEnabled = false
+            btnTestVision.isEnabled = false
+            btnTestAudio.isEnabled = false
+            btnTestMultiTurn.isEnabled = false
+            btnTestHealth.isEnabled = false
+            btnTestLoad.isEnabled = false
+        } else if (status.contains("Initializing", ignoreCase = true) || 
+                   status.contains("Loading", ignoreCase = true) ||
+                   status.contains("Verifying", ignoreCase = true) ||
+                   status.contains("Restoring", ignoreCase = true) ||
+                   status.contains("Service starting", ignoreCase = true)) {
+            switchEnableServer.isEnabled = false
+            switchEnableServer.isChecked = true
+        } else if (status.contains("Idle", ignoreCase = true)) {
+            switchEnableServer.isEnabled = (selectedModelPath != null)
+            switchEnableServer.isChecked = false
+            btnTestInference.isEnabled = false
+        }
     }
 
     private var testConversationId: String? = null

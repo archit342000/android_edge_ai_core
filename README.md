@@ -107,6 +107,11 @@ interface IInferenceService {
      *         Returns -1 for invalid token, -2 for model not loaded.
      */
     int getLoad(String apiToken);
+
+    /**
+     * Returns the last status message broadcasted by the service.
+     */
+    String getLastStatus();
 }
 ```
 
