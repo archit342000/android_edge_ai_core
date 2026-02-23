@@ -25,12 +25,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 class OpenAIServer(
     private val aiEngineManager: AiEngineManager,
     private val tokenManager: TokenManager
 ) {
     private var server: NettyApplicationEngine? = null
+    private val activeRequests = AtomicInteger(0)
 
     fun start() {
         if (server != null) return
@@ -63,6 +65,7 @@ class OpenAIServer(
                         return@post
                     }
 
+                    activeRequests.incrementAndGet()
                     try {
                         val request = call.receive<ChatCompletionRequest>()
                         val conversationId = UUID.randomUUID().toString()
@@ -106,17 +109,20 @@ class OpenAIServer(
                                             onComplete = {
                                                 channel.trySend("data: [DONE]\n\n")
                                                 channel.close()
+                                                activeRequests.decrementAndGet()
                                             },
                                             onErrorCallback = { error ->
                                                 Log.e(TAG, "Streaming error", error)
                                                 val errorJson = GsonBuilder().create().toJson(ErrorResponse(error.message ?: "Unknown error"))
                                                 channel.trySend("data: $errorJson\n\n")
                                                 channel.close()
+                                                activeRequests.decrementAndGet()
                                             }
                                         )
                                     } catch (e: Exception) {
                                         Log.e(TAG, "Streaming launch error", e)
                                         channel.close()
+                                        activeRequests.decrementAndGet()
                                     }
                                 }
 
@@ -130,49 +136,54 @@ class OpenAIServer(
                             var finalResponse: String? = null
                             var errorOccurred: Throwable? = null
 
-                            // Call the engine
-                            aiEngineManager.generateConversationResponseAsync(
-                                state = state,
-                                messages = request.messages,
-                                onToken = { /* No-op for non-streaming */ },
-                                onComplete = { finalResponse = it },
-                                onErrorCallback = { errorOccurred = it }
-                            )
+                            try {
+                                // Call the engine
+                                aiEngineManager.generateConversationResponseAsync(
+                                    state = state,
+                                    messages = request.messages,
+                                    onToken = { /* No-op for non-streaming */ },
+                                    onComplete = { finalResponse = it },
+                                    onErrorCallback = { errorOccurred = it }
+                                )
 
-                            if (errorOccurred != null) {
-                                Log.e(TAG, "Inference failed", errorOccurred)
-                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse(errorOccurred?.message ?: "Unknown error"))
-                                return@post
+                                if (errorOccurred != null) {
+                                    Log.e(TAG, "Inference failed", errorOccurred)
+                                    call.respond(HttpStatusCode.InternalServerError, ErrorResponse(errorOccurred?.message ?: "Unknown error"))
+                                    return@post
+                                }
+
+                                if (finalResponse == null) {
+                                    call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Empty response from model"))
+                                    return@post
+                                }
+
+                                val response = ChatCompletionResponse(
+                                    id = "chatcmpl-${UUID.randomUUID()}",
+                                    created = System.currentTimeMillis() / 1000,
+                                    model = request.model ?: "litertlm-model",
+                                    choices = listOf(
+                                        Choice(
+                                            index = 0,
+                                            message = ChatMessageResponse(
+                                                role = "assistant",
+                                                content = finalResponse!!
+                                            ),
+                                            finish_reason = "stop"
+                                        )
+                                    ),
+                                    usage = Usage(0, 0, 0)
+                                )
+
+                                call.respond(response)
+                            } finally {
+                                activeRequests.decrementAndGet()
                             }
-
-                            if (finalResponse == null) {
-                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Empty response from model"))
-                                return@post
-                            }
-
-                            val response = ChatCompletionResponse(
-                                id = "chatcmpl-${UUID.randomUUID()}",
-                                created = System.currentTimeMillis() / 1000,
-                                model = request.model ?: "litertlm-model",
-                                choices = listOf(
-                                    Choice(
-                                        index = 0,
-                                        message = ChatMessageResponse(
-                                            role = "assistant",
-                                            content = finalResponse!!
-                                        ),
-                                        finish_reason = "stop"
-                                    )
-                                ),
-                                usage = Usage(0, 0, 0)
-                            )
-
-                            call.respond(response)
                         }
 
                     } catch (e: Exception) {
                         Log.e(TAG, "Error processing request", e)
                         call.respond(HttpStatusCode.BadRequest, ErrorResponse("Bad Request: ${e.message}"))
+                        if (activeRequests.get() > 0) activeRequests.decrementAndGet() // Safety decrement if not streaming
                     }
                 }
 
@@ -208,6 +219,22 @@ class OpenAIServer(
                     } else {
                         call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
                     }
+                }
+
+                // Get Load
+                get("/load") {
+                    val token = extractToken(call.request.header("Authorization"))
+                    if (!tokenManager.isValidToken(token)) {
+                        call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
+                        return@get
+                    }
+
+                    if (!aiEngineManager.isModelLoaded) {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
+                        return@get
+                    }
+
+                    call.respond(mapOf("load" to activeRequests.get()))
                 }
             }
 

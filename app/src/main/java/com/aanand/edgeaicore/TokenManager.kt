@@ -13,8 +13,8 @@ import java.util.concurrent.ConcurrentHashMap
  * 
  * Flow:
  * 1. Tokens are generated manually or via backup restore.
- * 2. Tokens are persisted and used for API validation.
- * 3. Pending approval flow has been removed.
+ * 2. Only ONE token is active at a time. Generating a new one clears the old.
+ * 3. Tokens are persisted and used for API validation.
  */
 class TokenManager private constructor(private val context: Context) {
     
@@ -70,11 +70,14 @@ class TokenManager private constructor(private val context: Context) {
         }
         
         // 3. Update Memory
+        tokenMap.clear()
+        validTokens.clear()
         if (!loadedTokens.isNullOrEmpty()) {
-            tokenMap.clear()
-            validTokens.clear()
-            tokenMap.putAll(loadedTokens)
-            validTokens.addAll(loadedTokens.values)
+            // Enforce single token rule on load if somehow multiple exist
+            // (Takes the last one to be consistent)
+            val entry = loadedTokens.entries.last()
+            tokenMap[entry.key] = entry.value
+            validTokens.add(entry.value)
         }
         
         Log.i(TAG, "Sync: Loaded ${tokenMap.size} tokens")
@@ -117,8 +120,11 @@ class TokenManager private constructor(private val context: Context) {
     
     /**
      * Force generates a token (used by the main app UI directly).
+     * Clears all previous tokens to enforce "One active token" rule.
      */
     fun generateToken(): String = synchronized(dataLock) {
+        clearAllData() // Enforce single token
+
         val token = UUID.randomUUID().toString()
         val packageName = "manual_${System.currentTimeMillis()}"
         tokenMap[packageName] = token
@@ -179,7 +185,11 @@ class TokenManager private constructor(private val context: Context) {
     }
     
     fun addTokens(tokens: Set<String>) = synchronized(dataLock) {
-        tokens.forEach { token ->
+        clearAllData() // Enforce single token
+
+        // Only take the first token from the set if multiple exist
+        val token = tokens.firstOrNull()
+        if (token != null) {
             val pkg = "imported_${UUID.randomUUID().toString().take(4)}"
             tokenMap[pkg] = token
             validTokens.add(token)

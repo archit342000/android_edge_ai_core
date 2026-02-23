@@ -46,6 +46,7 @@ import com.aanand.edgeaicore.ChatMessage
 import com.google.gson.JsonPrimitive
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
 
@@ -311,8 +312,21 @@ class MainActivity : AppCompatActivity() {
         }
         
         btnTestLoad.setOnClickListener {
-            // Not supported in REST API yet
-             appendLog("Get Load: Not supported in REST API yet")
+            val token = getOrGenerateToken()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val result = performGetRequest("http://localhost:8080/v1/load", token)
+                    val json = JSONObject(result)
+                    val load = json.optInt("load", -1)
+                    withContext(Dispatchers.Main) {
+                        appendLog("Current Server Load: $load")
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("Get Load Failed: ${e.message}")
+                    }
+                }
+            }
         }
         
         checkAndRequestPermissions()
@@ -666,7 +680,7 @@ class MainActivity : AppCompatActivity() {
         val file = audioFile ?: return
         val token = getOrGenerateToken()
         
-        appendLog("=== Starting Audio Test ===")
+        appendLog("=== Starting Audio Test (Streaming) ===")
         CoroutineScope(Dispatchers.IO).launch {
              try {
                 // Step 3: Encode audio
@@ -680,17 +694,23 @@ class MainActivity : AppCompatActivity() {
                     )))
                 )
 
-                val req = ChatCompletionRequest(model = "gemma-audio", messages = messages)
-                val response = performChatRequest(req, token)
+                val req = ChatCompletionRequest(model = "gemma-audio", messages = messages, stream = true)
 
                 withContext(Dispatchers.Main) {
-                    appendLog("Assistant: ${response.choices.firstOrNull()?.message?.content}")
-                    appendLog("=== Audio Test Complete ===")
+                    appendLog("Assistant: ", newLine = false)
+                }
+
+                performStreamingChatRequest(req, token) { chunk ->
+                    runOnUiThread { appendLog(chunk, newLine = false) }
+                }
+
+                withContext(Dispatchers.Main) {
+                    appendLog("\n=== Audio Test Complete ===")
                     tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
                 }
              } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("❌ Audio Test Failed: ${e.message}")
+                     appendLog("\n❌ Audio Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
              } finally {
@@ -702,7 +722,7 @@ class MainActivity : AppCompatActivity() {
     private fun runTestVision(imageUri: Uri) {
         val token = getOrGenerateToken()
         tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_selecting_image)
-        appendLog("=== Starting Vision Test ===")
+        appendLog("=== Starting Vision Test (Streaming) ===")
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -722,17 +742,23 @@ class MainActivity : AppCompatActivity() {
                     )))
                 )
 
-                val req = ChatCompletionRequest(model = "gemma-vision", messages = messages)
-                val response = performChatRequest(req, token)
+                val req = ChatCompletionRequest(model = "gemma-vision", messages = messages, stream = true)
 
                 withContext(Dispatchers.Main) {
-                    appendLog("Assistant: ${response.choices.firstOrNull()?.message?.content}")
-                    appendLog("=== Vision Test Complete ===")
+                    appendLog("Assistant: ", newLine = false)
+                }
+
+                performStreamingChatRequest(req, token) { chunk ->
+                    runOnUiThread { appendLog(chunk, newLine = false) }
+                }
+
+                withContext(Dispatchers.Main) {
+                    appendLog("\n=== Vision Test Complete ===")
                     tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
                 }
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("❌ Vision Test Failed: ${e.message}")
+                     appendLog("\n❌ Vision Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
             }
@@ -889,18 +915,18 @@ class MainActivity : AppCompatActivity() {
     private fun runTestInference() {
         val token = getOrGenerateToken()
         appendLog("=== Starting Inference Test (Streaming) ===")
-        
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val messages = listOf(ChatMessage("user", JsonPrimitive("Hello!")))
                 // Enable streaming
                 val req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
-                
+
                 withContext(Dispatchers.Main) {
                     appendLog("User: Hello!")
                     appendLog("Assistant: ", newLine = false)
                 }
-                
+
                 performStreamingChatRequest(req, token) { chunk ->
                     runOnUiThread {
                         appendLog(chunk, newLine = false)
@@ -922,35 +948,48 @@ class MainActivity : AppCompatActivity() {
 
     private fun runTestMultiTurn() {
         val token = getOrGenerateToken()
-        appendLog("=== Starting Multi-Turn Test ===")
+        appendLog("=== Starting Multi-Turn Test (Streaming) ===")
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 // Turn 1
                 val messages = mutableListOf(ChatMessage("user", JsonPrimitive("Hello! Who are you?")))
-                var req = ChatCompletionRequest(model = "gemma", messages = messages)
+                var req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
+
+                withContext(Dispatchers.Main) {
+                    appendLog("User: Hello! Who are you?")
+                    appendLog("Assistant: ", newLine = false)
+                }
                 
-                withContext(Dispatchers.Main) { appendLog("User: Hello! Who are you?") }
-                var response = performChatRequest(req, token)
-                var reply = response.choices.first().message.content
-                messages.add(ChatMessage("assistant", JsonPrimitive(reply)))
-                withContext(Dispatchers.Main) { appendLog("Assistant: $reply") }
+                var reply1 = ""
+                performStreamingChatRequest(req, token) { chunk ->
+                    reply1 += chunk
+                    runOnUiThread { appendLog(chunk, newLine = false) }
+                }
+                messages.add(ChatMessage("assistant", JsonPrimitive(reply1)))
+                withContext(Dispatchers.Main) { appendLog("\n") }
                 
                 // Turn 2
                 delay(1000)
                 messages.add(ChatMessage("user", JsonPrimitive("What did I just ask?")))
-                withContext(Dispatchers.Main) { appendLog("User: What did I just ask?") }
-                
-                req = ChatCompletionRequest(model = "gemma", messages = messages)
-                response = performChatRequest(req, token)
-                reply = response.choices.first().message.content
                 withContext(Dispatchers.Main) {
-                    appendLog("Assistant: $reply")
-                    appendLog("=== Multi-Turn Test Complete ===")
+                    appendLog("User: What did I just ask?")
+                    appendLog("Assistant: ", newLine = false)
+                }
+
+                req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
+                var reply2 = ""
+                performStreamingChatRequest(req, token) { chunk ->
+                    reply2 += chunk
+                    runOnUiThread { appendLog(chunk, newLine = false) }
+                }
+                
+                withContext(Dispatchers.Main) {
+                    appendLog("\n=== Multi-Turn Test Complete ===")
                 }
 
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { appendLog("❌ Error: ${e.message}") }
+                withContext(Dispatchers.Main) { appendLog("\n❌ Error: ${e.message}") }
             }
         }
     }
