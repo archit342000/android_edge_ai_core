@@ -3,20 +3,16 @@ package com.aanand.edgeaicore
 import androidx.core.content.ContextCompat
 import android.app.Activity
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.ServiceConnection
 import android.net.Uri
 import android.os.Bundle
-import android.os.IBinder
 import android.provider.OpenableColumns
 import android.util.Log
 import android.view.View
 import android.os.PowerManager
 import android.provider.Settings
-import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,25 +20,32 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import java.io.File
+import java.io.FileOutputStream
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.widget.Toast
 import android.media.AudioRecord
 import android.media.AudioFormat
 import android.media.MediaRecorder
 import android.content.pm.PackageManager
-import android.content.ClipboardManager
-import android.content.ClipData
-import android.widget.Toast
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Job
-import java.io.File
-import java.io.FileOutputStream
-import java.net.NetworkInterface
-import java.nio.charset.Charset
-import java.util.Collections
+import com.aanand.edgeaicore.ChatCompletionRequest
+import com.aanand.edgeaicore.ChatCompletionResponse
+import com.aanand.edgeaicore.ChatMessage
+import com.google.gson.JsonPrimitive
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
@@ -67,8 +70,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnDeleteToken: MaterialButton
     private lateinit var btnBackupTokens: MaterialButton
     private lateinit var btnRestoreTokens: MaterialButton
-    private lateinit var llPendingRequests: android.widget.LinearLayout
-    private lateinit var tvPendingLabel: TextView
     private lateinit var llAuthorizedApps: android.widget.LinearLayout
     private lateinit var tvAuthorizedLabel: TextView
     private lateinit var bottomNav: com.google.android.material.bottomnavigation.BottomNavigationView
@@ -79,23 +80,7 @@ class MainActivity : AppCompatActivity() {
     private var currentToken: String? = null
 
     private var selectedModelPath: String? = null
-    private var inferenceService: IInferenceService? = null
-    private var isBound = false
-
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(className: ComponentName, service: IBinder) {
-            inferenceService = IInferenceService.Stub.asInterface(service)
-            isBound = true
-            appendLog("Connected to Inference Service")
-            syncStatusWithService()
-        }
-
-        override fun onServiceDisconnected(arg0: ComponentName) {
-            inferenceService = null
-            isBound = false
-            appendLog("Disconnected from Inference Service")
-        }
-    }
+    private val gson = Gson()
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -105,15 +90,6 @@ class MainActivity : AppCompatActivity() {
                 Log.d(TAG, "Received STATUS_UPDATE: $status")
                 appendLog("Status Update: $status")
                 updateUIForStatus(status ?: "")
-
-                if (status?.contains("loaded", ignoreCase = true) == true && !isBound) {
-                    val bindingIntent = Intent(this@MainActivity, InferenceService::class.java)
-                    bindService(bindingIntent, serviceConnection, Context.BIND_AUTO_CREATE)
-                }
-            } else if (intent.action == InferenceService.ACTION_TOKEN_REQUEST) {
-                val pkgName = intent.getStringExtra(InferenceService.EXTRA_PACKAGE_NAME) ?: "unknown"
-                appendLog("New token request from $pkgName")
-                updatePendingRequestsUI()
             }
         }
     }
@@ -160,12 +136,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         val filter = IntentFilter().apply {
             addAction(InferenceService.ACTION_STATUS_UPDATE)
-            addAction(InferenceService.ACTION_TOKEN_REQUEST)
         }
         ContextCompat.registerReceiver(this, statusReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
-        if (isBound) {
-            syncStatusWithService()
-        }
     }
 
     override fun onPause() {
@@ -218,7 +190,6 @@ class MainActivity : AppCompatActivity() {
                     pageBackend.visibility = android.view.View.GONE
                     pageTokens.visibility = android.view.View.VISIBLE
                     toolbar.title = "API Token Management"
-                    updatePendingRequestsUI()
                     updateAuthorizedAppsUI()
                     true
                 }
@@ -236,8 +207,10 @@ class MainActivity : AppCompatActivity() {
         btnDeleteToken = findViewById(R.id.btn_delete_token)
         btnBackupTokens = findViewById(R.id.btn_backup_tokens)
         btnRestoreTokens = findViewById(R.id.btn_restore_tokens)
-        llPendingRequests = findViewById(R.id.ll_pending_requests)
-        tvPendingLabel = findViewById(R.id.tv_pending_label)
+        // llPendingRequests & tvPendingLabel removed
+        findViewById<android.view.View>(R.id.ll_pending_requests)?.visibility = View.GONE
+        findViewById<android.view.View>(R.id.tv_pending_label)?.visibility = View.GONE
+
         llAuthorizedApps = findViewById(R.id.ll_authorized_apps)
         tvAuthorizedLabel = findViewById(R.id.tv_authorized_label)
         
@@ -245,7 +218,6 @@ class MainActivity : AppCompatActivity() {
         tokenManager = TokenManager.getInstance(this)
         
         // Refresh UI
-        updatePendingRequestsUI()
         updateAuthorizedAppsUI()
         
         // Restore existing token (use the first one if any exist)
@@ -271,10 +243,6 @@ class MainActivity : AppCompatActivity() {
                 appendLog("Restored model path: $savedPath")
             }
         }
-
-        // Try to bind if service is already running to sync status
-        val bindIntent = Intent(this, InferenceService::class.java)
-        bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         btnSelectModel.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -304,8 +272,6 @@ class MainActivity : AppCompatActivity() {
                  appendLog("Stopping server...")
              }
         }
-        // Remove standard OnCheckedChangeListener to avoid loops with programmatic setting
-        // switchEnableServer.setOnCheckedChangeListener { ... }
 
         btnTestInference.setOnClickListener {
             runTestInference()
@@ -330,14 +296,10 @@ class MainActivity : AppCompatActivity() {
         btnTestMultiTurn.setOnClickListener { runTestMultiTurn() }
         
         btnTestHealth.setOnClickListener {
-            if (!isBound || inferenceService == null) {
-                appendLog("Error: Service not bound")
-                return@setOnClickListener
-            }
-            val token = currentToken ?: ""
+            val token = getOrGenerateToken()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val result = inferenceService?.health(token) ?: "Error"
+                    val result = performGetRequest("http://localhost:8080/v1/health", token)
                     withContext(Dispatchers.Main) {
                         appendLog("Health Check: $result")
                     }
@@ -350,16 +312,14 @@ class MainActivity : AppCompatActivity() {
         }
         
         btnTestLoad.setOnClickListener {
-            if (!isBound || inferenceService == null) {
-                appendLog("Error: Service not bound")
-                return@setOnClickListener
-            }
-            val token = currentToken ?: ""
+            val token = getOrGenerateToken()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val load = inferenceService?.getLoad(token) ?: -1
+                    val result = performGetRequest("http://localhost:8080/v1/load", token)
+                    val json = JSONObject(result)
+                    val load = json.optInt("load", -1)
                     withContext(Dispatchers.Main) {
-                        appendLog("Current Server Load: $load active requests")
+                        appendLog("Current Server Load: $load")
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
@@ -371,6 +331,12 @@ class MainActivity : AppCompatActivity() {
         
         checkAndRequestPermissions()
         requestIgnoreBatteryOptimizations()
+    }
+
+    private fun getOrGenerateToken(): String {
+        if (currentToken != null) return currentToken!!
+        generateNewToken()
+        return currentToken!!
     }
 
     private fun setupTokenListeners() {
@@ -436,7 +402,7 @@ class MainActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val tokens = tokenManager.getAllTokens()
-                val json = Gson().toJson(tokens)
+                val json = gson.toJson(tokens)
                 contentResolver.openOutputStream(uri)?.use { outputStream ->
                     outputStream.write(json.toByteArray())
                 }
@@ -460,7 +426,7 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openInputStream(uri)?.use { inputStream ->
                     val json = inputStream.bufferedReader().readText()
                     val type = object : com.google.gson.reflect.TypeToken<Set<String>>() {}.type
-                    val tokens: Set<String> = Gson().fromJson(json, type)
+                    val tokens: Set<String> = gson.fromJson(json, type)
                     
                     tokenManager.addTokens(tokens)
                     
@@ -502,61 +468,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updatePendingRequestsUI() {
-        val requests = tokenManager.getPendingRequests()
-        appendLog("Refreshing pending requests: ${requests.size} found")
-        llPendingRequests.removeAllViews()
-        
-        if (requests.isEmpty()) {
-            tvPendingLabel.visibility = View.VISIBLE
-            tvPendingLabel.text = "No pending access requests"
-            return
-        }
-        
-        tvPendingLabel.visibility = View.VISIBLE
-        tvPendingLabel.text = "Pending Access Requests"
-        requests.forEach { pkgName ->
-            val itemView = layoutInflater.inflate(android.R.layout.simple_list_item_2, llPendingRequests, false)
-            itemView.setPadding(32, 16, 32, 16)
-            val text1 = itemView.findViewById<TextView>(android.R.id.text1)
-            val text2 = itemView.findViewById<TextView>(android.R.id.text2)
-            
-            text1.text = pkgName
-            text2.text = "Tap to Approve or Deny"
-            
-            itemView.setOnClickListener {
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Token Request")
-                    .setMessage("App '$pkgName' is requesting an AI API Token. Allow?")
-                    .setPositiveButton("Approve") { _, _ ->
-                        tokenManager.approveRequest(pkgName)
-                        updatePendingRequestsUI()
-                        updateAuthorizedAppsUI()
-                        appendLog("Approved token for $pkgName")
-                        // If we don't have a token displayed, show this one
-                        if (currentToken == null) {
-                            currentToken = tokenManager.getTokenMappings()[pkgName]
-                            updateTokenUI()
-                        }
-                    }
-                    .setNegativeButton("Deny") { _, _ ->
-                        tokenManager.denyRequest(pkgName)
-                        updatePendingRequestsUI()
-                        appendLog("Denied token for $pkgName")
-                    }
-                    .show()
-            }
-            llPendingRequests.addView(itemView)
-        }
-    }
-
     private fun updateAuthorizedAppsUI() {
         val mappings = tokenManager.getTokenMappings()
         llAuthorizedApps.removeAllViews()
-        
-        // Filter out manual tokens if they don't have a recognizable package name
-        // though usually we want to show all mappings except maybe the current test one if we want.
-        // Actually, let's show all.
         
         if (mappings.isEmpty()) {
             tvAuthorizedLabel.visibility = View.GONE
@@ -579,40 +493,14 @@ class MainActivity : AppCompatActivity() {
                     .setMessage("Revoke API access for '$pkgName'? All active conversations for this token will be closed.")
                     .setPositiveButton("Revoke") { _, _ ->
                         val tokenToRevoke = mappings[pkgName]
-                        if (isBound && inferenceService != null && tokenToRevoke != null) {
-                            CoroutineScope(Dispatchers.IO).launch {
-                                try {
-                                    val success = inferenceService?.revokeApiToken(tokenToRevoke) ?: false
-                                    withContext(Dispatchers.Main) {
-                                        if (success) {
-                                            appendLog("Successfully revoked access for $pkgName via service")
-                                        } else {
-                                            // Fallback to local if service failed
-                                            tokenManager.revokeTokenByPackage(pkgName)
-                                            appendLog("Revoked access for $pkgName (local fallback)")
-                                        }
-                                        if (currentToken == tokenToRevoke) {
-                                            currentToken = null
-                                            updateTokenUI()
-                                        }
-                                        updateAuthorizedAppsUI()
-                                    }
-                                } catch (e: Exception) {
-                                    withContext(Dispatchers.Main) {
-                                        appendLog("Error revoking via service: ${e.message}")
-                                        tokenManager.revokeTokenByPackage(pkgName)
-                                        updateAuthorizedAppsUI()
-                                    }
-                                }
-                            }
-                        } else {
-                            tokenManager.revokeTokenByPackage(pkgName)
+                        if (tokenToRevoke != null) {
+                            tokenManager.revokeToken(tokenToRevoke)
                             if (currentToken == tokenToRevoke) {
                                 currentToken = null
                                 updateTokenUI()
                             }
                             updateAuthorizedAppsUI()
-                            appendLog("Revoked access for $pkgName (service not bound)")
+                            appendLog("Revoked access for $pkgName")
                         }
                     }
                     .setNegativeButton("Cancel", null)
@@ -670,11 +558,6 @@ class MainActivity : AppCompatActivity() {
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
 
     private fun startAudioRecording() {
-        if (!isBound || inferenceService == null) {
-            appendLog("Error: Service not bound")
-            return
-        }
-
         if (isRecording) return
         isRecording = true
 
@@ -728,7 +611,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addWavHeader(file: File) {
-        val totalAudioLen = file.length() - 44
+         // (WAV Header generation code omitted for brevity as it was already correct, just keeping it same)
+         val totalAudioLen = file.length() - 44
         val totalDataLen = totalAudioLen + 36
         val sampleRate = SAMPLE_RATE.toLong()
         val channels = 1
@@ -794,268 +678,87 @@ class MainActivity : AppCompatActivity() {
 
     private fun runTestAudio() {
         val file = audioFile ?: return
-        if (!file.exists()) {
-            appendLog("Error: Audio file not found")
-            return
-        }
-
-        appendLog("=== Starting Audio Auth Flow Test ===")
-        appendLog("Step 1: Requesting API token...")
+        val token = getOrGenerateToken()
         
+        appendLog("=== Starting Audio Test (Streaming) ===")
         CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // Step 1: Request token
-                val tokenResult = inferenceService?.generateApiToken() ?: "ERROR"
-                
-                withContext(Dispatchers.Main) {
-                    appendLog("Token request result: $tokenResult")
-                }
-                
-                if (tokenResult == "PENDING_USER_APPROVAL") {
-                    withContext(Dispatchers.Main) {
-                        appendLog("⏳ Waiting for user approval...")
-                        appendLog("Switching to Tokens tab for approval...")
-                        bottomNav.selectedItemId = R.id.nav_tokens
-                        tvStatus.text = getString(R.string.status_label) + " Awaiting Approval"
-                    }
-                    file.delete()
-                    return@launch
-                }
-                
-                if (tokenResult.startsWith("ERROR") || tokenResult.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        appendLog("❌ Token generation failed: $tokenResult")
-                    }
-                    file.delete()
-                    return@launch
-                }
-                
-                val testToken = tokenResult
-                withContext(Dispatchers.Main) {
-                    appendLog("✅ Token approved: ${testToken.take(8)}...")
-                    appendLog("Step 2: Starting session...")
-                }
-                
-                // Step 2: Start conversation
-                // Pass 0L for TTL to use default (30 mins)
-                val convJson = inferenceService?.startConversation(testToken, "", 0L) ?: ""
-                if (convJson.isEmpty() || convJson.contains("error")) {
-                    withContext(Dispatchers.Main) {
-                        appendLog("❌ Conversation creation failed: $convJson")
-                    }
-                    file.delete()
-                    return@launch
-                }
-                
-                val json = JSONObject(convJson)
-                val conversationId = json.getString("conversation_id")
-                
+             try {
                 // Step 3: Encode audio
                 val bytes = file.readBytes()
                 val base64Audio = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                 
+                val messages = listOf(
+                    ChatMessage("user", gson.toJsonTree(listOf(
+                        mapOf("type" to "text", "text" to "What is in this audio?"),
+                        mapOf("type" to "audio_url", "audio_url" to mapOf("url" to "data:audio/wav;base64,$base64Audio"))
+                    )))
+                )
+
+                val req = ChatCompletionRequest(model = "gemma-audio", messages = messages, stream = true)
+
                 withContext(Dispatchers.Main) {
-                    appendLog("✅ Conversation created: ${conversationId.take(8)}...")
-                    appendLog("Step 3: Sending audio request (${bytes.size} bytes)...")
-                    appendLog("Response: ")
+                    appendLog("Assistant: ", newLine = false)
                 }
-                
-                val jsonInputString = """
-                    {
-                        "model": "gemma-audio",
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": [
-                                    { "type": "text", "text": "What is in this audio?" },
-                                    { "type": "audio_url", "audio_url": { "url": "data:audio/wav;base64,$base64Audio" } }
-                                ]
-                            }
-                        ]
-                    }
-                """.trimIndent()
 
-                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : IInferenceCallback.Stub() {
-                    override fun onToken(token: String) {
-                        runOnUiThread {
-                            val current = tvLogs.text.toString()
-                            tvLogs.text = current + token
-                        }
-                    }
+                performStreamingChatRequest(req, token) { chunk ->
+                    runOnUiThread { appendLog(chunk, newLine = false) }
+                }
 
-                    override fun onComplete(fullResponse: String) {
-                        runOnUiThread {
-                            appendLog("\n---")
-                            appendLog("Step 4: Closing conversation...")
-                        }
-                        
-                        CoroutineScope(Dispatchers.IO).launch {
-                            try {
-                                val closeResult = inferenceService?.closeConversation(testToken, conversationId)
-                                withContext(Dispatchers.Main) {
-                                    appendLog("✅ Conversation closed: $closeResult")
-                                    appendLog("=== Audio Auth Flow Test Complete ===")
-                                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
-                                }
-                            } catch (e: Exception) {
-                                withContext(Dispatchers.Main) {
-                                    appendLog("⚠️ Conversation close error: ${e.message}")
-                                }
-                            }
-                        }
-                        file.delete()
-                    }
-
-                    override fun onError(error: String) {
-                        runOnUiThread {
-                            appendLog("\n❌ Audio Error: $error")
-                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
-                        }
-                        file.delete()
-                    }
-                })
-
-            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    appendLog("\n=== Audio Test Complete ===")
+                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                }
+             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("❌ Audio Test Failed: ${e.message}")
+                     appendLog("\n❌ Audio Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
+             } finally {
                  file.delete()
-            }
+             }
         }
     }
 
     private fun runTestVision(imageUri: Uri) {
-        if (!isBound || inferenceService == null) {
-            appendLog("Error: Service not bound")
-            return
-        }
-
+        val token = getOrGenerateToken()
         tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_selecting_image)
-        appendLog("=== Starting Vision Auth Flow Test ===")
-        appendLog("Step 1: Requesting API token...")
+        appendLog("=== Starting Vision Test (Streaming) ===")
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // Step 1: Request token
-                val tokenResult = inferenceService?.generateApiToken() ?: "ERROR"
-                
-                withContext(Dispatchers.Main) {
-                    appendLog("Token request result: $tokenResult")
-                }
-                
-                if (tokenResult == "PENDING_USER_APPROVAL") {
-                    withContext(Dispatchers.Main) {
-                        appendLog("⏳ Waiting for user approval...")
-                        appendLog("Switching to Tokens tab for approval...")
-                        bottomNav.selectedItemId = R.id.nav_tokens
-                        tvStatus.text = getString(R.string.status_label) + " Awaiting Approval"
-                    }
-                    return@launch
-                }
-                
-                if (tokenResult.startsWith("ERROR") || tokenResult.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        appendLog("❌ Token generation failed: $tokenResult")
-                    }
-                    return@launch
-                }
-                
-                val testToken = tokenResult
-                withContext(Dispatchers.Main) {
-                    appendLog("✅ Token approved: ${testToken.take(8)}...")
-                    appendLog("Step 2: Starting session...")
-                }
-                
-                // Step 2: Start conversation
-                // Pass 0L for TTL to use default (30 mins)
-                val convJson = inferenceService?.startConversation(testToken, "", 0L) ?: ""
-                if (convJson.isEmpty() || convJson.contains("error")) {
-                    withContext(Dispatchers.Main) {
-                        appendLog("❌ Conversation creation failed: $convJson")
-                    }
-                    return@launch
-                }
-                
-                val json = JSONObject(convJson)
-                val conversationId = json.getString("conversation_id")
-                
-                withContext(Dispatchers.Main) {
-                    appendLog("✅ Conversation created: ${conversationId.take(8)}...")
-                    appendLog("Step 3: Encoding image...")
-                }
-                
                 // Encode image
                 val base64Image = getBase64EncodedImage(imageUri)
                 if (base64Image == null) {
                     withContext(Dispatchers.Main) {
-                        appendLog("❌ Could not encode image")
-                        tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                         appendLog("❌ Could not encode image")
                     }
                     return@launch
                 }
 
-                val jsonInputString = """
-                    {
-                        "model": "gemma-vision",
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": [
-                                    { "type": "text", "text": "What is in this image?" },
-                                    { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,$base64Image" } }
-                                ]
-                            }
-                        ]
-                    }
-                """.trimIndent()
+                val messages = listOf(
+                    ChatMessage("user", gson.toJsonTree(listOf(
+                        mapOf("type" to "text", "text" to "What is in this image?"),
+                        mapOf("type" to "image_url", "image_url" to mapOf("url" to "data:image/jpeg;base64,$base64Image"))
+                    )))
+                )
+
+                val req = ChatCompletionRequest(model = "gemma-vision", messages = messages, stream = true)
 
                 withContext(Dispatchers.Main) {
-                    appendLog("Step 4: Sending vision request...")
-                    appendLog("Response: ")
+                    appendLog("Assistant: ", newLine = false)
                 }
 
-                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : IInferenceCallback.Stub() {
-                    override fun onToken(token: String) {
-                        runOnUiThread {
-                            val current = tvLogs.text.toString()
-                            tvLogs.text = current + token
-                        }
-                    }
+                performStreamingChatRequest(req, token) { chunk ->
+                    runOnUiThread { appendLog(chunk, newLine = false) }
+                }
 
-                    override fun onComplete(fullResponse: String) {
-                        runOnUiThread {
-                            appendLog("\n---")
-                            appendLog("Step 5: Closing conversation...")
-                        }
-                        
-                        CoroutineScope(Dispatchers.IO).launch {
-                            try {
-                                val closeResult = inferenceService?.closeConversation(testToken, conversationId)
-                                withContext(Dispatchers.Main) {
-                                    appendLog("✅ Conversation closed: $closeResult")
-                                    appendLog("=== Vision Auth Flow Test Complete ===")
-                                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
-                                }
-                            } catch (e: Exception) {
-                                withContext(Dispatchers.Main) {
-                                    appendLog("⚠️ Conversation close error: ${e.message}")
-                                }
-                            }
-                        }
-                    }
-
-                    override fun onError(error: String) {
-                        runOnUiThread {
-                            appendLog("\n❌ Vision Error: $error")
-                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
-                        }
-                    }
-                })
-
+                withContext(Dispatchers.Main) {
+                    appendLog("\n=== Vision Test Complete ===")
+                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                }
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("❌ Vision Test Failed: ${e.message}")
+                     appendLog("\n❌ Vision Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
             }
@@ -1159,29 +862,17 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
-    private fun syncStatusWithService() {
-        val service = inferenceService
-        if (service == null) {
-            Log.w(TAG, "syncStatusWithService: Service is null")
-            return
+    private fun stopInferenceService() {
+        val intent = Intent(this, InferenceService::class.java).apply {
+            action = InferenceService.ACTION_STOP
         }
-        try {
-            val currentStatus = service.lastStatus
-            Log.d(TAG, "syncStatusWithService: Retrieved status = $currentStatus")
-            if (currentStatus != null) {
-                updateUIForStatus(currentStatus)
-                appendLog("Synced status: $currentStatus")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to sync status", e)
-        }
+        startService(intent)
     }
 
     private fun updateUIForStatus(status: String) {
-        tvStatus.text = getString(R.string.status_label) + " " + status
+        val baseStatus = getString(R.string.status_label) + " " + status
         
         if (status.contains("loaded", ignoreCase = true)) {
             switchEnableServer.isEnabled = true
@@ -1192,6 +883,7 @@ class MainActivity : AppCompatActivity() {
             btnTestMultiTurn.isEnabled = true
             btnTestHealth.isEnabled = true
             btnTestLoad.isEnabled = true
+            tvStatus.text = "$baseStatus (http://localhost:8080)"
         } else if (status.contains("Error", ignoreCase = true)) {
             switchEnableServer.isEnabled = true
             switchEnableServer.isChecked = false
@@ -1201,6 +893,7 @@ class MainActivity : AppCompatActivity() {
             btnTestMultiTurn.isEnabled = false
             btnTestHealth.isEnabled = false
             btnTestLoad.isEnabled = false
+            tvStatus.text = baseStatus
         } else if (status.contains("Initializing", ignoreCase = true) || 
                    status.contains("Loading", ignoreCase = true) ||
                    status.contains("Verifying", ignoreCase = true) ||
@@ -1208,192 +901,45 @@ class MainActivity : AppCompatActivity() {
                    status.contains("Service starting", ignoreCase = true)) {
             switchEnableServer.isEnabled = false
             switchEnableServer.isChecked = true
+            tvStatus.text = baseStatus
         } else if (status.contains("Idle", ignoreCase = true)) {
             switchEnableServer.isEnabled = (selectedModelPath != null)
             switchEnableServer.isChecked = false
             btnTestInference.isEnabled = false
+            tvStatus.text = baseStatus
+        } else {
+            tvStatus.text = baseStatus
         }
-    }
-
-    private var testConversationId: String? = null
-
-    /**
-     * Helper to ensure we have a valid conversation before running inference.
-     * Starts a new conversation if needed.
-     */
-    private fun ensureConversation(onReady: (conversationId: String) -> Unit) {
-        val token = currentToken
-        if (token == null) {
-            appendLog("Error: No API token available for testing.")
-            return
-        }
-
-        if (!isBound || inferenceService == null) {
-            appendLog("Error: Service not bound")
-            return
-        }
-
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // If we already have a conversation, check if it's still alive
-                if (testConversationId != null) {
-                    val info = inferenceService?.getConversationInfo(token, testConversationId!!)
-                    if (info != null && !info.contains("error")) {
-                        withContext(Dispatchers.Main) { onReady(testConversationId!!) }
-                        return@launch
-                    }
-                }
-
-                // Start a new conversation
-                withContext(Dispatchers.Main) {
-                    appendLog("Starting new test conversation...")
-                }
-                // Step 2: Start conversation
-                // Pass 0L for TTL to use default (30 mins)
-                val convJson = inferenceService?.startConversation(token, "", 0L) ?: ""
-                if (convJson.isEmpty() || convJson.contains("error")) {
-                    withContext(Dispatchers.Main) {
-                        appendLog("Failed to start conversation: $convJson")
-                    }
-                    return@launch
-                }
-
-                val json = JSONObject(convJson)
-                testConversationId = json.getString("conversation_id")
-                
-                withContext(Dispatchers.Main) {
-                    appendLog("Conversation started: ${testConversationId?.take(8)}...")
-                    onReady(testConversationId!!)
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    appendLog("Conversation management error: ${e.message}")
-                }
-            }
-        }
-    }
-
-    private fun stopInferenceService() {
-        if (isBound) {
-            unbindService(serviceConnection)
-            isBound = false
-        }
-        val intent = Intent(this, InferenceService::class.java).apply {
-            action = InferenceService.ACTION_STOP
-        }
-        startService(intent)
     }
 
     private fun runTestInference() {
-        if (!isBound || inferenceService == null) {
-            appendLog("Error: Service not bound")
-            return
-        }
+        val token = getOrGenerateToken()
+        appendLog("=== Starting Inference Test (Streaming) ===")
 
-        appendLog("=== Starting Full Auth Flow Test ===")
-        appendLog("Step 1: Requesting API token (simulating external app)...")
-        
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // Step 1: Request a new token like an external app would
-                val tokenResult = inferenceService?.generateApiToken() ?: "ERROR"
+                val messages = listOf(ChatMessage("user", JsonPrimitive("Hello!")))
+                // Enable streaming
+                val req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
+
+                withContext(Dispatchers.Main) {
+                    appendLog("User: Hello!")
+                    appendLog("Assistant: ", newLine = false)
+                }
+
+                performStreamingChatRequest(req, token) { chunk ->
+                    runOnUiThread {
+                        appendLog(chunk, newLine = false)
+                    }
+                }
                 
                 withContext(Dispatchers.Main) {
-                    appendLog("Token request result: $tokenResult")
+                    appendLog("\n=== Test Complete ===")
+                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
                 }
-                
-                if (tokenResult == "PENDING_USER_APPROVAL") {
-                    withContext(Dispatchers.Main) {
-                        appendLog("⏳ Waiting for user approval...")
-                        appendLog("Switching to Tokens tab for approval...")
-                        bottomNav.selectedItemId = R.id.nav_tokens
-                        tvStatus.text = getString(R.string.status_label) + " Awaiting Approval"
-                    }
-                    return@launch
-                }
-                
-                if (tokenResult.startsWith("ERROR") || tokenResult.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        appendLog("❌ Token generation failed: $tokenResult")
-                    }
-                    return@launch
-                }
-                
-                val testToken = tokenResult
-                withContext(Dispatchers.Main) {
-                    appendLog("✅ Token approved: ${testToken.take(8)}...")
-                    appendLog("Step 2: Starting conversation...")
-                }
-                
-                // Step 2: Start a conversation
-                // Pass 0L for TTL to use default (30 mins)
-                val convJson = inferenceService?.startConversation(testToken, "", 0L) ?: ""
-                if (convJson.isEmpty() || convJson.contains("error")) {
-                    withContext(Dispatchers.Main) {
-                        appendLog("❌ Conversation creation failed: $convJson")
-                    }
-                    return@launch
-                }
-                
-                val json = JSONObject(convJson)
-                val conversationId = json.getString("conversation_id")
-                
-                withContext(Dispatchers.Main) {
-                    appendLog("✅ Conversation created: ${conversationId.take(8)}...")
-                    appendLog("Step 3: Sending inference request...")
-                    appendLog("Response: ")
-                }
-                
-                // Step 3: Send inference request
-                val jsonInputString = """
-                    {
-                        "model": "gemma",
-                        "messages": [{"role": "user", "content": "Hello! Please respond with a short greeting."}]
-                    }
-                """.trimIndent()
-                
-                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : IInferenceCallback.Stub() {
-                    override fun onToken(token: String) {
-                        runOnUiThread {
-                            val current = tvLogs.text.toString()
-                            tvLogs.text = current + token
-                        }
-                    }
-
-                    override fun onComplete(fullResponse: String) {
-                        runOnUiThread {
-                            appendLog("\n---")
-                            appendLog("Step 4: Closing conversation...")
-                        }
-                        
-                        // Step 4: Close the conversation
-                        CoroutineScope(Dispatchers.IO).launch {
-                            try {
-                                val closeResult = inferenceService?.closeConversation(testToken, conversationId)
-                                withContext(Dispatchers.Main) {
-                                    appendLog("✅ Conversation closed: $closeResult")
-                                    appendLog("=== Auth Flow Test Complete ===")
-                                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
-                                }
-                            } catch (e: Exception) {
-                                withContext(Dispatchers.Main) {
-                                    appendLog("⚠️ Conversation close error: ${e.message}")
-                                }
-                            }
-                        }
-                    }
-
-                    override fun onError(error: String) {
-                        runOnUiThread {
-                            appendLog("\n❌ Inference Error: $error")
-                            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
-                        }
-                    }
-                })
-
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("❌ Test Failed: ${e.message}")
+                     appendLog("\n❌ Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
             }
@@ -1401,84 +947,139 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runTestMultiTurn() {
-        if (!isBound || inferenceService == null) {
-            appendLog("Error: Service not bound")
-            return
-        }
-        appendLog("=== Starting Multi-Turn Test ===")
+        val token = getOrGenerateToken()
+        appendLog("=== Starting Multi-Turn Test (Streaming) ===")
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // 1. Get Token
-                val token = inferenceService?.generateApiToken() ?: "ERROR"
-                if (token.startsWith("ERROR") || token == "PENDING_USER_APPROVAL") {
-                    withContext(Dispatchers.Main) { appendLog("❌ Token Check Failed: $token") }
-                    return@launch
+                // Turn 1
+                val messages = mutableListOf(ChatMessage("user", JsonPrimitive("Hello! Who are you?")))
+                var req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
+
+                withContext(Dispatchers.Main) {
+                    appendLog("User: Hello! Who are you?")
+                    appendLog("Assistant: ", newLine = false)
                 }
                 
-                // 2. Start Conversation
-                // Pass 0L for TTL to use default (30 mins)
-                val convJson = inferenceService?.startConversation(token, "", 0L) ?: ""
-                if (convJson.contains("error")) {
-                    withContext(Dispatchers.Main) { appendLog("❌ Conversation Failed: $convJson") }
-                    return@launch
+                var reply1 = ""
+                performStreamingChatRequest(req, token) { chunk ->
+                    reply1 += chunk
+                    runOnUiThread { appendLog(chunk, newLine = false) }
                 }
-                val conversationId = JSONObject(convJson).getString("conversation_id")
-                withContext(Dispatchers.Main) { appendLog("✅ Conversation Started: ${conversationId.take(8)}...") }
+                messages.add(ChatMessage("assistant", JsonPrimitive(reply1)))
+                withContext(Dispatchers.Main) { appendLog("\n") }
                 
-                // 3. First Turn: "Hello"
-                withContext(Dispatchers.Main) { appendLog("User: Hello! Who are you?") }
-                val req1 = """{"messages": [{"role": "user", "content": "Hello! Who are you?"}]}"""
+                // Turn 2
+                delay(1000)
+                messages.add(ChatMessage("user", JsonPrimitive("What did I just ask?")))
+                withContext(Dispatchers.Main) {
+                    appendLog("User: What did I just ask?")
+                    appendLog("Assistant: ", newLine = false)
+                }
+
+                req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
+                var reply2 = ""
+                performStreamingChatRequest(req, token) { chunk ->
+                    reply2 += chunk
+                    runOnUiThread { appendLog(chunk, newLine = false) }
+                }
                 
-                var firstResponse = ""
-                inferenceService?.generateConversationResponseAsync(token, conversationId, req1, object : IInferenceCallback.Stub() {
-                    override fun onToken(t: String) {
-                         firstResponse += t
-                    }
-                    override fun onComplete(fullResponse: String) {
-                        runOnUiThread { appendLog("Assistant: $fullResponse") }
-                        
-                        // 4. Second Turn: "What did I just ask you?"
-                        CoroutineScope(Dispatchers.IO).launch {
-                            delay(1000)
-                            withContext(Dispatchers.Main) { appendLog("User: What is 2 + 2?") }
-                            // CRITICAL: We only send the NEW turn. 
-                            // The server appends this to the engine's conversation state.
-                            val req2 = """{"messages": [{"role": "user", "content": "What is 2 + 2?"}]}"""
-                            
-                            inferenceService?.generateConversationResponseAsync(token, conversationId, req2, object : IInferenceCallback.Stub() {
-                                override fun onToken(t: String) {}
-                                override fun onComplete(res: String) {
-                                     runOnUiThread { 
-                                         appendLog("Assistant: $res")
-                                         appendLog("=== Multi-Turn Test Complete ===")
-                                     }
-                                     inferenceService?.closeConversation(token, conversationId)
-                                }
-                                override fun onError(e: String) {
-                                    runOnUiThread { appendLog("❌ Turn 2 Error: $e") }
-                                }
-                            })
-                        }
-                    }
-                    override fun onError(error: String) {
-                        runOnUiThread { appendLog("❌ Turn 1 Error: $error") }
-                    }
-                })
-                
+                withContext(Dispatchers.Main) {
+                    appendLog("\n=== Multi-Turn Test Complete ===")
+                }
+
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { appendLog("❌ Error: ${e.message}") }
+                withContext(Dispatchers.Main) { appendLog("\n❌ Error: ${e.message}") }
             }
         }
     }
 
+    private fun performChatRequest(req: ChatCompletionRequest, token: String): ChatCompletionResponse {
+        val url = URL("http://localhost:8080/v1/chat/completions")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Authorization", "Bearer $token")
+        conn.doOutput = true
 
+        val jsonInput = gson.toJson(req)
+        OutputStreamWriter(conn.outputStream).use { it.write(jsonInput) }
 
-    private fun appendLog(msg: String) {
-        val current = tvLogs.text.toString()
-        tvLogs.text = "$current\n$msg"
+        val responseCode = conn.responseCode
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            val responseString = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+            return gson.fromJson(responseString, ChatCompletionResponse::class.java)
+        } else {
+            val errorString = try {
+                 BufferedReader(InputStreamReader(conn.errorStream)).readText()
+            } catch (e: Exception) { "Unknown error" }
+            throw Exception("HTTP $responseCode: $errorString")
+        }
     }
 
+    private fun performStreamingChatRequest(req: ChatCompletionRequest, token: String, onChunk: (String) -> Unit) {
+        val url = URL("http://localhost:8080/v1/chat/completions")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Authorization", "Bearer $token")
+        conn.doOutput = true
 
+        val jsonInput = gson.toJson(req)
+        OutputStreamWriter(conn.outputStream).use { it.write(jsonInput) }
+
+        val responseCode = conn.responseCode
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            BufferedReader(InputStreamReader(conn.inputStream)).use { reader ->
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    val currentLine = line ?: continue
+                    if (currentLine.startsWith("data: ")) {
+                        val data = currentLine.substring(6)
+                        if (data == "[DONE]") break
+
+                        try {
+                            val chunk = gson.fromJson(data, ChatCompletionChunk::class.java)
+                            val content = chunk.choices.firstOrNull()?.delta?.content
+                            if (!content.isNullOrEmpty()) {
+                                onChunk(content)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing chunk", e)
+                        }
+                    }
+                }
+            }
+        } else {
+            val errorString = try {
+                 BufferedReader(InputStreamReader(conn.errorStream)).readText()
+            } catch (e: Exception) { "Unknown error" }
+            throw Exception("HTTP $responseCode: $errorString")
+        }
+    }
+
+    private fun performGetRequest(urlString: String, token: String): String {
+        val url = URL(urlString)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("Authorization", "Bearer $token")
+
+        val responseCode = conn.responseCode
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            return BufferedReader(InputStreamReader(conn.inputStream)).readText()
+        } else {
+             throw Exception("HTTP $responseCode")
+        }
+    }
+
+    private fun appendLog(msg: String, newLine: Boolean = true) {
+        val current = tvLogs.text.toString()
+        if (newLine) {
+            tvLogs.text = "$current\n$msg"
+        } else {
+            tvLogs.text = "$current$msg"
+        }
+    }
 
     companion object {
         private const val TAG = "MainActivity"

@@ -11,18 +11,13 @@ import android.os.IBinder
 import android.util.Log
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
-import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
 class InferenceService : Service() {
@@ -30,325 +25,12 @@ class InferenceService : Service() {
     private val aiEngineManager = AiEngineManager()
     private lateinit var tokenManager: TokenManager
     private lateinit var conversationManager: ConversationManager
-    private val gson = Gson()
+    private lateinit var openAIServer: OpenAIServer
+
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val activeRequests = AtomicInteger(0)
     @Volatile private var serviceStatus: String = "Idle"
     private var isModelLoading = false
-
-    private val binder = object : IInferenceService.Stub() {
-        
-        // =====================
-        // Token Management
-        // =====================
-        
-        override fun generateApiToken(): String {
-            logIpcRequest("generateApiToken", "none")
-            val callingUid = getCallingUid()
-            val packages = packageManager.getPackagesForUid(callingUid)
-            val pkgName = packages?.firstOrNull() ?: "unknown"
-            
-            val result = tokenManager.requestToken(pkgName)
-            if (result == TokenManager.STATUS_PENDING) {
-                // Notify UI that a request is pending
-                val intent = Intent(ACTION_TOKEN_REQUEST).apply {
-                    setPackage(packageName)
-                    putExtra(EXTRA_PACKAGE_NAME, pkgName)
-                }
-                sendBroadcast(intent)
-                Log.i(TAG, "Token requested by $pkgName. Pending manual approval.")
-            } else {
-                Log.i(TAG, "Token request for $pkgName already approved.")
-            }
-            return result
-        }
-        
-        override fun revokeApiToken(apiToken: String): Boolean {
-            val sanitizedToken = apiToken.trim()
-            logIpcRequest("revokeApiToken", sanitizedToken)
-            // Security Check: Only allow revocation from the Edge AI Core app itself
-            val callingUid = getCallingUid()
-            if (callingUid != android.os.Process.myUid()) {
-                Log.w(TAG, "Security: Blocked external client attempt to revoke token: ${sanitizedToken.take(8)}... (Caller UID: $callingUid)")
-                return false
-            }
-
-            // Close all conversations for this token first
-            conversationManager.closeAllForToken(sanitizedToken)
-            val revoked = tokenManager.revokeToken(sanitizedToken)
-            Log.i(TAG, "Revoked API token: ${sanitizedToken.take(8)}... -> $revoked")
-            return revoked
-        }
-        
-        // =====================
-        // Conversation Management
-        // =====================
-        
-        override fun startConversation(apiToken: String, systemInstruction: String?, ttlMs: Long): String {
-            val sanitizedToken = apiToken.trim()
-            val safeSystemInstruction = systemInstruction?.takeIf { it.isNotBlank() }
-            logIpcRequest("startConversation", sanitizedToken, "systemInstruction={(length=${safeSystemInstruction?.length ?: 0})}, ttlMs=$ttlMs")
-            
-            return try {
-                // Validate token
-                if (!tokenManager.isValidToken(sanitizedToken)) {
-                    Log.w(TAG, "startConversation failed: invalid token ${sanitizedToken.take(8)}...")
-                    return gson.toJson(ErrorResponse("Invalid API token"))
-                }
-                
-                val state = if (ttlMs > 0) {
-                    conversationManager.createConversation(sanitizedToken, safeSystemInstruction, ttlMs)
-                } else {
-                    conversationManager.createConversation(sanitizedToken, safeSystemInstruction)
-                }
-                
-                val response = ConversationResponse(
-                    conversation_id = state.conversationId,
-                    ttl_ms = state.ttlMs,
-                    created_at = state.createdAt,
-                    expires_at = state.createdAt + state.ttlMs
-                )
-                
-                val msg = "Started conversation ${state.conversationId.take(8)}... for ${sanitizedToken.take(8)}... (TTL: ${state.ttlMs}ms)"
-                Log.i(TAG, msg)
-                sendStatusBroadcast(msg)
-                gson.toJson(response)
-            } catch (e: Exception) {
-                Log.e(TAG, "Internal error in startConversation", e)
-                gson.toJson(ErrorResponse("Internal server error: ${e.message}"))
-            }
-        }
-        
-        override fun closeConversation(apiToken: String, conversationId: String): String {
-            val sanitizedToken = apiToken.trim()
-            logIpcRequest("closeConversation", sanitizedToken, "conv=${conversationId.take(8)}...")
-            
-            // Validate token
-            if (!tokenManager.isValidToken(sanitizedToken)) {
-                Log.w(TAG, "closeConversation failed: invalid token ${sanitizedToken.take(8)}...")
-                return gson.toJson(ErrorResponse("Invalid API token"))
-            }
-            
-            val closed = conversationManager.closeConversation(conversationId, sanitizedToken)
-            return if (closed) {
-                val msg = "Closed conversation ${conversationId.take(8)}..."
-                Log.i(TAG, msg)
-                sendStatusBroadcast(msg)
-                gson.toJson(SuccessResponse(true))
-            } else {
-                Log.w(TAG, "Failed to close conversation ${conversationId.take(8)}...")
-                gson.toJson(ErrorResponse("Conversation not found or unauthorized"))
-            }
-        }
-        
-        override fun getConversationInfo(apiToken: String, conversationId: String): String {
-            val sanitizedToken = apiToken.trim()
-            logIpcRequest("getConversationInfo", sanitizedToken, "conv=${conversationId.take(8)}...")
-            
-            // Validate token
-            if (!tokenManager.isValidToken(sanitizedToken)) {
-                return gson.toJson(ErrorResponse("Invalid API token"))
-            }
-            
-            val state = conversationManager.getConversation(conversationId, sanitizedToken)
-            return if (state != null) {
-                val now = System.currentTimeMillis()
-                val response = ConversationInfoResponse(
-                    conversation_id = state.conversationId,
-                    ttl_ms = state.ttlMs,
-                    created_at = state.createdAt,
-                    last_access_time = state.lastAccessTime,
-                    expires_at = state.lastAccessTime + state.ttlMs,
-                    remaining_ttl_ms = (state.lastAccessTime + state.ttlMs) - now
-                )
-                gson.toJson(response)
-            } else {
-                gson.toJson(ErrorResponse("Conversation not found, expired, or unauthorized"))
-            }
-        }
-        
-
-
-
-
-        
-        // =====================
-        // Conversation-Based Inference
-        // =====================
-        
-        override fun generateConversationResponseAsync(
-            apiToken: String, 
-            conversationId: String, 
-            jsonRequest: String, 
-            callback: IInferenceCallback
-        ) {
-            val sanitizedToken = apiToken.trim()
-            logIpcRequest("generateConversationResponseAsync", sanitizedToken, "conv=${conversationId.take(8)}...")
-            
-            activeRequests.incrementAndGet()
-            
-            // Validate token
-            if (!tokenManager.isValidToken(sanitizedToken)) {
-                Log.w(TAG, "generateConversationResponseAsync failed: invalid token")
-                try {
-                    callback.onError("Invalid API token")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error calling onError callback", e)
-                } finally {
-                    activeRequests.decrementAndGet()
-                }
-                return
-            }
-            
-            // Get conversation (this also validates ownership and resets TTL)
-            val state = conversationManager.getConversation(conversationId, sanitizedToken)
-            if (state == null) {
-                Log.w(TAG, "generateConversationResponseAsync failed: conversation not found or expired")
-                try {
-                    callback.onError("Conversation not found, expired, or unauthorized")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error calling onError callback", e)
-                } finally {
-                    activeRequests.decrementAndGet()
-                }
-                return
-            }
-            
-            serviceScope.launch {
-                try {
-                    Log.d(TAG, "Received conversation request for ${conversationId.take(8)}... (Length: ${jsonRequest.length})")
-                    Log.d(TAG, "Request: $jsonRequest")
-                    val request = gson.fromJson(jsonRequest, ChatCompletionRequest::class.java)
-
-                    // Update conversation state with request parameters if provided
-                    if (request.temperature != null) state.temperature = request.temperature
-                    if (request.top_p != null) state.topP = request.top_p
-                    if (request.top_k != null) state.topK = request.top_k
-                    
-                    var responseStarted = false
-                    aiEngineManager.generateConversationResponseAsync(
-                        state = state,
-                        messages = request.messages,
-                        onToken = { token ->
-                            try {
-                                if (!responseStarted) {
-                                    responseStarted = true
-                                    val logMsg = "Generating response [${conversationId.take(8)}]..."
-                                    Log.i(TAG, logMsg)
-                                    sendStatusBroadcast(logMsg)
-                                }
-                                callback.onToken(token)
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error calling onToken callback", e)
-                            }
-                        },
-                        onComplete = { fullText ->
-                            try {
-                                val msg = "Response [${conversationId.take(8)}]: $fullText"
-                                Log.i(TAG, msg)
-                                sendStatusBroadcast(msg)
-                                
-                                val response = createChatCompletionResponse(request, fullText)
-                                callback.onComplete(gson.toJson(response))
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error calling onComplete callback", e)
-                            }
-                        },
-                        onErrorCallback = { error ->
-                            val msg = "Error [${conversationId.take(8)}]: ${error.message}"
-                            Log.e(TAG, msg)
-                            sendStatusBroadcast(msg)
-                            try {
-                                callback.onError(error.message ?: "Unknown inference error")
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error calling onError callback", e)
-                            }
-                        }
-                    )
-                    
-                    // After successful inference, persist the updated conversation state
-                    conversationManager.saveConversation(state)
-                    
-                } catch (e: Exception) {
-                    Log.e(TAG, "Internal error in conversation async request", e)
-                    try {
-                        callback.onError(e.message ?: "Unknown internal error")
-                    } catch (ce: Exception) {
-                        Log.e(TAG, "Error notifying client of internal failure", ce)
-                    }
-                } finally {
-                    activeRequests.decrementAndGet()
-                }
-            }
-        }
-
-        override fun ping(apiToken: String): String {
-            val sanitizedToken = apiToken.trim()
-            logIpcRequest("ping", sanitizedToken)
-            if (!tokenManager.isValidToken(sanitizedToken)) {
-                return "error: invalid token"
-            }
-            return "pong"
-        }
-
-        override fun health(apiToken: String): String {
-            val sanitizedToken = apiToken.trim()
-            logIpcRequest("health", sanitizedToken)
-            if (!tokenManager.isValidToken(sanitizedToken)) {
-                return "error: invalid token"
-            }
-            if (!aiEngineManager.isModelLoaded) {
-                return "error: model not loaded"
-            }
-            return "ok"
-        }
-
-        override fun getLoad(apiToken: String): Int {
-            val sanitizedToken = apiToken.trim()
-            logIpcRequest("getLoad", sanitizedToken)
-            if (!tokenManager.isValidToken(sanitizedToken)) {
-                return -1
-            }
-            if (!aiEngineManager.isModelLoaded) {
-                return -2
-            }
-            return activeRequests.get()
-        }
-
-        private fun logIpcRequest(methodName: String, apiToken: String, extras: String = "") {
-            val callingUid = getCallingUid()
-            val packages = packageManager.getPackagesForUid(callingUid)
-            val pkgName = packages?.firstOrNull() ?: "unknown"
-            val sanitized = apiToken.trim()
-            val tokenPart = if (sanitized.length >= 8) sanitized.take(8) + "..." else sanitized
-            val msg = "IPC: [$pkgName] $methodName(token=$tokenPart) $extras"
-            Log.i(TAG, msg)
-            sendStatusBroadcast(msg)
-        }
-
-        override fun getLastStatus(): String {
-            return serviceStatus
-        }
-    }
-
-    private fun createChatCompletionResponse(request: ChatCompletionRequest, content: String): ChatCompletionResponse {
-        return ChatCompletionResponse(
-            id = "chatcmpl-${UUID.randomUUID()}",
-            created = System.currentTimeMillis() / 1000,
-            model = request.model ?: "litertlm-model",
-            choices = listOf(
-                Choice(
-                    index = 0,
-                    message = ChatMessageResponse(
-                        role = "assistant",
-                        content = content
-                    ),
-                    finish_reason = "stop"
-                )
-            ),
-            usage = Usage(0, 0, 0)
-        )
-    }
 
     override fun onCreate() {
         super.onCreate()
@@ -357,6 +39,7 @@ class InferenceService : Service() {
             context = this,
             onConversationRemoved = { id -> aiEngineManager.closeConversation(id) }
         )
+        openAIServer = OpenAIServer(aiEngineManager, tokenManager)
         createNotificationChannel()
     }
 
@@ -366,11 +49,13 @@ class InferenceService : Service() {
         if (action == ACTION_STOP) {
             getSharedPreferences("inference_service_prefs", Context.MODE_PRIVATE).edit().clear().apply()
             conversationManager.deleteAllConversations()
+            openAIServer.stop()
             stopSelf()
             return START_NOT_STICKY
         }
 
         sendStatusBroadcast("Service starting...")
+        openAIServer.start()
 
         val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -522,12 +207,15 @@ class InferenceService : Service() {
             conversationManager.shutdown()
         }
         aiEngineManager.close()
+        if (::openAIServer.isInitialized) {
+            openAIServer.stop()
+        }
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? {
         Log.d(TAG, "onBind called")
-        return binder
+        return null
     }
 
     private fun createNotificationChannel() {
@@ -550,8 +238,6 @@ class InferenceService : Service() {
             .build()
     }
 
-
-
     companion object {
         private const val TAG = "InferenceService"
         private const val NOTIFICATION_ID = 1001
@@ -564,4 +250,3 @@ class InferenceService : Service() {
         const val EXTRA_PACKAGE_NAME = "PACKAGE_NAME"
     }
 }
-
