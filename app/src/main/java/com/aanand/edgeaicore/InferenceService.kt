@@ -358,7 +358,8 @@ class InferenceService : Service() {
             edgeAiServer?.start()
             Log.i(TAG, "EdgeAiServer started")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start EdgeAiServer", e)
+            Log.e(TAG, "Failed to start EdgeAiServer: ${e.message}", e)
+            // Do not crash the service if server fails to bind (e.g. port usage)
         }
     }
 
