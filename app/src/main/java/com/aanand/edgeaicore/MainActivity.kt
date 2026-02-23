@@ -888,25 +888,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun runTestInference() {
         val token = getOrGenerateToken()
-        appendLog("=== Starting Inference Test ===")
+        appendLog("=== Starting Inference Test (Streaming) ===")
         
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val messages = listOf(ChatMessage("user", JsonPrimitive("Hello!")))
-                val req = ChatCompletionRequest(model = "gemma", messages = messages)
-                
-                withContext(Dispatchers.Main) { appendLog("User: Hello!") }
-                
-                val response = performChatRequest(req, token)
+                // Enable streaming
+                val req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
                 
                 withContext(Dispatchers.Main) {
-                    appendLog("Assistant: ${response.choices.firstOrNull()?.message?.content}")
-                    appendLog("=== Test Complete ===")
+                    appendLog("User: Hello!")
+                    appendLog("Assistant: ", newLine = false)
+                }
+                
+                performStreamingChatRequest(req, token) { chunk ->
+                    runOnUiThread {
+                        appendLog(chunk, newLine = false)
+                    }
+                }
+                
+                withContext(Dispatchers.Main) {
+                    appendLog("\n=== Test Complete ===")
                     tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
                 }
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("❌ Test Failed: ${e.message}")
+                     appendLog("\n❌ Test Failed: ${e.message}")
                      tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
                  }
             }
@@ -971,6 +978,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun performStreamingChatRequest(req: ChatCompletionRequest, token: String, onChunk: (String) -> Unit) {
+        val url = URL("http://localhost:8080/v1/chat/completions")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Authorization", "Bearer $token")
+        conn.doOutput = true
+
+        val jsonInput = gson.toJson(req)
+        OutputStreamWriter(conn.outputStream).use { it.write(jsonInput) }
+
+        val responseCode = conn.responseCode
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            BufferedReader(InputStreamReader(conn.inputStream)).use { reader ->
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    val currentLine = line ?: continue
+                    if (currentLine.startsWith("data: ")) {
+                        val data = currentLine.substring(6)
+                        if (data == "[DONE]") break
+
+                        try {
+                            val chunk = gson.fromJson(data, ChatCompletionChunk::class.java)
+                            val content = chunk.choices.firstOrNull()?.delta?.content
+                            if (!content.isNullOrEmpty()) {
+                                onChunk(content)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing chunk", e)
+                        }
+                    }
+                }
+            }
+        } else {
+            val errorString = try {
+                 BufferedReader(InputStreamReader(conn.errorStream)).readText()
+            } catch (e: Exception) { "Unknown error" }
+            throw Exception("HTTP $responseCode: $errorString")
+        }
+    }
+
     private fun performGetRequest(urlString: String, token: String): String {
         val url = URL(urlString)
         val conn = url.openConnection() as HttpURLConnection
@@ -985,9 +1033,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun appendLog(msg: String) {
+    private fun appendLog(msg: String, newLine: Boolean = true) {
         val current = tvLogs.text.toString()
-        tvLogs.text = "$current\n$msg"
+        if (newLine) {
+            tvLogs.text = "$current\n$msg"
+        } else {
+            tvLogs.text = "$current$msg"
+        }
     }
 
     companion object {
