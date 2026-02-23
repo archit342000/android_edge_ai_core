@@ -1,0 +1,205 @@
+package com.aanand.edgeaicore
+
+import android.util.Log
+import com.google.gson.GsonBuilder
+import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.gson.gson
+import io.ktor.server.application.Application
+import io.ktor.server.application.call
+import io.ktor.server.application.install
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.netty.Netty
+import io.ktor.server.netty.NettyApplicationEngine
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.request.header
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.route
+import io.ktor.server.routing.routing
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+class OpenAIServer(
+    private val aiEngineManager: AiEngineManager,
+    private val tokenManager: TokenManager
+) {
+    private var server: NettyApplicationEngine? = null
+
+    fun start() {
+        if (server != null) return
+        Log.i(TAG, "Starting OpenAI Server on port 8080...")
+
+        server = embeddedServer(Netty, port = 8080) {
+            install(ContentNegotiation) {
+                gson {
+                    setPrettyPrinting()
+                }
+            }
+            configureRouting()
+        }.start(wait = false)
+    }
+
+    fun stop() {
+        Log.i(TAG, "Stopping OpenAI Server...")
+        server?.stop(1000, 2000)
+        server = null
+    }
+
+    private fun Application.configureRouting() {
+        routing {
+            route("/v1") {
+                // Chat Completions
+                post("/chat/completions") {
+                    val token = extractToken(call.request.header("Authorization"))
+                    if (!tokenManager.isValidToken(token)) {
+                        call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
+                        return@post
+                    }
+
+                    try {
+                        val request = call.receive<ChatCompletionRequest>()
+                        val conversationId = UUID.randomUUID().toString()
+
+                        // Create transient state for this request
+                        val state = ConversationState(
+                            conversationId = conversationId,
+                            apiToken = token!!,
+                            ttlMs = 0, // Transient
+                            temperature = request.temperature ?: 0.8,
+                            topP = request.top_p ?: 0.95,
+                            topK = request.top_k ?: 40
+                        )
+
+                        var finalResponse: String? = null
+                        var errorOccurred: Throwable? = null
+
+                        // Call the engine
+                        // Note: generateConversationResponseAsync is a suspend function that waits for completion
+                        aiEngineManager.generateConversationResponseAsync(
+                            state = state,
+                            messages = request.messages,
+                            onToken = { /* Streaming not supported in this endpoint version yet */ },
+                            onComplete = { finalResponse = it },
+                            onErrorCallback = { errorOccurred = it }
+                        )
+
+                        if (errorOccurred != null) {
+                            Log.e(TAG, "Inference failed", errorOccurred)
+                            call.respond(HttpStatusCode.InternalServerError, ErrorResponse(errorOccurred?.message ?: "Unknown error"))
+                            return@post
+                        }
+
+                        if (finalResponse == null) {
+                            call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Empty response from model"))
+                            return@post
+                        }
+
+                        val response = ChatCompletionResponse(
+                            id = "chatcmpl-${UUID.randomUUID()}",
+                            created = System.currentTimeMillis() / 1000,
+                            model = request.model ?: "litertlm-model",
+                            choices = listOf(
+                                Choice(
+                                    index = 0,
+                                    message = ChatMessageResponse(
+                                        role = "assistant",
+                                        content = finalResponse!!
+                                    ),
+                                    finish_reason = "stop"
+                                )
+                            ),
+                            usage = Usage(0, 0, 0) // Usage tracking not implemented yet
+                        )
+
+                        call.respond(response)
+
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error processing request", e)
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("Bad Request: ${e.message}"))
+                    }
+                }
+
+                // List Models
+                get("/models") {
+                    val token = extractToken(call.request.header("Authorization"))
+                    if (!tokenManager.isValidToken(token)) {
+                        call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
+                        return@get
+                    }
+
+                    val modelList = ModelListResponse(
+                        data = listOf(
+                            ModelInfo(
+                                id = "litertlm-model",
+                                created = System.currentTimeMillis() / 1000
+                            )
+                        )
+                    )
+                    call.respond(modelList)
+                }
+
+                // Health Check
+                get("/health") {
+                     val token = extractToken(call.request.header("Authorization"))
+                    if (!tokenManager.isValidToken(token)) {
+                        call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
+                        return@get
+                    }
+
+                    if (aiEngineManager.isModelLoaded) {
+                        call.respond(mapOf("status" to "ok"))
+                    } else {
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
+                    }
+                }
+            }
+
+            // Health check at root as well (optional, but good for some LBs)
+             get("/health") {
+                 // Open access or token? Prompt said "requiring an API token".
+                 // Let's enforce token to be safe and consistent.
+                 val token = extractToken(call.request.header("Authorization"))
+                 if (!tokenManager.isValidToken(token)) {
+                     call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
+                     return@get
+                 }
+                 if (aiEngineManager.isModelLoaded) {
+                     call.respond(mapOf("status" to "ok"))
+                 } else {
+                     call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
+                 }
+             }
+        }
+    }
+
+    private fun extractToken(header: String?): String? {
+        if (header == null) return null
+        return if (header.startsWith("Bearer ", ignoreCase = true)) {
+            header.substring(7).trim()
+        } else {
+            header.trim()
+        }
+    }
+
+    companion object {
+        private const val TAG = "OpenAIServer"
+    }
+}
+
+// Additional Data Classes needed for the Server
+
+data class ModelListResponse(
+    val `object`: String = "list",
+    val data: List<ModelInfo>
+)
+
+data class ModelInfo(
+    val id: String,
+    val `object`: String = "model",
+    val created: Long,
+    val owned_by: String = "user"
+)
