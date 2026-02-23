@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-
 }
 
 android {
@@ -11,8 +10,8 @@ android {
         applicationId = "com.aanand.edgeaicore"
         minSdk = 26
         targetSdk = 34
-        versionCode = 40
-        versionName = "1.10.5"
+        versionCode = 41
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -32,7 +31,7 @@ android {
     }
 
     buildFeatures {
-        aidl = true
+        // aidl = true // Removed in 2.0.0
     }
 
     packaging {
@@ -65,6 +64,11 @@ dependencies {
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.slf4j:slf4j-android:1.7.36")
+
+    // Ktor Server
+    implementation("io.ktor:ktor-server-netty:2.3.7")
+    implementation("io.ktor:ktor-server-content-negotiation:2.3.7")
+    implementation("io.ktor:ktor-serialization-gson:2.3.7")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

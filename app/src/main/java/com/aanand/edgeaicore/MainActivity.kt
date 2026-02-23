@@ -79,12 +79,13 @@ class MainActivity : AppCompatActivity() {
     private var currentToken: String? = null
 
     private var selectedModelPath: String? = null
-    private var inferenceService: IInferenceService? = null
+    private var inferenceService: InferenceService? = null
     private var isBound = false
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(className: ComponentName, service: IBinder) {
-            inferenceService = IInferenceService.Stub.asInterface(service)
+            val binder = service as InferenceService.LocalBinder
+            inferenceService = binder.getService()
             isBound = true
             appendLog("Connected to Inference Service")
             syncStatusWithService()
@@ -875,7 +876,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 """.trimIndent()
 
-                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : IInferenceCallback.Stub() {
+                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : InferenceCallback {
                     override fun onToken(token: String) {
                         runOnUiThread {
                             val current = tvLogs.text.toString()
@@ -1015,7 +1016,7 @@ class MainActivity : AppCompatActivity() {
                     appendLog("Response: ")
                 }
 
-                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : IInferenceCallback.Stub() {
+                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : InferenceCallback {
                     override fun onToken(token: String) {
                         runOnUiThread {
                             val current = tvLogs.text.toString()
@@ -1352,7 +1353,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 """.trimIndent()
                 
-                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : IInferenceCallback.Stub() {
+                inferenceService?.generateConversationResponseAsync(testToken, conversationId, jsonInputString, object : InferenceCallback {
                     override fun onToken(token: String) {
                         runOnUiThread {
                             val current = tvLogs.text.toString()
@@ -1430,7 +1431,7 @@ class MainActivity : AppCompatActivity() {
                 val req1 = """{"messages": [{"role": "user", "content": "Hello! Who are you?"}]}"""
                 
                 var firstResponse = ""
-                inferenceService?.generateConversationResponseAsync(token, conversationId, req1, object : IInferenceCallback.Stub() {
+                inferenceService?.generateConversationResponseAsync(token, conversationId, req1, object : InferenceCallback {
                     override fun onToken(t: String) {
                          firstResponse += t
                     }
@@ -1445,7 +1446,7 @@ class MainActivity : AppCompatActivity() {
                             // The server appends this to the engine's conversation state.
                             val req2 = """{"messages": [{"role": "user", "content": "What is 2 + 2?"}]}"""
                             
-                            inferenceService?.generateConversationResponseAsync(token, conversationId, req2, object : IInferenceCallback.Stub() {
+                            inferenceService?.generateConversationResponseAsync(token, conversationId, req2, object : InferenceCallback {
                                 override fun onToken(t: String) {}
                                 override fun onComplete(res: String) {
                                      runOnUiThread { 
