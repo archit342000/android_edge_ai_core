@@ -9,13 +9,12 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Manages API tokens for client authentication with manual user approval.
+ * Manages API tokens for client authentication.
  * 
  * Flow:
- * 1. Client app requests token via service.
- * 2. Service captures packageName and adds to [pendingRequests].
- * 3. User manually approves in Edge AI Core UI.
- * 4. Token is generated, added to [tokenMap], and persisted.
+ * 1. Tokens are generated manually or via backup restore.
+ * 2. Tokens are persisted and used for API validation.
+ * 3. Pending approval flow has been removed.
  */
 class TokenManager private constructor(private val context: Context) {
     
@@ -23,9 +22,6 @@ class TokenManager private constructor(private val context: Context) {
     private val tokenMap = ConcurrentHashMap<String, String>()
     // Optimization: Fast O(1) lookup set for valid tokens
     private val validTokens = ConcurrentHashMap.newKeySet<String>()
-    
-    // Set of packageNames waiting for approval
-    private val pendingRequests = ConcurrentHashMap.newKeySet<String>()
     
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -39,11 +35,8 @@ class TokenManager private constructor(private val context: Context) {
         private const val TAG = "TokenManager"
         private const val PREFS_NAME = "edge_ai_core_tokens_v2"
         private const val KEY_TOKEN_MAP = "approved_tokens"
-        private const val KEY_PENDING = "pending_requests"
         private const val BACKUP_FILE_NAME = "auth_tokens_backup.json"
         
-        const val STATUS_PENDING = "PENDING_USER_APPROVAL"
-
         @Volatile
         private var instance: TokenManager? = null
 
@@ -84,12 +77,7 @@ class TokenManager private constructor(private val context: Context) {
             validTokens.addAll(loadedTokens.values)
         }
         
-        // Load pending requests (less critical, stick to Prefs)
-        val pendingSet = prefs.getStringSet(KEY_PENDING, emptySet()) ?: emptySet()
-        pendingRequests.clear()
-        pendingRequests.addAll(pendingSet)
-        
-        Log.i(TAG, "Sync: Loaded ${tokenMap.size} tokens and ${pendingRequests.size} pending")
+        Log.i(TAG, "Sync: Loaded ${tokenMap.size} tokens")
     }
 
     private fun loadFromBackupFile(): Map<String, String>? {
@@ -126,42 +114,6 @@ class TokenManager private constructor(private val context: Context) {
             Log.e(TAG, "Failed to save backup file", e)
         }
     }
-
-    private fun persistPending(): Boolean = synchronized(dataLock) {
-        prefs.edit()
-            .putStringSet(KEY_PENDING, pendingRequests.toSet())
-            .commit() 
-    }
-
-    @Suppress("DEPRECATION")
-    private fun persistData(): Boolean = synchronized(dataLock) {
-        val json = gson.toJson(tokenMap)
-        prefs.edit()
-            .putString(KEY_TOKEN_MAP, json)
-            .putStringSet(KEY_PENDING, pendingRequests.toSet())
-            .commit()
-            
-        // Critical: Also update backup file during approval/full persist
-        saveToBackupFile(json)
-        true
-    }
-    
-    /**
-     * Adds a package to the pending requests list if it doesn't already have a token.
-     */
-    fun requestToken(packageName: String): String = synchronized(dataLock) {
-        val existingToken = tokenMap[packageName]
-        if (existingToken != null) {
-            return existingToken
-        }
-        
-        if (!pendingRequests.contains(packageName)) {
-            pendingRequests.add(packageName)
-            persistPending() // Only update pending requests
-            Log.i(TAG, "New token request from: $packageName (pending approval)")
-        }
-        return STATUS_PENDING
-    }
     
     /**
      * Force generates a token (used by the main app UI directly).
@@ -174,34 +126,6 @@ class TokenManager private constructor(private val context: Context) {
         persistTokens()
         Log.i(TAG, "Manually generated token: ${token.take(8)}...")
         return token
-    }
-    
-    /**
-     * Approves a pending request from a package.
-     */
-    fun approveRequest(packageName: String): String? = synchronized(dataLock) {
-        // If it was pending, remove it and generate a token
-        if (pendingRequests.contains(packageName)) {
-            val token = UUID.randomUUID().toString()
-            tokenMap[packageName] = token
-            validTokens.add(token)
-            pendingRequests.remove(packageName)
-            @Suppress("DEPRECATION")
-            persistData() // Update both as we modified both
-            Log.i(TAG, "Approved token for $packageName: ${token.take(8)}...")
-            return token
-        }
-        return tokenMap[packageName]
-    }
-    
-    /**
-     * Logic to deny/remove a pending request.
-     */
-    fun denyRequest(packageName: String) = synchronized(dataLock) {
-        if (pendingRequests.remove(packageName)) {
-            persistPending()
-            Log.i(TAG, "Denied request from $packageName")
-        }
     }
     
     fun isValidToken(token: String?): Boolean = synchronized(dataLock) {
@@ -254,10 +178,6 @@ class TokenManager private constructor(private val context: Context) {
         tokenMap.toMap()
     }
     
-    fun getPendingRequests(): Set<String> = synchronized(dataLock) {
-        pendingRequests.toSet()
-    }
-    
     fun addTokens(tokens: Set<String>) = synchronized(dataLock) {
         tokens.forEach { token ->
             val pkg = "imported_${UUID.randomUUID().toString().take(4)}"
@@ -271,9 +191,7 @@ class TokenManager private constructor(private val context: Context) {
         synchronized(dataLock) {
             tokenMap.clear()
             validTokens.clear()
-            pendingRequests.clear()
-            @Suppress("DEPRECATION")
-            persistData()
+            persistTokens()
         }
     }
     

@@ -69,8 +69,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnDeleteToken: MaterialButton
     private lateinit var btnBackupTokens: MaterialButton
     private lateinit var btnRestoreTokens: MaterialButton
-    private lateinit var llPendingRequests: android.widget.LinearLayout
-    private lateinit var tvPendingLabel: TextView
     private lateinit var llAuthorizedApps: android.widget.LinearLayout
     private lateinit var tvAuthorizedLabel: TextView
     private lateinit var bottomNav: com.google.android.material.bottomnavigation.BottomNavigationView
@@ -91,10 +89,6 @@ class MainActivity : AppCompatActivity() {
                 Log.d(TAG, "Received STATUS_UPDATE: $status")
                 appendLog("Status Update: $status")
                 updateUIForStatus(status ?: "")
-            } else if (intent.action == InferenceService.ACTION_TOKEN_REQUEST) {
-                val pkgName = intent.getStringExtra(InferenceService.EXTRA_PACKAGE_NAME) ?: "unknown"
-                appendLog("New token request from $pkgName")
-                updatePendingRequestsUI()
             }
         }
     }
@@ -141,7 +135,6 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         val filter = IntentFilter().apply {
             addAction(InferenceService.ACTION_STATUS_UPDATE)
-            addAction(InferenceService.ACTION_TOKEN_REQUEST)
         }
         ContextCompat.registerReceiver(this, statusReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
@@ -196,7 +189,6 @@ class MainActivity : AppCompatActivity() {
                     pageBackend.visibility = android.view.View.GONE
                     pageTokens.visibility = android.view.View.VISIBLE
                     toolbar.title = "API Token Management"
-                    updatePendingRequestsUI()
                     updateAuthorizedAppsUI()
                     true
                 }
@@ -214,8 +206,10 @@ class MainActivity : AppCompatActivity() {
         btnDeleteToken = findViewById(R.id.btn_delete_token)
         btnBackupTokens = findViewById(R.id.btn_backup_tokens)
         btnRestoreTokens = findViewById(R.id.btn_restore_tokens)
-        llPendingRequests = findViewById(R.id.ll_pending_requests)
-        tvPendingLabel = findViewById(R.id.tv_pending_label)
+        // llPendingRequests & tvPendingLabel removed
+        findViewById<android.view.View>(R.id.ll_pending_requests)?.visibility = View.GONE
+        findViewById<android.view.View>(R.id.tv_pending_label)?.visibility = View.GONE
+
         llAuthorizedApps = findViewById(R.id.ll_authorized_apps)
         tvAuthorizedLabel = findViewById(R.id.tv_authorized_label)
         
@@ -223,7 +217,6 @@ class MainActivity : AppCompatActivity() {
         tokenManager = TokenManager.getInstance(this)
         
         // Refresh UI
-        updatePendingRequestsUI()
         updateAuthorizedAppsUI()
         
         // Restore existing token (use the first one if any exist)
@@ -302,7 +295,7 @@ class MainActivity : AppCompatActivity() {
         btnTestMultiTurn.setOnClickListener { runTestMultiTurn() }
         
         btnTestHealth.setOnClickListener {
-            val token = currentToken ?: ""
+            val token = getOrGenerateToken()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     val result = performGetRequest("http://localhost:8080/v1/health", token)
@@ -324,6 +317,12 @@ class MainActivity : AppCompatActivity() {
         
         checkAndRequestPermissions()
         requestIgnoreBatteryOptimizations()
+    }
+
+    private fun getOrGenerateToken(): String {
+        if (currentToken != null) return currentToken!!
+        generateNewToken()
+        return currentToken!!
     }
 
     private fun setupTokenListeners() {
@@ -452,54 +451,6 @@ class MainActivity : AppCompatActivity() {
             tvApiToken.text = getString(R.string.no_token_generated)
             btnCopyToken.isEnabled = false
             btnDeleteToken.isEnabled = false
-        }
-    }
-
-    private fun updatePendingRequestsUI() {
-        val requests = tokenManager.getPendingRequests()
-        appendLog("Refreshing pending requests: ${requests.size} found")
-        llPendingRequests.removeAllViews()
-        
-        if (requests.isEmpty()) {
-            tvPendingLabel.visibility = View.VISIBLE
-            tvPendingLabel.text = "No pending access requests"
-            return
-        }
-        
-        tvPendingLabel.visibility = View.VISIBLE
-        tvPendingLabel.text = "Pending Access Requests"
-        requests.forEach { pkgName ->
-            val itemView = layoutInflater.inflate(android.R.layout.simple_list_item_2, llPendingRequests, false)
-            itemView.setPadding(32, 16, 32, 16)
-            val text1 = itemView.findViewById<TextView>(android.R.id.text1)
-            val text2 = itemView.findViewById<TextView>(android.R.id.text2)
-            
-            text1.text = pkgName
-            text2.text = "Tap to Approve or Deny"
-            
-            itemView.setOnClickListener {
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Token Request")
-                    .setMessage("App '$pkgName' is requesting an AI API Token. Allow?")
-                    .setPositiveButton("Approve") { _, _ ->
-                        tokenManager.approveRequest(pkgName)
-                        updatePendingRequestsUI()
-                        updateAuthorizedAppsUI()
-                        appendLog("Approved token for $pkgName")
-                        // If we don't have a token displayed, show this one
-                        if (currentToken == null) {
-                            currentToken = tokenManager.getTokenMappings()[pkgName]
-                            updateTokenUI()
-                        }
-                    }
-                    .setNegativeButton("Deny") { _, _ ->
-                        tokenManager.denyRequest(pkgName)
-                        updatePendingRequestsUI()
-                        appendLog("Denied token for $pkgName")
-                    }
-                    .show()
-            }
-            llPendingRequests.addView(itemView)
         }
     }
 
@@ -713,7 +664,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun runTestAudio() {
         val file = audioFile ?: return
-        val token = currentToken ?: return
+        val token = getOrGenerateToken()
         
         appendLog("=== Starting Audio Test ===")
         CoroutineScope(Dispatchers.IO).launch {
@@ -749,7 +700,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runTestVision(imageUri: Uri) {
-        val token = currentToken ?: return
+        val token = getOrGenerateToken()
         tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_selecting_image)
         appendLog("=== Starting Vision Test ===")
 
@@ -895,7 +846,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUIForStatus(status: String) {
-        tvStatus.text = getString(R.string.status_label) + " " + status
+        val baseStatus = getString(R.string.status_label) + " " + status
         
         if (status.contains("loaded", ignoreCase = true)) {
             switchEnableServer.isEnabled = true
@@ -906,6 +857,7 @@ class MainActivity : AppCompatActivity() {
             btnTestMultiTurn.isEnabled = true
             btnTestHealth.isEnabled = true
             btnTestLoad.isEnabled = true
+            tvStatus.text = "$baseStatus (http://localhost:8080)"
         } else if (status.contains("Error", ignoreCase = true)) {
             switchEnableServer.isEnabled = true
             switchEnableServer.isChecked = false
@@ -915,6 +867,7 @@ class MainActivity : AppCompatActivity() {
             btnTestMultiTurn.isEnabled = false
             btnTestHealth.isEnabled = false
             btnTestLoad.isEnabled = false
+            tvStatus.text = baseStatus
         } else if (status.contains("Initializing", ignoreCase = true) || 
                    status.contains("Loading", ignoreCase = true) ||
                    status.contains("Verifying", ignoreCase = true) ||
@@ -922,15 +875,19 @@ class MainActivity : AppCompatActivity() {
                    status.contains("Service starting", ignoreCase = true)) {
             switchEnableServer.isEnabled = false
             switchEnableServer.isChecked = true
+            tvStatus.text = baseStatus
         } else if (status.contains("Idle", ignoreCase = true)) {
             switchEnableServer.isEnabled = (selectedModelPath != null)
             switchEnableServer.isChecked = false
             btnTestInference.isEnabled = false
+            tvStatus.text = baseStatus
+        } else {
+            tvStatus.text = baseStatus
         }
     }
 
     private fun runTestInference() {
-        val token = currentToken ?: return
+        val token = getOrGenerateToken()
         appendLog("=== Starting Inference Test ===")
         
         CoroutineScope(Dispatchers.IO).launch {
@@ -957,7 +914,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runTestMultiTurn() {
-        val token = currentToken ?: return
+        val token = getOrGenerateToken()
         appendLog("=== Starting Multi-Turn Test ===")
 
         CoroutineScope(Dispatchers.IO).launch {
