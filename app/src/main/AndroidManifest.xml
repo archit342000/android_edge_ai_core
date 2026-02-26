@@ -39,12 +39,8 @@
         <service
             android:name=".InferenceService"
             android:enabled="true"
-            android:exported="true"
-            android:foregroundServiceType="dataSync">
-            <intent-filter>
-                <action android:name="com.aanand.edgeaicore.IInferenceService" />
-            </intent-filter>
-        </service>
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

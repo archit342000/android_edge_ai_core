@@ -1,6 +1,16 @@
 {
   "versions": [
     {
+      "version": "2.0.0",
+      "changes": [
+        "Major Architecture Migration: Replaced AIDL with OpenAI-compatible REST API Server",
+        "New Endpoint: POST /v1/chat/completions for standard chat interactions",
+        "New Endpoint: GET /v1/models to list available models",
+        "Removed AIDL interface in favor of HTTP/REST over port 8080",
+        "Updated internal architecture to support stateless requests while maintaining session caching optimizations"
+      ]
+    },
+    {
       "version": "1.10.5",
       "changes": [
         "Fixed critical crash loop on startup by detecting and preventing consecutive initialization failures",
