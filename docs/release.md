@@ -23,6 +23,10 @@ The app uses Semantic Versioning, `vX.Y.Z`:
 7. **Build the signed APK** in Android Studio: **Build > Generate Signed Bundle / APK...**, choose APK, the release variant, your local keystore, and destination `app/release/`.
    Check that `app/release/output-metadata.json` shows the new `versionCode` and `versionName`.
    `./gradlew assembleRelease` alone gives an unsigned APK under `app/build/`, because the build has no `signingConfig`. Never commit the keystore (`*.jks` and `*.keystore` are gitignored).
+   **CLI alternative** (same signing Android Studio uses, no build file change): put the keystore details in `~/.gradle/gradle.properties` (outside the repo) as
+   `android.injected.signing.store.file`, `.store.password`, `.key.alias` and `.key.password`, then run `./gradlew assembleRelease`. The signed APK is
+   `app/build/outputs/apk/release/app-release.apk`; check it with `apksigner verify --print-certs`, then copy it and `output-metadata.json` to `app/release/`.
+   Never type the passwords into a shared shell or pass them in a command an agent runs.
 8. **Commit** `chore(release): X.Y.Z` with the version, changelog, README and `app/release/` changes.
 9. **Merge, tag, back-merge:** open a PR into `main`, merge with a merge commit, tag `vX.Y.Z` on `main` and push the tag,
    then merge back into `develop` and delete the release branch. Hotfixes use `hotfix/X.Y.Z` the same way.
@@ -30,6 +34,12 @@ The app uses Semantic Versioning, `vX.Y.Z`:
 ## Distribution
 
 The APK committed under `app/release/` is the download linked from the README. Publish only from tagged releases on `main`.
+
+## Signing key
+
+Every release must be signed with the same key, or it cannot update an existing install. If the keystore or its password is lost, a new key is
+the only option, and every user must uninstall once (losing tokens, models and conversations) before installing the new build. Key rotation (APK
+Signature Scheme v3) also needs the old key. Keep the keystore and its passwords backed up outside the repo.
 
 ## Back out
 
