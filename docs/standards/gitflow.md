@@ -8,7 +8,7 @@ The repository follows strict git-flow. Commit message rules and the version sou
 | Branch | Created from | Merges into | Purpose |
 |--------|--------------|-------------|---------|
 | `main` | (permanent) | (none) | Production. Every commit is a release and is tagged `vX.Y.Z`. |
-| `develop` | `main` | (none) | Integration branch for the next release. Always builds and passes CI. |
+| `develop` | `main` | (none) | Integration branch for the next release. Always builds and passes the local checks. |
 | `feature/<topic>` | `develop` | `develop` | New functionality or a larger change. |
 | `bugfix/<topic>` | `develop` | `develop` | Non-urgent fix for unreleased or released code. |
 | `release/X.Y.Z` | `develop` | `main` and `develop` | Stabilization and version bump for a release. |
@@ -41,7 +41,8 @@ The repository follows strict git-flow. Commit message rules and the version sou
 ## Merge gate
 
 A PR may merge only when:
-- CI (`.github/workflows/ci.yml`) and the branch policy check are green on the PR.
+- The local checks in `docs/standards/testing.md` pass on the branch, and the PR's Testing section shows the results (there is no CI).
+- The branch name and base follow the table above.
 - The checklist in `docs/standards/review.md` is met and the PR has been reviewed.
 - The base branch is correct: `develop` for feature and bugfix, `main` for release and hotfix.
 - Release and hotfix PRs also have the version bumped and the `changelog.json` entry written.
@@ -71,6 +72,6 @@ git checkout -b hotfix/X.Y.Z vX.Y.(Z-1)   # from the last release tag
 The repository began with version-prefixed branches (`1.2.0-sessions-and-API-keys`, `1.10.5-fix-crash`) and the 2.0.0
 `migrate-aidl-to-rest-api-*` / `migration-2.0.0-*` branches, all cut from and merged into `main`. They may finish under their current names.
 To adopt this model: merge the 2.0.0 REST migration into `main`, create `develop` from `main`, set `develop` as the default branch
-for feature and bugfix PRs, and protect `main` and `develop` (PR required, CI required, no force-push) in the GitHub settings.
+for feature and bugfix PRs, and protect `main` and `develop` (PR required, no force-push) in the GitHub settings.
 There are no `vX.Y.Z` tags yet; tag the first release made under this model.
-Until `develop` exists, a PR may be stacked on an open legacy branch (the branch policy check warns instead of failing).
+Until `develop` exists, a PR may be stacked on an open legacy branch.
