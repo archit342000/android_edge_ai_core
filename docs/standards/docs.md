@@ -33,4 +33,4 @@ Do not restate the signature.
 `AGENTS.md` stays under 80 lines and each file in `docs/` under 200 lines. The root `README.md` is exempt (it carries the user and
 integration guide). `scripts/check_docs.sh` enforces the budget, checks that every `docs/...` path named in `AGENTS.md` exists,
 that `CLAUDE.md` and `GEMINI.md` still point to `AGENTS.md`, and that the version matches across `app/build.gradle.kts`,
-`changelog.json` and the README. CI runs it on every PR.
+`changelog.json` and the README. Run it before every PR (there is no CI).

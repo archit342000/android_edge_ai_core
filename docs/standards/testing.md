@@ -22,14 +22,15 @@ Local unit tests cannot call real `android.*` APIs. Keep logic in plain Kotlin w
 
 ## Commands
 
-| Check | Command | In CI |
-|-------|---------|-------|
+| Check | Command | Before every PR |
+|-------|---------|-----------------|
 | Unit tests | `./gradlew testDebugUnitTest` | yes |
 | Lint | `./gradlew lintDebug` (new issues only; existing ones are in `app/lint-baseline.xml`) | yes |
 | Docs guardrails | `scripts/check_docs.sh` | yes |
 | Instrumented tests | `./gradlew connectedDebugAndroidTest` (needs a connected device or emulator) | no |
 
-Reports: `app/build/reports/tests/testDebugUnitTest/` and `app/build/reports/lint-results-debug.html`. CI is `.github/workflows/ci.yml`.
+Reports: `app/build/reports/tests/testDebugUnitTest/` and `app/build/reports/lint-results-debug.html`.
+There is no CI: run the three "yes" checks locally and paste the results into the PR's Testing section.
 
 ## What a good test does
 
