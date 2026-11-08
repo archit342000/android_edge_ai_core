@@ -26,3 +26,6 @@ gen/
 /build
 /app/build
 .kotlin/
+
+# Agent plan files
+plans/

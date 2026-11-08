@@ -45,6 +45,11 @@ android {
             useLegacyPackaging = true
         }
     }
+
+    lint {
+        // Pre-existing issues (docs/pitfalls.md); lint fails only on new ones.
+        baseline = file("lint-baseline.xml")
+    }
 }
 kotlin {
     compilerOptions {
