@@ -15,7 +15,7 @@
 |------|----------|---------|---------|
 | Local unit (JUnit 4) | `app/src/test/...` | JVM | DTO serialisation, token rules, TTL logic, request parsing, anything without Android framework calls |
 | Instrumented (AndroidX Test, Espresso) | `app/src/androidTest/...` | device or emulator | `SharedPreferences`, files, the service, the UI |
-| Manual device check | the app's diagnostics buttons | device | real model load and inference on CPU, GPU or NPU |
+| Device check | `scripts/device.sh` on the test emulator or a phone (`docs/testing-on-device.md`) | emulator or device | real model load, REST and UI behaviour; GPU, NPU and vision only on a phone |
 
 Local unit tests cannot call real `android.*` APIs. Keep logic in plain Kotlin where possible so it can be unit-tested, and fake the boundary
 (LiteRT-LM `Engine`, `Context`, HTTP) instead of loading a model. No test may need a model file, the network or a fixed port.
@@ -28,6 +28,7 @@ Local unit tests cannot call real `android.*` APIs. Keep logic in plain Kotlin w
 | Lint | `./gradlew lintDebug` (new issues only; existing ones are in `app/lint-baseline.xml`) | yes |
 | Docs guardrails | `scripts/check_docs.sh` | yes |
 | Instrumented tests | `./gradlew connectedDebugAndroidTest` (needs a connected device or emulator) | no |
+| Device check | `scripts/device.sh up`, then `api`, `ui`, `logs` (`docs/testing-on-device.md`) | when behaviour changes |
 
 Reports: `app/build/reports/tests/testDebugUnitTest/` and `app/build/reports/lint-results-debug.html`.
 There is no CI: run the three "yes" checks locally and paste the results into the PR's Testing section.

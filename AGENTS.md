@@ -29,6 +29,7 @@ Guide for AI agents working on `android_edge_ai_core` (Edge AI Core). Details li
 | Dependencies | `docs/standards/dependencies.md` |
 | Review checklist, definition of done | `docs/standards/review.md` |
 | Testing rules and commands | `docs/standards/testing.md` |
+| Running the app on an emulator or phone, installable APKs | `docs/testing-on-device.md` |
 | Commits, version, changelog | `docs/standards/git.md` |
 | Branching model, merge gate | `docs/standards/gitflow.md` |
 | Writing and maintaining docs | `docs/standards/docs.md` |

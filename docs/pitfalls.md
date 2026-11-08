@@ -41,3 +41,16 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 17. **Two kinds of `ConversationState`.** `InferenceService.kt:142` builds its own state for the readiness ping, outside `ConversationManager`.
 18. **One active engine conversation.** `AiEngineManager` keeps a single `activeEngineConversation` behind `inferenceMutex`.
     Requests are serialised, and switching conversations rebuilds the context.
+
+## Models and runtime
+
+19. **Only multimodal models load.** `AiEngineManager.loadModel` always sets `visionBackend = GPU` and `audioBackend = CPU`, so a text-only model fails with
+    `TF_LITE_VISION_ENCODER not found in the model`.
+20. **Vision is GPU-only.** Image input fails wherever GPU is unavailable (for example on the emulator: `Can not find OpenCL library`), even when the main backend is CPU.
+21. **An unsupported model kills the process.** LiteRT-LM aborts natively (SIGABRT) on a model it cannot parse (for example Gemma 4 with `0.9.0-alpha02`:
+    `Unknown model type: tf_lite_end_of_vision`). The service's crash-loop guard then refuses the sticky restart until a new model path is sent.
+22. **GPU "loads" before it fails.** With `BACKEND=GPU` and no OpenCL, "Model loaded successfully" is logged and the readiness ping fails afterwards.
+23. **The UI misses status updates.** `MainActivity` receives status broadcasts only while it is resumed, so a service started from adb or while the app is
+    in the background leaves the UI showing "Idle".
+24. **First launch asks for battery-optimisation exemption.** The system dialog covers the UI until answered; `scripts/device.sh install` whitelists the app instead.
+25. **Debug and release builds share the application id.** A debug APK cannot update a release install (different keys); uninstalling deletes tokens and models.
