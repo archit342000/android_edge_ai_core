@@ -27,7 +27,8 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 ## Build
 
 11. **Stale AIDL flag.** `buildFeatures { aidl = true }` remains in `app/build.gradle.kts` although `app/src/main/aidl/` was removed in 2.0.0.
-12. **Missing ProGuard file.** `buildTypes.release` references `proguard-rules.pro`, which does not exist. Minify is off, so this matters only if someone enables it.
+12. **ProGuard rules are untested.** `app/proguard-rules.pro` keeps Ktor, Netty, coroutines, Gson and all `com.aanand.edgeaicore` classes, but minify is off.
+    Test a minified release build on a device before enabling `isMinifyEnabled`.
 13. **No signing config.** `./gradlew assembleRelease` gives an unsigned APK under `app/build/`. Release APKs are signed in Android Studio (`docs/release.md`).
 14. **JVM 1.8 and `-Xskip-metadata-version-check`.** The app targets Java 8 bytecode and skips the Kotlin metadata version check (the reason is not recorded; most likely the LiteRT-LM alpha).
     Keep both unless a dependency upgrade is tested on a device.

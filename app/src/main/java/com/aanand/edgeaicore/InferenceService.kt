@@ -55,13 +55,27 @@ class InferenceService : Service() {
         }
 
         sendStatusBroadcast("Service starting...")
-        openAIServer.start()
+        val serverStarted = try {
+            openAIServer.start()
+            true
+        } catch (e: Exception) {
+            // A bind failure (for example port 8080 in use) must not crash the service.
+            Log.e(TAG, "Failed to start OpenAI server", e)
+            false
+        }
 
         val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(NOTIFICATION_ID, notification)
+        }
+
+        if (!serverStarted) {
+            // startForeground has been called, so stopping now is safe; skip loading a model nobody can reach.
+            sendStatusBroadcast("Error: server failed to start on port 8080")
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         val prefs = getSharedPreferences("inference_service_prefs", Context.MODE_PRIVATE)
