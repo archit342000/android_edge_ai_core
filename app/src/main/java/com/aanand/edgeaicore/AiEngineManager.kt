@@ -2,6 +2,7 @@ package com.aanand.edgeaicore
 
 import android.util.Log
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.BackendType
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
@@ -51,6 +52,10 @@ class AiEngineManager(
     private var currentMaxNumTokens: Int? = null
     private var currentSpeculativeOption: SpeculativeDecodingOption? = null
 
+    /** The encoders of the loaded model and the backends they run on (null = the model has no usable such encoder). */
+    @Volatile var activeEncoders: EncoderSummary = EncoderSummary()
+        private set
+
     /** The speculative decoding mode the loaded engine was configured with; null when it runs without MTP. */
     @Volatile var activeSpeculativeMode: SpeculativeDecodingMode? = null
         private set
@@ -79,8 +84,14 @@ class AiEngineManager(
     /**
      * @param maxNumTokens the KV-cache size (input plus output tokens); null keeps the model's default
      * @param speculativeDecoding the MTP setting; only used when the model ships a drafter
+     * @param visionOption backend for the vision encoder (AUTO follows [backendType]); the encoder is only created when the model has one
+     * @param audioOption same for the audio encoder
      */
-    suspend fun loadModel(modelPath: String, backendType: String = "GPU", cacheDir: String? = null, maxNumTokens: Int? = null, speculativeDecoding: SpeculativeDecodingOption = SpeculativeDecodingOption.DEFAULT): Unit = withContext(Dispatchers.IO) {
+    suspend fun loadModel(modelPath: String, backendType: String = "GPU", cacheDir: String? = null, maxNumTokens: Int? = null,
+        speculativeDecoding: SpeculativeDecodingOption = SpeculativeDecodingOption.DEFAULT,
+        visionOption: EncoderBackendOption = EncoderBackendOption.AUTO,
+        audioOption: EncoderBackendOption = EncoderBackendOption.AUTO
+    ): Unit = withContext(Dispatchers.IO) {
         if (currentModelPath == modelPath && currentMaxNumTokens == maxNumTokens && currentSpeculativeOption == speculativeDecoding && engine != null) {
             return@withContext
         }
@@ -99,7 +110,7 @@ class AiEngineManager(
         val capabilities = modelInspector(modelPath)
         ModelInspector.validate(capabilities)
 
-        loadEngine(modelPath, backendType, capabilities, cacheDir, maxNumTokens, speculativeDecoding)
+        loadEngine(modelPath, backendType, capabilities, cacheDir, maxNumTokens, speculativeDecoding, visionOption, audioOption)
     }
 
     /** Closes the cached conversations and the engine and forgets the loaded model. Call inside [inferenceMutex]. */
@@ -111,6 +122,7 @@ class AiEngineManager(
         currentMaxNumTokens = null
         currentSpeculativeOption = null
         activeSpeculativeMode = null
+        activeEncoders = EncoderSummary()
         modelCapabilities = null
         activeBackend = null
         fellBackFromGpu = false
@@ -351,7 +363,18 @@ class AiEngineManager(
         }
     }
 
-    private fun loadEngine(modelPath: String, backendType: String, capabilities: ModelCapabilities, cacheDir: String?, maxNumTokens: Int?, speculativeDecoding: SpeculativeDecodingOption) {
+    private fun toEngineBackend(type: BackendType): Backend = if (type == BackendType.GPU) Backend.GPU() else Backend.CPU()
+
+    private fun loadEngine(
+        modelPath: String,
+        backendType: String,
+        capabilities: ModelCapabilities,
+        cacheDir: String?,
+        maxNumTokens: Int?,
+        speculativeDecoding: SpeculativeDecodingOption,
+        visionOption: EncoderBackendOption,
+        audioOption: EncoderBackendOption
+    ) {
         val initStartedAt = System.nanoTime()
         // An unknown name runs GPU, and that is what is used, reported and (on failure) retried on CPU.
         val resolvedBackend = when (backendType.uppercase()) {
@@ -366,6 +389,13 @@ class AiEngineManager(
                 else -> Backend.GPU()
             }
 
+            // Encoders exist only when the model has them; each runs on a backend it supports
+            val vision = EncoderBackendSelector.select(capabilities.visionBackends, resolvedBackend, visionOption)
+            val audio = EncoderBackendSelector.select(capabilities.audioBackends, resolvedBackend, audioOption)
+            if (vision.overrideIgnored) Log.w(TAG, "Vision encoder override $visionOption is not supported by the model, using ${vision.backend}")
+            if (audio.overrideIgnored) Log.w(TAG, "Audio encoder override $audioOption is not supported by the model, using ${audio.backend}")
+            Log.d(TAG, "Encoders: vision=${vision.backend ?: "none"}, audio=${audio.backend ?: "none"}")
+
             val speculativeMode = SpeculativeDecodingOption.toConfigMode(speculativeDecoding, capabilities.speculativeDecoding)
             Log.i(
                 TAG,
@@ -376,8 +406,8 @@ class AiEngineManager(
             val config = EngineConfig(
                 modelPath = modelPath,
                 backend = backendEnum,
-                visionBackend = Backend.GPU(),
-                audioBackend = Backend.CPU(),
+                visionBackend = vision.backend?.let(::toEngineBackend),
+                audioBackend = audio.backend?.let(::toEngineBackend),
                 cacheDir = cacheDir,
                 maxNumTokens = maxNumTokens,
                 speculativeDecodingConfig = speculativeMode?.let { SpeculativeDecodingConfig(it) }
@@ -390,6 +420,8 @@ class AiEngineManager(
             val newEngine = engineFactory(config)
             // activeBackend first, so a concurrent reader that sees the engine also sees its backend.
             activeBackend = resolvedBackend
+            // Encoders first, so a concurrent reader that sees the engine also sees its encoders
+            activeEncoders = EncoderSummary(vision.backend, audio.backend, vision.overrideIgnored, audio.overrideIgnored)
             engine = newEngine
             currentModelPath = modelPath
             currentMaxNumTokens = maxNumTokens
@@ -404,7 +436,7 @@ class AiEngineManager(
             val fallback = BackendFallbackPolicy.next(resolvedBackend)
             if (fallback != null) {
                  Log.w(TAG, "Retrying with $fallback backend...")
-                 loadEngine(modelPath, fallback, capabilities, cacheDir, maxNumTokens, speculativeDecoding)
+                 loadEngine(modelPath, fallback, capabilities, cacheDir, maxNumTokens, speculativeDecoding, visionOption, audioOption)
                  fellBackFromGpu = true
             } else {
                 if (t is Exception) throw t else throw Exception(t)
@@ -461,12 +493,14 @@ class AiEngineManager(
         modelPath: String,
         cacheDir: String? = null,
         maxNumTokens: Int? = null,
-        speculativeDecoding: SpeculativeDecodingOption = SpeculativeDecodingOption.DEFAULT
+        speculativeDecoding: SpeculativeDecodingOption = SpeculativeDecodingOption.DEFAULT,
+        visionOption: EncoderBackendOption = EncoderBackendOption.AUTO,
+        audioOption: EncoderBackendOption = EncoderBackendOption.AUTO
     ) {
         require(activeBackend == BackendFallbackPolicy.GPU) { "Only a GPU engine falls back to CPU" }
         // Under the inference lock, so no request is using the GPU engine while it is closed.
         inferenceMutex.withLock { releaseEngine() }
-        loadModel(modelPath, BackendFallbackPolicy.CPU, cacheDir, maxNumTokens, speculativeDecoding)
+        loadModel(modelPath, BackendFallbackPolicy.CPU, cacheDir, maxNumTokens, speculativeDecoding, visionOption, audioOption)
         fellBackFromGpu = true
     }
 

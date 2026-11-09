@@ -39,9 +39,10 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 
 ## Models and runtime
 
-19. **Only multimodal models load.** `AiEngineManager.loadModel` always sets `visionBackend = GPU` and `audioBackend = CPU`, so a text-only model fails with
-    `TF_LITE_VISION_ENCODER not found in the model`.
-20. **Vision is GPU-only.** Image input fails wherever GPU is unavailable (for example on the emulator: `Can not find OpenCL library`), even when the main backend is CPU.
+19. *(Removed.)* Text-only models load: the vision and audio encoders are created only when the model has them (`ModelCapabilities`), and image or audio input to a model without that encoder is a fixed 400. The number is kept because docs and tickets cite later entries.
+20. **Encoder backend support varies by model.** Each encoder runs on a backend the model lists for it (Backend Settings: Auto follows the main backend, or force CPU or GPU; an unsupported choice is ignored and the status says so).
+    On the emulator (2026-11-09) Gemma 4's vision and audio encoders ran on CPU and answered; Gemma 3n lists only GPU for vision, and its image request still answered there (not explained: the main backend on GPU still fails at the first request, pitfall 22).
+    NPU-only encoders are treated as absent. Phone GPU vision is untested.
 21. **An unsupported or corrupt model must not reach the engine.** `AiEngineManager.loadModel` first reads the file with `ModelInspector` (LiteRT-LM `ModelInfo`) and rejects what it cannot read,
     what is not an LLM, or what has no text input with `UnsupportedModelException`; the service then shows "Error: Unsupported model file", clears the crash flag and the saved model path, and stays
     up without a model (health 503). A random-bytes file and a truncated real model were both rejected this way on `0.19.1` (the process survived). Native aborts inside `Engine.initialize()`

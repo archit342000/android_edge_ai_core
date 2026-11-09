@@ -379,6 +379,88 @@
                         android:checked="true"
                         android:text="@string/speculative_adaptive" />
                 </RadioGroup>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="32dp"
+                    android:text="@string/encoder_vision_title"
+                    android:textAppearance="?attr/textAppearanceTitleLarge" />
+
+                <RadioGroup
+                    android:id="@+id/rg_vision_backend"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <RadioButton
+                        android:id="@+id/rb_vision_auto"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:checked="true"
+                        android:text="@string/encoder_auto" />
+
+                    <RadioButton
+                        android:id="@+id/rb_vision_cpu"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:text="@string/backend_cpu" />
+
+                    <RadioButton
+                        android:id="@+id/rb_vision_gpu"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:text="@string/backend_gpu" />
+                </RadioGroup>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="32dp"
+                    android:text="@string/encoder_audio_title"
+                    android:textAppearance="?attr/textAppearanceTitleLarge" />
+
+                <RadioGroup
+                    android:id="@+id/rg_audio_backend"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <RadioButton
+                        android:id="@+id/rb_audio_auto"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:checked="true"
+                        android:text="@string/encoder_auto" />
+
+                    <RadioButton
+                        android:id="@+id/rb_audio_cpu"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:text="@string/backend_cpu" />
+
+                    <RadioButton
+                        android:id="@+id/rb_audio_gpu"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:text="@string/backend_gpu" />
+                </RadioGroup>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/encoder_help"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
 

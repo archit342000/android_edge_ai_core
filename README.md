@@ -31,6 +31,7 @@
 3. **Choose Backend**: Select your preferred hardware accelerator (**CPU**, **GPU**, or **NPU**) depending on your device's capabilities.
    Optionally set the **Context size (tokens)** below it (empty = the model's default); smaller values use less memory. It applies the next time the server starts.
    Below it, **Speculative decoding (MTP)** speeds up generation for models that ship a drafter (for example Gemma 4): **Adaptive** (default) uses it only while it is faster, **On** always, **Off** never. Models without a drafter ignore the setting. It applies the next time the server starts.
+   For multimodal models you can also choose the backend of the **Vision encoder** and the **Audio encoder** (Auto follows the backend above). Text-only models such as Qwen3-0.6B need no encoder and load normally; they answer text only (image or audio input gets a 400). Applied the next time the server starts.
 
 ### 2. Managing the Service
 - **Switch On**: In the **Server** tab, toggle the **Enable AI Server** switch. The status will change to `Loading...` and then `Ready (http://localhost:8080)` once the model is initialized.

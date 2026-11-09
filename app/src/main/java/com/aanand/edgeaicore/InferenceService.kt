@@ -69,6 +69,8 @@ class InferenceService : Service() {
         var backend = intent?.getStringExtra(EXTRA_BACKEND)
         // 0 or absent means the model's default context size
         var speculativeValue = intent?.getStringExtra(EXTRA_SPECULATIVE_DECODING)
+        var visionValue = intent?.getStringExtra(EXTRA_VISION_BACKEND)
+        var audioValue = intent?.getStringExtra(EXTRA_AUDIO_BACKEND)
         var maxNumTokens = intent?.getIntExtra(EXTRA_MAX_NUM_TOKENS, 0)?.takeIf { it > 0 }
 
         if (modelPath != null) {
@@ -78,6 +80,8 @@ class InferenceService : Service() {
                 .putString("saved_backend", backend ?: "GPU")
                 .putInt(KEY_SAVED_MAX_NUM_TOKENS, maxNumTokens ?: 0)
                 .putString(KEY_SAVED_SPECULATIVE, speculativeValue)
+                .putString(KEY_SAVED_VISION_BACKEND, visionValue)
+                .putString(KEY_SAVED_AUDIO_BACKEND, audioValue)
                 .putBoolean(KEY_CRASHED_DURING_INIT, false) // Reset on new manual start
                 .apply()
         } else {
@@ -93,6 +97,8 @@ class InferenceService : Service() {
             backend = prefs.getString("saved_backend", "GPU")
             maxNumTokens = prefs.getInt(KEY_SAVED_MAX_NUM_TOKENS, 0).takeIf { it > 0 }
             speculativeValue = prefs.getString(KEY_SAVED_SPECULATIVE, null)
+            visionValue = prefs.getString(KEY_SAVED_VISION_BACKEND, null)
+            audioValue = prefs.getString(KEY_SAVED_AUDIO_BACKEND, null)
             if (modelPath != null) {
                 Log.i(TAG, "Restored model path from prefs: $modelPath")
                 sendStatusBroadcast("Restoring service state...")
@@ -106,6 +112,11 @@ class InferenceService : Service() {
                 Log.w(TAG, "Unknown speculative decoding setting, using ${SpeculativeDecodingOption.DEFAULT}")
             }
             val speculativeOption = SpeculativeDecodingOption.fromStored(speculativeValue)
+            if (EncoderBackendOption.isUnknown(visionValue) || EncoderBackendOption.isUnknown(audioValue)) {
+                Log.w(TAG, "Unknown encoder backend setting, using ${EncoderBackendOption.AUTO}")
+            }
+            val visionOption = EncoderBackendOption.fromStored(visionValue)
+            val audioOption = EncoderBackendOption.fromStored(audioValue)
             
             serviceScope.launch {
                 try {
@@ -130,7 +141,7 @@ class InferenceService : Service() {
                     sendStatusBroadcast("Initializing engine...")
                     
                     withTimeout(300000) { // 5 minutes timeout
-                        aiEngineManager.loadModel(modelPath, finalBackend, cacheDir.absolutePath, maxNumTokens, speculativeOption)
+                        aiEngineManager.loadModel(modelPath, finalBackend, cacheDir.absolutePath, maxNumTokens, speculativeOption, visionOption, audioOption)
                     }
 
                     // If we reached here, we didn't crash (Java-wise).
@@ -148,7 +159,7 @@ class InferenceService : Service() {
                         Log.w(TAG, "GPU readiness failed, falling back to CPU: ${readinessError.message}")
                         sendStatusBroadcast("GPU unavailable, loading on CPU...")
                         markInitStarted(prefs)
-                        withTimeout(300000) { aiEngineManager.fallBackToCpu(modelPath, cacheDir.absolutePath, maxNumTokens, speculativeOption) }
+                        withTimeout(300000) { aiEngineManager.fallBackToCpu(modelPath, cacheDir.absolutePath, maxNumTokens, speculativeOption, visionOption, audioOption) }
                         prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
                         readinessError = verifyEngineReady()
                     }
@@ -157,9 +168,9 @@ class InferenceService : Service() {
                         val backendInUse = aiEngineManager.activeBackend ?: finalBackend
                         val mtp = aiEngineManager.activeSpeculativeMode?.let { ", MTP ${it.name.lowercase()}" } ?: ""
                         val status = if (aiEngineManager.fellBackFromGpu) {
-                            "Model loaded successfully ($backendInUse, GPU unavailable$mtp)"
+                            "Model loaded successfully ($backendInUse, GPU unavailable$mtp; ${aiEngineManager.activeEncoders.describe()})"
                         } else {
-                            "Model loaded successfully ($backendInUse$mtp)"
+                            "Model loaded successfully ($backendInUse$mtp; ${aiEngineManager.activeEncoders.describe()})"
                         }
                         Log.i(TAG, status)
                         sendStatusBroadcast(status)
@@ -270,6 +281,10 @@ class InferenceService : Service() {
         const val EXTRA_MAX_NUM_TOKENS = "MAX_NUM_TOKENS"
         private const val KEY_SAVED_MAX_NUM_TOKENS = "saved_max_num_tokens"
         const val EXTRA_SPECULATIVE_DECODING = "SPECULATIVE_DECODING"
+        const val EXTRA_VISION_BACKEND = "VISION_BACKEND"
+        const val EXTRA_AUDIO_BACKEND = "AUDIO_BACKEND"
+        private const val KEY_SAVED_VISION_BACKEND = "saved_vision_backend"
+        private const val KEY_SAVED_AUDIO_BACKEND = "saved_audio_backend"
         private const val KEY_SAVED_SPECULATIVE = "saved_speculative_decoding"
         const val ACTION_STATUS_UPDATE = "com.aanand.edgeaicore.STATUS_UPDATE"
         const val EXTRA_STATUS = "STATUS"

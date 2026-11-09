@@ -504,4 +504,33 @@ class OpenAIServerTest {
         assertEquals(HttpStatusCode.BadRequest, response.status)
         assertTrue(response.bodyAsText().contains("cannot be combined"))
     }
+
+    private fun textOnlyManager(): AiEngineManager {
+        val manager = newManager(FakeEngineFactory()) { FULL_LLM.copy(supportsVision = false, supportsAudio = false, visionBackends = null, audioBackends = null) }
+        runBlocking { manager.loadModel(tmp.newFile("text-only-${System.nanoTime()}.litertlm").absolutePath, "CPU") }
+        return manager
+    }
+
+    @Test
+    fun imageAndAudioInputToATextOnlyModelGetFixed400sAndTheLoadCounterReturnsToZero() = withServer(textOnlyManager()) {
+        val image = """{"messages":[{"role":"user","content":[{"type":"text","text":"x"},{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]}]}"""
+        val audio = """{"stream":true,"messages":[{"role":"user","content":[{"type":"audio_url","audio_url":{"url":"data:audio/wav;base64,AAAA"}}]}]}"""
+        for ((body, message) in listOf(image to "Model does not support image input", audio to "Model does not support audio input")) {
+            val response = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody(body)
+            }
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            assertTrue(response.bodyAsText().contains(message))
+        }
+        awaitLoadZero()
+        // Plain text still works on a text-only model
+        val ok = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(chatBody)
+        }
+        assertEquals(HttpStatusCode.OK, ok.status)
+    }
 }

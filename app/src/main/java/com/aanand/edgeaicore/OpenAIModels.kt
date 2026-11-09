@@ -181,4 +181,3 @@ data class HealthResponse(
 data class ErrorResponse(
     val error: String
 )
-

@@ -1,7 +1,9 @@
 package com.aanand.edgeaicore
 
 import android.util.Log
+import com.google.ai.edge.litertlm.BackendType
 import com.google.ai.edge.litertlm.LiteRtLmJniException
+import com.google.ai.edge.litertlm.Modality
 import com.google.ai.edge.litertlm.ModelInfo
 import com.google.ai.edge.litertlm.ModelType
 
@@ -14,7 +16,10 @@ data class RawModelInfo(
     val text: Boolean,
     val vision: Boolean,
     val audio: Boolean,
-    val speculativeSupport: Boolean = false
+    val speculativeSupport: Boolean = false,
+    /** The backends the model lists for its encoders; empty when the model records none. */
+    val visionBackends: List<BackendType> = emptyList(),
+    val audioBackends: List<BackendType> = emptyList()
 )
 
 /** What the app needs to know about a model before it loads it. */
@@ -24,7 +29,10 @@ data class ModelCapabilities(
     val supportsVision: Boolean,
     val supportsAudio: Boolean,
     /** True for an LLM that ships a speculative decoding (MTP) drafter. */
-    val speculativeDecoding: Boolean = false
+    val speculativeDecoding: Boolean = false,
+    /** CPU/GPU backends the vision encoder can run on; null when the model has no (usable) vision encoder. */
+    val visionBackends: List<BackendType>? = null,
+    val audioBackends: List<BackendType>? = null
 )
 
 /** The model file cannot be served by this app (corrupt, not an LLM, or without text input). */
@@ -55,7 +63,9 @@ class ModelInspector(private val reader: (String) -> RawModelInfo = ::readModelI
         fun toCapabilities(raw: RawModelInfo) =
             ModelCapabilities(
                 kind = raw.kind, supportsText = raw.text, supportsVision = raw.vision, supportsAudio = raw.audio,
-                speculativeDecoding = raw.kind == ModelKind.LLM && raw.speculativeSupport
+                speculativeDecoding = raw.kind == ModelKind.LLM && raw.speculativeSupport,
+                visionBackends = EncoderBackendSelector.usableBackends(raw.vision, raw.visionBackends),
+                audioBackends = EncoderBackendSelector.usableBackends(raw.audio, raw.audioBackends)
             )
 
         /** @throws UnsupportedModelException unless the model is an LLM that accepts text. */
@@ -81,6 +91,8 @@ internal fun readModelInfo(modelPath: String): RawModelInfo =
         }
         RawModelInfo(
             kind, modalities.text, modalities.vision, modalities.audio,
-            speculativeSupport = info is ModelInfo.Llm && info.hasSpeculativeDecodingSupport()
+            speculativeSupport = info is ModelInfo.Llm && info.hasSpeculativeDecodingSupport(),
+            visionBackends = if (modalities.vision) info.supportedBackends(Modality.VISION) else emptyList(),
+            audioBackends = if (modalities.audio) info.supportedBackends(Modality.AUDIO) else emptyList()
         )
     }

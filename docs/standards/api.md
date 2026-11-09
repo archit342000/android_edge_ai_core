@@ -95,7 +95,7 @@ If the client disconnects mid-stream, the server cancels the generation (`cancel
 
 | Status | When |
 |--------|------|
-| `400` | body does not parse, a field is out of range (see Chat request), the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
+| `400` | body does not parse, a field is out of range (see Chat request), an `image_url` part for a model without a vision encoder or an `audio_url` part for a model without an audio encoder (`Model does not support image input` / `... audio input`), the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
 | `401` | missing or invalid token |
 | `500` | the engine reported an error, returned no text (non-streaming), or its token usage could not be read (`Token usage unavailable`) |
 | `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`) |
