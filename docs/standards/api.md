@@ -33,11 +33,22 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 | `top_p` | number | `0.95` |
 | `top_k` | integer | `40` |
 | `stream` | boolean | `false` |
+| `tools` | list of `{type: "function", function: {name, description, parameters}}`, at most 32; `parameters` is a JSON schema | none |
+| `tool_choice` | `"auto"` (offer the tools) or `"none"` (answer in text); anything else is a 400 | `"auto"` |
+| `response_format` | `{type: "text"}`, `{type: "json_object"}` or `{type: "json_schema", json_schema: {name, schema}}` (schema object up to 16 KB); constrained decoding | none |
+| `reasoning_effort` | `none` turns thinking off; `minimal`, `low`, `medium`, `high`, `xhigh` turn it on (no token budget per level) | the model's default |
 
 `content` is a string or an array of parts: `{"type": "text", "text": ...}`, `{"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}`,
 `{"type": "audio_url", "audio_url": {"url": "data:audio/...;base64,..."}}`. Only base64 data URLs are read.
-Role `assistant` maps to a model turn; every other role, including `system`, maps to a user turn. The system prompt is fixed to
+Role `assistant` maps to a model turn (its `content` may be `null` when it only carries `tool_calls`); role `tool` is a tool result and needs the `tool_call_id` of an
+earlier assistant `tool_calls` entry (an unknown id is a 400); every other role, including `system`, maps to a user turn. The system prompt is fixed to
 "You are a helpful assistant." because REST requests carry no `systemInstruction`.
+
+**Tools** are run by the client, never on the device: when the model decides to call one, the response has `finish_reason: "tool_calls"` and
+`message.tool_calls[]` (`id` `call_<uuid>`, `type` `function`, `function.name`, `function.arguments` as a JSON string). Send the result back as an assistant message
+with those `tool_calls` plus a `tool` message with the same `tool_call_id`. Tool, response-format and reasoning settings are part of the conversation-reuse key.
+`tools` and `response_format` cannot be combined (the engine would constrain the tool-call turn to the schema): that is a 400. Tool-call arguments and tool results are limited to 16 KB each.
+Invalid tools, tool calls, schemas or `reasoning_effort` values give a 400 with a fixed message. Support depends on the model (tested with Gemma 4 E2B).
 
 Each request is independent: send the full history every time. The server reuses its cached engine conversation when your `messages` extend the previous
 request exactly (same settings, the earlier messages and the assistant reply unchanged, as text), so only the new message is prefilled; otherwise it rebuilds
@@ -46,7 +57,8 @@ the context from `messages`. The response never depends on whether the cache was
 ## Responses
 
 Non-streaming: `ChatCompletionResponse` with `id` `chatcmpl-<uuid>`, `object` `chat.completion`, `created` (seconds), one `choices[0]`
-with `message.role = "assistant"` and `finish_reason = "stop"`, and `usage` all zeros.
+with `message.role = "assistant"` and `finish_reason = "stop"` (`"tool_calls"` when the model called a tool, then `content` is omitted when empty and
+`message.tool_calls` is set), `message.reasoning_content` when thinking produced text (separate from `content`), and `usage` all zeros.
 
 Streaming (`Content-Type: text/event-stream`): one event per token,
 
@@ -55,6 +67,9 @@ data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":...,"model
 
 data: [DONE]
 ```
+
+Streams end with a chunk with an empty `delta` and `finish_reason` `"stop"` (or `"tool_calls"`) before `[DONE]`. Thinking text arrives as `delta.reasoning_content`
+chunks, and tool calls as one `delta.tool_calls` chunk (each with `index`, `id`, `function`).
 
 On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`.
 
