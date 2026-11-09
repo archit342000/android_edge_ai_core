@@ -19,7 +19,7 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 |-----------------|---------|--------|
 | `POST /v1/chat/completions` | `200` JSON `ChatCompletionResponse`, or an SSE stream when `stream: true` | `400`, `401`, `500` |
 | `GET /v1/models` | `200 {"object": "list", "data": [{"id": "litertlm-model", "object": "model", "created": <s>, "owned_by": "user"}]}` | `401` |
-| `GET /v1/health` | `200 {"status": "ok"}` | `401`, `503 {"error": "Model not loaded"}` |
+| `GET /v1/health` | `200 {"status": "ok", "backend": "<CPU|GPU|NPU>"}` | `401`, `503 {"error": "Model not loaded"}` |
 | `GET /v1/load` | `200 {"load": N}` (active chat requests) | `401`, `503` |
 | `GET /health` | same as `/v1/health` | same |
 

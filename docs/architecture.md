@@ -19,8 +19,8 @@ All sources are in `app/src/main/java/com/aanand/edgeaicore/`.
 | Class | Role |
 |-------|------|
 | `MainActivity` | The whole UI: Server, Backend Settings and Tokens tabs, model picker, diagnostics buttons (test inference, multi-turn, audio, vision, health, load), token backup and restore. Talks to the server over HTTP like any client. |
-| `InferenceService` | Foreground service (`dataSync`). Owns `AiEngineManager`, `TokenManager`, `ConversationManager` and `OpenAIServer`. Loads the model, runs a readiness ping, broadcasts status (`ACTION_STATUS_UPDATE`), and guards against crash loops during model load. |
-| `AiEngineManager` | Wraps an `LlmEngine` (the LiteRT-LM `Engine` in production). Loads a model on CPU, GPU or NPU, holds one active engine `Conversation`, serialises inference with a `Mutex`, and streams tokens through callbacks. |
+| `InferenceService` | Foreground service (`dataSync`). Owns `AiEngineManager`, `TokenManager`, `ConversationManager` and `OpenAIServer`. Loads the model, checks readiness (`AiEngineManager.verifyReady`, falling back from GPU to CPU), broadcasts status (`ACTION_STATUS_UPDATE`), and guards against crash loops during model load. |
+| `AiEngineManager` | Wraps an `LlmEngine` (the LiteRT-LM `Engine` in production), tracks the backend in use (`activeBackend`) and runs the readiness ping. Loads a model on CPU, GPU or NPU, holds one active engine `Conversation`, serialises inference with a `Mutex`, and streams tokens through callbacks. |
 | `LlmEngine` | `LlmEngine` and `LlmConversation` interfaces over the LiteRT-LM `Engine` and `Conversation`, plus the thin adapters and `createLiteRtEngine`. The seam that lets `AiEngineManager` be tested with a fake engine. |
 | `OpenAIServer` | Ktor `embeddedServer(Netty, port = 8080)` with the `/v1` routes and a root `/health`. Authenticates every request through an `isValidToken` function (`TokenManager.isValidToken`); `module()` installs JSON and the routes so route tests can host it. |
 | `OpenAIModels` | Gson data classes for requests, responses and `ErrorResponse`. The streaming chunk and model-list classes live at the bottom of `OpenAIServer.kt`. |

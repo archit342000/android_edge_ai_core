@@ -83,7 +83,7 @@ data: [DONE]
 
 ### Health Check
 **GET** `/v1/health`
-Returns `{"status": "ok"}` if the model is loaded and ready.
+Returns `{"status": "ok", "backend": "CPU"}` if the model is loaded and ready; `backend` is the backend the engine actually runs on (`CPU`, `GPU` or `NPU`). If GPU was selected but unusable, the service falls back to CPU and reports `CPU`.
 
 ### Server Load
 **GET** `/v1/load`
