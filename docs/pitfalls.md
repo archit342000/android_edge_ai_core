@@ -29,14 +29,13 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 11. **Stale AIDL flag.** `buildFeatures { aidl = true }` remains in `app/build.gradle.kts` although `app/src/main/aidl/` was removed in 2.0.0.
 12. **Missing ProGuard file.** `buildTypes.release` references `proguard-rules.pro`, which does not exist. Minify is off, so this matters only if someone enables it.
 13. **No signing config.** `./gradlew assembleRelease` gives an unsigned APK under `app/build/`. Release APKs are signed in Android Studio (`docs/release.md`).
-14. **JVM 1.8 and `-Xskip-metadata-version-check`.** The app targets Java 8 bytecode and skips the Kotlin metadata version check (the reason is not recorded; most likely the LiteRT-LM alpha).
-    Keep both unless a dependency upgrade is tested on a device.
+14. *(Removed.)* The JVM 1.8 target and `-Xskip-metadata-version-check` went away with the LiteRT-LM 0.19.1 upgrade. The number is kept because docs and tickets cite later entries.
 15. **Existing lint errors are baselined.** `res/values/themes.xml:25` and `res/values-night/themes.xml:25` set `android:windowLightNavigationBar` (API 27) with `minSdk` 26.
     They are recorded in `app/lint-baseline.xml`; moving the item to `values-v27/` fixes them and lets the baseline shrink.
 
 ## Code
 
-16. **Stale comment.** `AiEngineManager.kt:171` mentions `ConversationManager.saveConversation`, but `AiEngineManager` never calls it.
+16. **Stale comment.** `AiEngineManager.kt:167` mentions `ConversationManager.saveConversation`, but `AiEngineManager` never calls it.
     Only `ConversationManager` calls its own `saveConversation`.
 17. **Two kinds of `ConversationState`.** `InferenceService.kt:142` builds its own state for the readiness ping, outside `ConversationManager`.
 18. **One active engine conversation.** `AiEngineManager` keeps a single `activeEngineConversation` behind `inferenceMutex`.
@@ -48,7 +47,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
     `TF_LITE_VISION_ENCODER not found in the model`.
 20. **Vision is GPU-only.** Image input fails wherever GPU is unavailable (for example on the emulator: `Can not find OpenCL library`), even when the main backend is CPU.
 21. **An unsupported model kills the process.** LiteRT-LM aborts natively (SIGABRT) on a model it cannot parse (for example Gemma 4 with `0.9.0-alpha02`:
-    `Unknown model type: tf_lite_end_of_vision`). The service's crash-loop guard then refuses the sticky restart until a new model path is sent.
+    `Unknown model type: tf_lite_end_of_vision`; Gemma 4 E2B loads with `0.19.1`). The service's crash-loop guard then refuses the sticky restart until a new model path is sent.
 22. **GPU "loads" before it fails.** With `BACKEND=GPU` and no OpenCL, "Model loaded successfully" is logged and the readiness ping fails afterwards.
 23. **The UI misses status updates.** `MainActivity` receives status broadcasts only while it is resumed, so a service started from adb or while the app is
     in the background leaves the UI showing "Idle".

@@ -11,7 +11,7 @@ beyond the device while it binds all interfaces (`docs/pitfalls.md`). Treat ever
 - Tokens are UUIDs stored in SharedPreferences `edge_ai_core_tokens_v2` (private mode) and `filesDir/auth_tokens_backup.json`.
   The user's backup export is plain JSON; the UI must keep saying it is a secret.
 - Never log a token or any part of it (existing `take(8)` logs are a known trap). Never show a token in a notification or broadcast.
-- Every route checks `tokenManager.isValidToken(extractToken(...))` before doing work. New routes do the same; there are no unauthenticated routes.
+- Every route checks `isValidToken(extractToken(...))` (wired to `TokenManager.isValidToken`) before doing work. New routes do the same; there are no unauthenticated routes.
   Compare tokens only through `TokenManager`.
 
 ## Network

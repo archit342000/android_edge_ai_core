@@ -14,7 +14,7 @@
   add it, then run `./gradlew testDebugUnitTest lintDebug` and try the affected feature on a device.
 - To upgrade: read the release notes, bump one library or one tightly coupled group per commit (for example all `io.ktor:*` together, at one version).
 - **LiteRT-LM** (`com.google.ai.edge.litertlm:litertlm-android`) is an alpha. Upgrades can change the `Engine` and `Conversation` API and native libraries;
-  test model load and inference on CPU and GPU on a real device before merging. `-Xskip-metadata-version-check` is probably there for it (`docs/pitfalls.md`).
+  test model load and inference on CPU and GPU on a real device before merging.
 - Ktor 2.x and Netty bring large transitive trees; keep the `packaging { resources { excludes } }` entries in sync when upgrading them.
 - Remove a dependency when its last use goes away. Do not vendor or copy library code into the repo.
 - Review outdated and vulnerable dependencies before each release (`docs/release.md`).

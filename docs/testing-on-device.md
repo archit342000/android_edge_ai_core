@@ -58,13 +58,13 @@ boot about 30 s, build and install a few seconds, model copy about 70 s for 3.6 
 | NPU | fails unless the model is built for the device's NPU | test on the phone |
 | Vision input | fails (vision is hard-wired to GPU) | test on the phone |
 
-Models: the app loads only **multimodal** `.litertlm` models (see `docs/pitfalls.md`). Known results with LiteRT-LM `0.9.0-alpha02`:
+Models: the app loads only **multimodal** `.litertlm` models (see `docs/pitfalls.md`). Known results with LiteRT-LM `0.19.1` (CPU, emulator):
 
 | Model | Result |
 |-------|--------|
-| Gemma 3n E2B IT int4 (3.6 GB) | loads on CPU, chat and streaming work |
-| `litert-community/Qwen3-0.6B` (text only) | `TF_LITE_VISION_ENCODER not found` |
-| `litert-community/gemma-4-E2B-it-litert-lm` | native abort `Unknown model type: tf_lite_end_of_vision`; needs a newer LiteRT-LM |
+| Gemma 3n E2B IT int4 (3.6 GB) | loads on CPU, chat and streaming work (retested on `0.19.1`, emulator, 2026-11-09) |
+| `litert-community/Qwen3-0.6B` (text only) | `TF_LITE_VISION_ENCODER not found` (result with `0.9.0-alpha02`; not retested with `0.19.1`) |
+| `litert-community/gemma-4-E2B-it-litert-lm` (2.6 GB) | loads on CPU, chat works (emulator `claude_edgeaicore_api34`, 2026-11-09; aborted natively with `0.9.0-alpha02`) |
 
 `litert-community` Gemma 3 and 3n repositories on Hugging Face are gated (licence acceptance and login); Gemma 4 and Qwen are not.
 
