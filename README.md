@@ -132,7 +132,7 @@ for line in response.iter_lines():
 
 1.  **State Management**: The server uses a transient conversation ID for each request to maintain context within the engine, but the REST API itself is stateless. Send the full conversation history in the `messages` array every time; the server reuses its cache automatically when the history extends the previous request.
 2.  **Reuse**: send the assistant's reply back exactly as received (unchanged text); an edited or trimmed reply, a changed earlier message or different settings make the server rebuild the context (correct, just slower).
-3.  **Streaming**: Use `stream: true` for the best user experience, as Large Language Models can take time to generate full responses.
+3.  **Streaming**: Use `stream: true` for the best user experience, as Large Language Models can take time to generate full responses. Closing a streaming connection stops generation as soon as the next token is written (not during the initial prompt processing), so the next request normally does not wait for it.
 4.  **Error Handling**: Check for HTTP status codes (401 for Unauthorized, 503 for Model Not Loaded).
 
 ---

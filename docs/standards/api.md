@@ -57,6 +57,7 @@ data: [DONE]
 ```
 
 On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`.
+If the client disconnects mid-stream, the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops.
 
 ## Errors
 

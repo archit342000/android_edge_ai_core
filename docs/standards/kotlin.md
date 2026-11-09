@@ -19,7 +19,7 @@
 
 - Never block the main thread. File, model and network work runs on `Dispatchers.IO`; UI updates switch to `Dispatchers.Main`.
 - Use a scope tied to a lifecycle, such as `InferenceService.serviceScope` (`SupervisorJob`, cancelled in `onDestroy`).
-  `MainActivity` and `OpenAIServer` currently launch on ad-hoc `CoroutineScope(Dispatchers.IO)`; do not add more of those without an owner that cancels them.
+  `MainActivity` currently launches on ad-hoc `CoroutineScope(Dispatchers.IO)`; do not add more of those without an owner that cancels them.
 - Model inference is serialised by `AiEngineManager.inferenceMutex`; do not call the LiteRT-LM `Engine` or `Conversation` outside it.
 - Shared mutable state is guarded (`synchronized(dataLock)` in `TokenManager`, `@Volatile` and the mutex in `AiEngineManager`). Keep new state behind the same guard.
 - Bridge callback APIs with `suspendCancellableCoroutine` and handle cancellation (see `generateConversationResponseAsync`).

@@ -54,3 +54,6 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
     `EventLoopKt.processNextEventInCurrentThread()`, which kotlinx-coroutines 1.11.0 removed. LiteRT-LM 0.19.1 asks for 1.11.0, so `app/build.gradle.kts` forces 1.10.2;
     without the pin such requests fail with `NoSuchMethodError`, reported as HTTP 400 "Failed to convert request body". Route tests do not show it (the Ktor test host
     reads bodies in memory); `CoroutinesPinTest` only guards the pin, so check large bodies on a device after touching Ktor, coroutines or LiteRT-LM versions. Remove the pin when Ktor is upgraded.
+27. **A dropped stream is noticed only when a token write fails.** `OpenAIServer` cancels the generation (`cancelProcess()`) from the failed write, so a client that leaves during prompt
+    processing is noticed at the first token. After a cancel `AiEngineManager` waits up to `CANCEL_WAIT_MS` (2 s) for the native terminal callback while holding `inferenceMutex`; if it
+    never arrives it logs a warning, closes the conversation and releases the lock anyway, so native decoding could then overlap the next request. It was not seen on a device (about 50 ms).

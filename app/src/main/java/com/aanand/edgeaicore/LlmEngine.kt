@@ -21,6 +21,12 @@ interface LlmEngine : AutoCloseable {
 interface LlmConversation : AutoCloseable {
     val isAlive: Boolean
     fun sendMessageAsync(message: Message, callback: MessageCallback)
+
+    /**
+     * Asks the engine to stop the generation in progress; the callback still receives its terminal event.
+     * @throws IllegalStateException if the conversation is closed.
+     */
+    fun cancelProcess()
 }
 
 /** Production adapter over the LiteRT-LM [Engine]; forwards every call. */
@@ -37,6 +43,8 @@ class LiteRtConversation(private val conversation: Conversation) : LlmConversati
 
     override fun sendMessageAsync(message: Message, callback: MessageCallback) =
         conversation.sendMessageAsync(message, callback)
+
+    override fun cancelProcess() = conversation.cancelProcess()
 
     override fun close() = conversation.close()
 }

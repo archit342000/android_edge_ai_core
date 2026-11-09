@@ -38,6 +38,7 @@ client app ──HTTP :8080──> OpenAIServer
    4. AiEngineManager.generateConversationResponseAsync(state, messages, onToken, onComplete, onError)
    5. stream=true  -> SSE chunks "data: {...}\n\n" ... "data: [DONE]"
       stream=false -> one ChatCompletionResponse (JSON)
+      a streaming client that disconnects cancels the generation (cancelProcess) and frees the inference lock
 ```
 
 `OpenAIServer` does not use `ConversationManager`. The REST API stays stateless: a request carries the whole history. `AiEngineManager` keeps the engine

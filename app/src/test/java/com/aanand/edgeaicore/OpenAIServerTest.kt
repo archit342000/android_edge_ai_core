@@ -9,6 +9,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -115,5 +116,128 @@ class OpenAIServerTest {
             setBody("not json")
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    private suspend fun ApplicationTestBuilder.loadCount(): String =
+        client.get("/v1/load") { header(HttpHeaders.Authorization, "Bearer $validToken") }
+            .bodyAsText().replace(" ", "")
+
+    /** The route decrements the counter after the response is sent, so poll (bounded) instead of reading once. */
+    private suspend fun ApplicationTestBuilder.awaitLoadZero() {
+        var text = loadCount()
+        var attempts = 0
+        while (!text.contains("\"load\":0") && attempts++ < 100) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { kotlinx.coroutines.delay(20) }
+            text = loadCount()
+        }
+        assertTrue(text, text.contains("\"load\":0"))
+    }
+
+    @Test
+    fun loadReturnsToZeroAfterStreamingAndBadRequests() = withServer(loadedManager()) {
+        client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(streamBody)
+        }.bodyAsText()
+        client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody("not json")
+        }.bodyAsText()
+        client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(chatBody)
+        }.bodyAsText()
+        awaitLoadZero()
+    }
+
+    @Test
+    fun streamWithoutModelSendsErrorEventWithoutDone() {
+        val manager = AiEngineManager(FakeEngineFactory())
+        withServer(manager) {
+            val response = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody(streamBody)
+            }
+            val text = response.bodyAsText()
+            assertTrue(text, text.contains("Model not loaded"))
+            assertTrue(text, !text.contains("[DONE]"))
+        }
+    }
+
+    @Test
+    fun aFailedWriteCancelsTheGenerationJob() = runBlocking {
+        val channel = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val job = kotlinx.coroutines.Job()
+        channel.trySend("one")
+        channel.trySend("two")
+        val written = mutableListOf<String>()
+        OpenAIServer.forwardChunks(channel, job) { msg ->
+            if (written.size == 1) throw java.io.IOException("Broken pipe")
+            written.add(msg)
+        }
+        assertEquals(listOf("one"), written)
+        assertTrue(job.isCancelled)
+    }
+
+    @Test
+    fun aClosedChannelFailureCancelsTheJobAndRethrows() = runBlocking {
+        val channel = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val job = kotlinx.coroutines.Job()
+        channel.trySend("one")
+        try {
+            OpenAIServer.forwardChunks(channel, job) { throw kotlinx.coroutines.CancellationException("closed") }
+            org.junit.Assert.fail("expected CancellationException")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            assertTrue(job.isCancelled)
+        }
+    }
+
+    @Test
+    fun aHealthyStreamIsForwardedInOrderAndDoesNotCancelTheJob() = runBlocking {
+        val channel = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val job = kotlinx.coroutines.Job()
+        channel.trySend("a"); channel.trySend("b"); channel.close()
+        val written = mutableListOf<String>()
+        OpenAIServer.forwardChunks(channel, job) { written.add(it) }
+        assertEquals(listOf("a", "b"), written)
+        assertTrue(!job.isCancelled)
+    }
+
+    @Test
+    fun aDroppedStreamCancelsTheEngineAndFreesTheLock() = runBlocking {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = AiEngineManager(factory)
+        manager.loadModel(tmp.newFile("m.litertlm").absolutePath, "CPU")
+        val channel = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val state = ConversationState(conversationId = "c1", apiToken = "t", ttlMs = 0)
+        val message = ChatMessage("user", com.google.gson.JsonPrimitive("hi"))
+
+        kotlinx.coroutines.coroutineScope {
+            val job = launch(kotlinx.coroutines.Dispatchers.Default) {
+                manager.generateConversationResponseAsync(state, listOf(message), { channel.trySend(it) }, {}, {})
+            }
+            kotlinx.coroutines.withTimeout(5_000) {
+                while (factory.engine.conversations.firstOrNull()?.sent != 1) kotlinx.coroutines.delay(5)
+            }
+            channel.trySend("first token")
+            // The client has gone: the first write fails.
+            OpenAIServer.forwardChunks(channel, job) { throw java.io.IOException("Broken pipe") }
+            job.join()
+        }
+
+        assertEquals(1, factory.engine.conversations[0].cancelCount)
+        assertTrue(factory.engine.conversations[0].closed)
+        // The next request runs straight away.
+        factory.engine.hangUntilCancelled = false
+        var response = ""
+        manager.generateConversationResponseAsync(
+            ConversationState(conversationId = "c2", apiToken = "t", ttlMs = 0),
+            listOf(message), {}, { response = it }, { org.junit.Assert.fail("unexpected ${it.message}") }
+        )
+        assertEquals("Hello", response)
     }
 }
