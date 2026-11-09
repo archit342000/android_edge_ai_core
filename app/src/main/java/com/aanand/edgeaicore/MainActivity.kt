@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var switchEnableServer: MaterialSwitch
     private lateinit var tvStatus: TextView
     private lateinit var rgBackend: RadioGroup
+    private lateinit var rgSpeculative: RadioGroup
     private lateinit var etContextSize: EditText
     private lateinit var btnTestInference: MaterialButton
     private lateinit var btnTestVision: MaterialButton
@@ -158,6 +159,7 @@ class MainActivity : AppCompatActivity() {
         switchEnableServer = findViewById(R.id.switch_enable_server)
         tvStatus = findViewById(R.id.tv_status)
         rgBackend = findViewById(R.id.rg_backend)
+        rgSpeculative = findViewById(R.id.rg_speculative)
         etContextSize = findViewById(R.id.et_context_size)
         btnTestInference = findViewById(R.id.btn_test_inference)
         btnTestVision = findViewById(R.id.btn_test_vision)
@@ -238,6 +240,13 @@ class MainActivity : AppCompatActivity() {
 
         // Restore saved model path
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        rgSpeculative.check(
+            when (SpeculativeDecodingOption.fromStored(prefs.getString(KEY_SPECULATIVE, null))) {
+                SpeculativeDecodingOption.OFF -> R.id.rb_spec_off
+                SpeculativeDecodingOption.ON -> R.id.rb_spec_on
+                SpeculativeDecodingOption.ADAPTIVE -> R.id.rb_spec_adaptive
+            }
+        )
         val savedContextSize = prefs.getInt(KEY_CONTEXT_SIZE, 0)
         if (savedContextSize > 0) etContextSize.setText(String.format(Locale.ROOT, "%d", savedContextSize)) // lint SetTextI18n: no bare number text
         val savedPath = prefs.getString(KEY_MODEL_PATH, null)
@@ -869,12 +878,21 @@ class MainActivity : AppCompatActivity() {
             switchEnableServer.isEnabled = true
             return
         }
-        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit { putInt(KEY_CONTEXT_SIZE, contextSize) }
+        val speculative = when (rgSpeculative.checkedRadioButtonId) {
+            R.id.rb_spec_off -> SpeculativeDecodingOption.OFF
+            R.id.rb_spec_on -> SpeculativeDecodingOption.ON
+            else -> SpeculativeDecodingOption.ADAPTIVE
+        }
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
+            putInt(KEY_CONTEXT_SIZE, contextSize)
+            putString(KEY_SPECULATIVE, speculative.name)
+        }
 
         val intent = Intent(this, InferenceService::class.java).apply {
             putExtra(InferenceService.EXTRA_MODEL_PATH, selectedModelPath)
             putExtra(InferenceService.EXTRA_BACKEND, selectedBackend)
             putExtra(InferenceService.EXTRA_MAX_NUM_TOKENS, contextSize)
+            putExtra(InferenceService.EXTRA_SPECULATIVE_DECODING, speculative.name)
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -1108,5 +1126,6 @@ class MainActivity : AppCompatActivity() {
         private const val PREFS_NAME = "litertlm_prefs"
         private const val KEY_MODEL_PATH = "model_path"
         private const val KEY_CONTEXT_SIZE = "context_size"
+        private const val KEY_SPECULATIVE = "speculative_decoding"
     }
 }

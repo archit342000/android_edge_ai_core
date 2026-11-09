@@ -338,6 +338,47 @@
                     android:importantForAutofill="no"
                     android:inputType="number"
                     android:maxLength="7" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="32dp"
+                    android:text="@string/speculative_title"
+                    android:textAppearance="?attr/textAppearanceTitleLarge" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/speculative_help"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <RadioGroup
+                    android:id="@+id/rg_speculative"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+
+                    <RadioButton
+                        android:id="@+id/rb_spec_off"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:text="@string/speculative_off" />
+
+                    <RadioButton
+                        android:id="@+id/rb_spec_on"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:text="@string/speculative_on" />
+
+                    <RadioButton
+                        android:id="@+id/rb_spec_adaptive"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:checked="true"
+                        android:text="@string/speculative_adaptive" />
+                </RadioGroup>
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
 

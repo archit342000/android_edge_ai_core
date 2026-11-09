@@ -37,7 +37,7 @@ boot about 30 s, build and install a few seconds, model copy about 70 s for 3.6 
 | Build | `build` | `./gradlew assembleDebug` gives `app/build/outputs/apk/debug/app-debug.apk` |
 | Install | `install` | `adb install -r`, grants runtime permissions, whitelists the app from battery optimisation so MainActivity's "run in background?" dialog does not cover the UI |
 | Model | `model [FILE]` | `adb push` to `/data/local/tmp`, then `run-as` copies it into the app's `files/` (debug builds only), and seeds `litertlm_prefs` `model_path` so the UI flow needs no file picker |
-| Start | `start [CPU\|GPU\|NPU]` | `am start-foreground-service` with `MODEL_PATH` and `BACKEND` extras; waits for `Model loaded successfully (<backend in use>)` in logcat; `Ping failed` lines are retries, not errors |
+| Start | `start [CPU\|GPU\|NPU]` | `am start-foreground-service` with `MODEL_PATH` and `BACKEND` extras (and `SPECULATIVE_DECODING` from `SPEC`, if set); waits for `Model loaded successfully (<backend in use>)` in logcat; `Ping failed` lines are retries, not errors |
 | Token | `token` | Taps Generate in the API Tokens tab, reads the token with `run-as` into `~/.cache/edgeaicore-device/token` (mode 600). Never print it. |
 | Forward | `forward` | `adb forward tcp:18080 tcp:8080`; the API is then `http://127.0.0.1:18080` |
 | Stop | `stop-service` | Sends `ACTION_STOP` |
@@ -67,6 +67,17 @@ Models: the app loads only **multimodal** `.litertlm` models (see `docs/pitfalls
 | `litert-community/gemma-4-E2B-it-litert-lm` (2.6 GB) | loads on CPU, chat works (emulator `claude_edgeaicore_api34`, 2026-11-09; aborted natively with `0.9.0-alpha02`) |
 
 A corrupt file (random bytes) or a truncated model is rejected before the engine is created: the log shows `ModelInspector: Model metadata could not be read`, the process survives, `/v1/health` is 503, and a valid model loads afterwards (checked on the emulator, 2026-11-09).
+
+Speculative decoding (MTP, `SPEC=OFF|ON|ADAPTIVE scripts/device.sh start`; the app's setting is Adaptive by default): Gemma 4 E2B has a drafter, Gemma 3n does not
+(the log says `Speculative decoding off (unsupported model)`). Decode speed on the emulator CPU (same prompt, temperature 0, 3 runs, 2026-11-09; rate = (completion tokens - 1) / (time of the last content chunk - the first), each run generated 891 tokens):
+
+| Mode | tok/s | PSS |
+|------|-------|-----|
+| Off | 22.9 | 1.55 GB |
+| On | 33.0 | 1.62 GB |
+| Adaptive | 32.2 | 1.63 GB |
+
+Phone GPU/CPU numbers are not measured yet.
 
 `litert-community` Gemma 3 and 3n repositories on Hugging Face are gated (licence acceptance and login); Gemma 4 and Qwen are not.
 

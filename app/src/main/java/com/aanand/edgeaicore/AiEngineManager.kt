@@ -10,6 +10,8 @@ import com.google.ai.edge.litertlm.ThinkingConfig
 import com.google.ai.edge.litertlm.ToolCall
 import com.google.ai.edge.litertlm.ToolProvider
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.SpeculativeDecodingConfig
+import com.google.ai.edge.litertlm.SpeculativeDecodingMode
 import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.Message
@@ -47,6 +49,11 @@ class AiEngineManager(
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
     private var currentMaxNumTokens: Int? = null
+    private var currentSpeculativeOption: SpeculativeDecodingOption? = null
+
+    /** The speculative decoding mode the loaded engine was configured with; null when it runs without MTP. */
+    @Volatile var activeSpeculativeMode: SpeculativeDecodingMode? = null
+        private set
 
     /** The backend the loaded engine actually runs on ("CPU", "GPU" or "NPU"); null while no model is loaded. */
     @Volatile var activeBackend: String? = null
@@ -69,9 +76,12 @@ class AiEngineManager(
         inferenceMutex.withLock { conversationCache.clear() }
     }
 
-    /** @param maxNumTokens the KV-cache size (input plus output tokens); null keeps the model's default */
-    suspend fun loadModel(modelPath: String, backendType: String = "GPU", cacheDir: String? = null, maxNumTokens: Int? = null): Unit = withContext(Dispatchers.IO) {
-        if (currentModelPath == modelPath && currentMaxNumTokens == maxNumTokens && engine != null) {
+    /**
+     * @param maxNumTokens the KV-cache size (input plus output tokens); null keeps the model's default
+     * @param speculativeDecoding the MTP setting; only used when the model ships a drafter
+     */
+    suspend fun loadModel(modelPath: String, backendType: String = "GPU", cacheDir: String? = null, maxNumTokens: Int? = null, speculativeDecoding: SpeculativeDecodingOption = SpeculativeDecodingOption.DEFAULT): Unit = withContext(Dispatchers.IO) {
+        if (currentModelPath == modelPath && currentMaxNumTokens == maxNumTokens && currentSpeculativeOption == speculativeDecoding && engine != null) {
             return@withContext
         }
 
@@ -89,7 +99,7 @@ class AiEngineManager(
         val capabilities = modelInspector(modelPath)
         ModelInspector.validate(capabilities)
 
-        loadEngine(modelPath, backendType, capabilities, cacheDir, maxNumTokens)
+        loadEngine(modelPath, backendType, capabilities, cacheDir, maxNumTokens, speculativeDecoding)
     }
 
     /** Closes the cached conversations and the engine and forgets the loaded model. Call inside [inferenceMutex]. */
@@ -99,6 +109,8 @@ class AiEngineManager(
         engine = null
         currentModelPath = null
         currentMaxNumTokens = null
+        currentSpeculativeOption = null
+        activeSpeculativeMode = null
         modelCapabilities = null
         activeBackend = null
         fellBackFromGpu = false
@@ -339,7 +351,7 @@ class AiEngineManager(
         }
     }
 
-    private fun loadEngine(modelPath: String, backendType: String, capabilities: ModelCapabilities, cacheDir: String?, maxNumTokens: Int?) {
+    private fun loadEngine(modelPath: String, backendType: String, capabilities: ModelCapabilities, cacheDir: String?, maxNumTokens: Int?, speculativeDecoding: SpeculativeDecodingOption) {
         val initStartedAt = System.nanoTime()
         // An unknown name runs GPU, and that is what is used, reported and (on failure) retried on CPU.
         val resolvedBackend = when (backendType.uppercase()) {
@@ -354,13 +366,21 @@ class AiEngineManager(
                 else -> Backend.GPU()
             }
 
+            val speculativeMode = SpeculativeDecodingOption.toConfigMode(speculativeDecoding, capabilities.speculativeDecoding)
+            Log.i(
+                TAG,
+                if (speculativeMode != null) "Speculative decoding (MTP): $speculativeMode"
+                else "Speculative decoding off (${if (capabilities.speculativeDecoding) "user setting" else "unsupported model"})"
+            )
+
             val config = EngineConfig(
                 modelPath = modelPath,
                 backend = backendEnum,
                 visionBackend = Backend.GPU(),
                 audioBackend = Backend.CPU(),
                 cacheDir = cacheDir,
-                maxNumTokens = maxNumTokens
+                maxNumTokens = maxNumTokens,
+                speculativeDecodingConfig = speculativeMode?.let { SpeculativeDecodingConfig(it) }
             )
 
             // Needed for per-request token counts; read when the engine is created.
@@ -373,6 +393,8 @@ class AiEngineManager(
             engine = newEngine
             currentModelPath = modelPath
             currentMaxNumTokens = maxNumTokens
+            currentSpeculativeOption = speculativeDecoding
+            activeSpeculativeMode = speculativeMode
             // Set together with the engine, so it is non-null exactly while a model is loaded.
             modelCapabilities = capabilities
 
@@ -382,7 +404,7 @@ class AiEngineManager(
             val fallback = BackendFallbackPolicy.next(resolvedBackend)
             if (fallback != null) {
                  Log.w(TAG, "Retrying with $fallback backend...")
-                 loadEngine(modelPath, fallback, capabilities, cacheDir, maxNumTokens)
+                 loadEngine(modelPath, fallback, capabilities, cacheDir, maxNumTokens, speculativeDecoding)
                  fellBackFromGpu = true
             } else {
                 if (t is Exception) throw t else throw Exception(t)
@@ -435,11 +457,16 @@ class AiEngineManager(
     }
 
     /** Reloads the model on CPU after the GPU engine failed its readiness check. */
-    suspend fun fallBackToCpu(modelPath: String, cacheDir: String? = null, maxNumTokens: Int? = null) {
+    suspend fun fallBackToCpu(
+        modelPath: String,
+        cacheDir: String? = null,
+        maxNumTokens: Int? = null,
+        speculativeDecoding: SpeculativeDecodingOption = SpeculativeDecodingOption.DEFAULT
+    ) {
         require(activeBackend == BackendFallbackPolicy.GPU) { "Only a GPU engine falls back to CPU" }
         // Under the inference lock, so no request is using the GPU engine while it is closed.
         inferenceMutex.withLock { releaseEngine() }
-        loadModel(modelPath, BackendFallbackPolicy.CPU, cacheDir, maxNumTokens)
+        loadModel(modelPath, BackendFallbackPolicy.CPU, cacheDir, maxNumTokens, speculativeDecoding)
         fellBackFromGpu = true
     }
 
