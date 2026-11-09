@@ -971,9 +971,12 @@ class MainActivity : AppCompatActivity() {
                 
                 // Turn 2
                 delay(1000)
-                messages.add(ChatMessage("user", JsonPrimitive("What did I just ask?")))
+                // Ask about the first message explicitly: "What did I just ask?" is read by
+                // small models (Gemma 4 E2B) as the current question.
+                val turn2Prompt = "What was my first message to you? Quote it."
+                messages.add(ChatMessage("user", JsonPrimitive(turn2Prompt)))
                 withContext(Dispatchers.Main) {
-                    appendLog("User: What did I just ask?")
+                    appendLog("User: $turn2Prompt")
                     appendLog("Assistant: ", newLine = false)
                 }
 

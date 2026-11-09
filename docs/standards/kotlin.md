@@ -2,7 +2,7 @@
 
 ## Language
 
-- Kotlin 2.1, JVM target 1.8 (`app/build.gradle.kts`). Do not use Java 9+ library APIs unless desugaring is enabled.
+- Kotlin 2.4, JVM target 21 (`app/build.gradle.kts`), required by LiteRT-LM 0.19.1. `minSdk` is 26, so Java 9+ library APIs still need core library desugaring; do not use them without it.
 - Prefer `val` and immutable collections. Use `data class` for DTOs and state holders.
 - Null safety: avoid `!!`. Use `?.`, `?:`, `requireNotNull` or an early return with a clear error. Existing `!!` is not a pattern to copy.
 - Use `when` with explicit branches for string options such as the backend (`"CPU"`, `"GPU"`, `"NPU"`); prefer an `enum class` for new option sets.
