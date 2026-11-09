@@ -21,7 +21,7 @@ HOST_PORT=${HOST_PORT:-18080}
 STATE_DIR=${STATE_DIR:-$HOME/.cache/edgeaicore-device}
 PKG=com.aanand.edgeaicore
 APK=app/build/outputs/apk/debug/app-debug.apk
-LOG_TAGS="InferenceService:* AiEngineManager:* OpenAIServer:* TokenManager:* ConversationManager:* MainActivity:* AndroidRuntime:E"
+LOG_TAGS="InferenceService:* AiEngineManager:* ModelInspector:* OpenAIServer:* TokenManager:* ConversationManager:* MainActivity:* AndroidRuntime:E"
 
 adb() { "$SDK/platform-tools/adb" -s "$SERIAL" "$@"; }
 die() { echo "device.sh: $*" >&2; exit 1; }

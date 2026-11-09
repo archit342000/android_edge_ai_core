@@ -25,6 +25,13 @@ import kotlinx.coroutines.launch
 class AiEngineManager(
     private val engineFactory: (EngineConfig) -> LlmEngine = ::createLiteRtEngine
 ) {
+    /** Reads a model's metadata before it is loaded; tests replace it. */
+    @Volatile internal var modelInspector: (String) -> ModelCapabilities = ModelInspector()::inspect
+
+    /** What the loaded model supports; null while no model is loaded. */
+    @Volatile var modelCapabilities: ModelCapabilities? = null
+        private set
+
     private var engine: LlmEngine? = null
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
@@ -55,41 +62,12 @@ class AiEngineManager(
             throw java.io.FileNotFoundException("Model file not found: $modelPath")
         }
 
-        try {
-            val backendEnum = when (backendType.uppercase()) {
-                "CPU" -> Backend.CPU()
-                "GPU" -> Backend.GPU()
-                "NPU" -> Backend.NPU(nativeLibraryDir = "")
-                else -> Backend.GPU()
-            }
+        // Inspect before the native engine is created: an unsupported file must not reach Engine.initialize().
+        val capabilities = modelInspector(modelPath)
+        ModelInspector.validate(capabilities)
 
-            val config = EngineConfig(
-                modelPath = modelPath,
-                backend = backendEnum,
-                visionBackend = Backend.GPU(),
-                audioBackend = Backend.CPU()
-            )
-
-            // Needed for per-request token counts; read when the engine is created.
-            @OptIn(ExperimentalApi::class)
-            ExperimentalFlags.enableBenchmark = true
-            Log.d(TAG, "Initializing Engine with config: $config")
-            val newEngine = engineFactory(config)
-            engine = newEngine
-            currentModelPath = modelPath
-
-            Log.d(TAG, "Model loaded successfully with Backend=$backendType")
-        } catch (t: Throwable) {
-            Log.e(TAG, "Failed to load model with Backend=$backendType. Error: ${t.message}", t)
-            if (backendType.equals("GPU", ignoreCase = true)) {
-                 Log.w(TAG, "Retrying with CPU backend...")
-                 loadModel(modelPath, "CPU")
-            } else {
-                if (t is Exception) throw t else throw Exception(t)
-            }
-        }
+        loadEngine(modelPath, backendType, capabilities)
     }
-
 
     fun closeAllConversations() {
         try {
@@ -282,6 +260,44 @@ class AiEngineManager(
         }
     }
 
+    private fun loadEngine(modelPath: String, backendType: String, capabilities: ModelCapabilities) {
+        try {
+            val backendEnum = when (backendType.uppercase()) {
+                "CPU" -> Backend.CPU()
+                "GPU" -> Backend.GPU()
+                "NPU" -> Backend.NPU(nativeLibraryDir = "")
+                else -> Backend.GPU()
+            }
+
+            val config = EngineConfig(
+                modelPath = modelPath,
+                backend = backendEnum,
+                visionBackend = Backend.GPU(),
+                audioBackend = Backend.CPU()
+            )
+
+            // Needed for per-request token counts; read when the engine is created.
+            @OptIn(ExperimentalApi::class)
+            ExperimentalFlags.enableBenchmark = true
+            Log.d(TAG, "Initializing Engine with config: $config")
+            val newEngine = engineFactory(config)
+            engine = newEngine
+            currentModelPath = modelPath
+            // Set together with the engine, so it is non-null exactly while a model is loaded.
+            modelCapabilities = capabilities
+
+            Log.d(TAG, "Model loaded successfully with Backend=$backendType")
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to load model with Backend=$backendType. Error: ${t.message}", t)
+            if (backendType.equals("GPU", ignoreCase = true)) {
+                 Log.w(TAG, "Retrying with CPU backend...")
+                 loadEngine(modelPath, "CPU", capabilities)
+            } else {
+                if (t is Exception) throw t else throw Exception(t)
+            }
+        }
+    }
+
     // ===================================================================
     // Helper Methods
     // ===================================================================
@@ -377,6 +393,7 @@ class AiEngineManager(
         engine?.close()
         engine = null
         currentModelPath = null
+        modelCapabilities = null
     }
 
     companion object {

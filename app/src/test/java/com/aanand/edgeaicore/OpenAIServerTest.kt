@@ -24,7 +24,7 @@ class OpenAIServerTest {
     private val validToken = "good-token"
 
     private fun loadedManager(): AiEngineManager {
-        val manager = AiEngineManager(FakeEngineFactory(chunks = listOf("po", "ng")))
+        val manager = newManager(FakeEngineFactory(chunks = listOf("po", "ng")))
         runBlocking { manager.loadModel(tmp.newFile("model.litertlm").absolutePath, "CPU") }
         return manager
     }
@@ -43,7 +43,7 @@ class OpenAIServerTest {
     private val streamBody = """{"stream":true,"messages":[{"role":"user","content":"ping"}]}"""
 
     @Test
-    fun requestsWithoutValidTokenAreRejected() = withServer(AiEngineManager(FakeEngineFactory())) {
+    fun requestsWithoutValidTokenAreRejected() = withServer(newManager(FakeEngineFactory())) {
         assertEquals(HttpStatusCode.Unauthorized, client.get("/v1/health").status)
         assertEquals(HttpStatusCode.Unauthorized, client.get("/health").status)
         assertEquals(HttpStatusCode.Unauthorized, client.get("/v1/load").status)
@@ -59,7 +59,7 @@ class OpenAIServerTest {
 
     @Test
     fun healthIs503BeforeLoadAnd200After() {
-        withServer(AiEngineManager(FakeEngineFactory())) {
+        withServer(newManager(FakeEngineFactory())) {
             val auth = { b: io.ktor.client.request.HttpRequestBuilder -> b.header(HttpHeaders.Authorization, "Bearer $validToken") }
             assertEquals(HttpStatusCode.ServiceUnavailable, client.get("/v1/health", auth).status)
             assertEquals(HttpStatusCode.ServiceUnavailable, client.get("/health", auth).status)
@@ -118,7 +118,7 @@ class OpenAIServerTest {
     }
 
     private fun usageManager(counts: Triple<Int, Int, Int> = Triple(7, 3, 10), usageFailure: Throwable? = null): AiEngineManager {
-        val manager = AiEngineManager(FakeEngineFactory(chunks = listOf("po", "ng"), counts = counts, usageFailure = usageFailure))
+        val manager = newManager(FakeEngineFactory(chunks = listOf("po", "ng"), counts = counts, usageFailure = usageFailure))
         runBlocking { manager.loadModel(tmp.newFile("model-${System.nanoTime()}.litertlm").absolutePath, "CPU") }
         return manager
     }
