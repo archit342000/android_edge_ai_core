@@ -1,11 +1,19 @@
 package com.aanand.edgeaicore
 
+import com.google.ai.edge.litertlm.ThinkingConfig
+
 /** The conversation settings a cached engine conversation must match to be reused. */
 data class CacheSettings(
     val temperature: Double,
     val topP: Double,
     val topK: Int,
-    val systemInstruction: String?
+    val systemInstruction: String?,
+    /** The offered tools as JSON, or null when none are offered. */
+    val toolsKey: String? = null,
+    /** The thinking setting the conversation was created with (null = the model's default). */
+    val thinking: ThinkingConfig? = null,
+    /** True when the conversation was created with constrained decoding enabled. */
+    val responseFormatEnabled: Boolean = false
 )
 
 /** A cached conversation is identified by its settings and the exact messages it already holds. */

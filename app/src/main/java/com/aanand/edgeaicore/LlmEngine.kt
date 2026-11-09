@@ -6,6 +6,8 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
+import com.google.ai.edge.litertlm.ResponseFormat
+import com.google.ai.edge.litertlm.ThinkingConfig
 
 /**
  * The part of a LiteRT-LM `Engine` that [AiEngineManager] uses.
@@ -20,7 +22,12 @@ interface LlmEngine : AutoCloseable {
  */
 interface LlmConversation : AutoCloseable {
     val isAlive: Boolean
-    fun sendMessageAsync(message: Message, callback: MessageCallback)
+    fun sendMessageAsync(
+        message: Message,
+        callback: MessageCallback,
+        responseFormat: ResponseFormat? = null,
+        thinkingConfig: ThinkingConfig? = null
+    )
 }
 
 /** Production adapter over the LiteRT-LM [Engine]; forwards every call. */
@@ -35,8 +42,12 @@ class LiteRtEngine(private val engine: Engine) : LlmEngine {
 class LiteRtConversation(private val conversation: Conversation) : LlmConversation {
     override val isAlive: Boolean get() = conversation.isAlive
 
-    override fun sendMessageAsync(message: Message, callback: MessageCallback) =
-        conversation.sendMessageAsync(message, callback)
+    override fun sendMessageAsync(
+        message: Message,
+        callback: MessageCallback,
+        responseFormat: ResponseFormat?,
+        thinkingConfig: ThinkingConfig?
+    ) = conversation.sendMessageAsync(message, callback, responseFormat = responseFormat, thinkingConfig = thinkingConfig)
 
     override fun close() = conversation.close()
 }

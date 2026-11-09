@@ -80,4 +80,15 @@ class ConversationCacheTest {
         assertEquals(1, b.closed)
         assertEquals(0, cache.size)
     }
+
+    @Test
+    fun toolsThinkingAndResponseFormatAreSettingsToo() {
+        val cache = cache()
+        val history = listOf(user("1"), assistant("r1"))
+        cache.put(settings, history, Fake("a"))
+        assertNull(cache.take(settings.copy(toolsKey = "[{\"name\":\"f\"}]"), history))
+        assertNull(cache.take(settings.copy(thinking = com.google.ai.edge.litertlm.ThinkingConfig(true, -1)), history))
+        assertNull(cache.take(settings.copy(responseFormatEnabled = true), history))
+        assertEquals(1, cache.size)
+    }
 }
