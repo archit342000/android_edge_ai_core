@@ -63,7 +63,7 @@ kotlin {
 
 configurations.all {
     resolutionStrategy {
-        // Ktor 2.3.12 calls EventLoopKt.processNextEventInCurrentThread(), removed in coroutines 1.11.0.
+        // Ktor 2.3.12 needs coroutines < 1.11.0 (docs/pitfalls.md 26). Remove when Ktor is upgraded.
         force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
         force("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2")
         force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
@@ -91,6 +91,8 @@ dependencies {
     implementation("io.ktor:ktor-serialization-gson:2.3.12")
 
     testImplementation("junit:junit:4.13.2")
+    // Matches the coroutines pin above (docs/pitfalls.md 26).
+    //noinspection NewerVersionAvailable
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("io.ktor:ktor-server-test-host:2.3.12")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

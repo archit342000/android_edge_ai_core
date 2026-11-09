@@ -53,7 +53,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
     in the background leaves the UI showing "Idle".
 24. **First launch asks for battery-optimisation exemption.** The system dialog covers the UI until answered; `scripts/device.sh install` whitelists the app instead.
 25. **Debug and release builds share the application id.** A debug APK cannot update a release install (different keys); uninstalling deletes tokens and models.
-26. **Coroutines are pinned to 1.10.2 for Ktor.** Ktor 2.3.12 reads large request bodies (multi-MB image or audio parts) through
+26. **Coroutines 1.11.0 breaks Ktor request bodies of about 1 MB or more.** Ktor 2.3.12 reads large bodies (image or audio parts) through
     `EventLoopKt.processNextEventInCurrentThread()`, which kotlinx-coroutines 1.11.0 removed. LiteRT-LM 0.19.1 asks for 1.11.0, so `app/build.gradle.kts` forces 1.10.2;
-    without the pin such requests fail with `NoSuchMethodError`, reported as HTTP 400 "Failed to convert request body". Unit tests do not show it (the Ktor test host
-    reads bodies in memory), so check large bodies on a device after touching Ktor, coroutines or LiteRT-LM versions. Remove the pin when Ktor is upgraded.
+    without the pin such requests fail with `NoSuchMethodError`, reported as HTTP 400 "Failed to convert request body". Route tests do not show it (the Ktor test host
+    reads bodies in memory); `CoroutinesPinTest` only guards the pin, so check large bodies on a device after touching Ktor, coroutines or LiteRT-LM versions. Remove the pin when Ktor is upgraded.
