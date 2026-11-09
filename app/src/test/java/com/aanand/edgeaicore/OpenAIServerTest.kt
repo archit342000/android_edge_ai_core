@@ -218,7 +218,7 @@ class OpenAIServerTest {
 
         kotlinx.coroutines.coroutineScope {
             val job = launch(kotlinx.coroutines.Dispatchers.Default) {
-                manager.generateConversationResponseAsync(state, listOf(message), { channel.trySend(it) }, {}, {})
+                manager.generateConversationResponseAsync(state, listOf(message), { channel.trySend(it) }, { _, _ -> }, {})
             }
             kotlinx.coroutines.withTimeout(5_000) {
                 while (factory.engine.conversations.firstOrNull()?.sent != 1) kotlinx.coroutines.delay(5)
@@ -236,8 +236,75 @@ class OpenAIServerTest {
         var response = ""
         manager.generateConversationResponseAsync(
             ConversationState(conversationId = "c2", apiToken = "t", ttlMs = 0),
-            listOf(message), {}, { response = it }, { org.junit.Assert.fail("unexpected ${it.message}") }
+            listOf(message), {}, { text, _ -> response = text }, { org.junit.Assert.fail("unexpected ${it.message}") }
         )
         assertEquals("Hello", response)
+    }
+
+    private fun usageManager(counts: Triple<Int, Int, Int> = Triple(7, 3, 10), usageFailure: Throwable? = null): AiEngineManager {
+        val manager = AiEngineManager(FakeEngineFactory(chunks = listOf("po", "ng"), counts = counts, usageFailure = usageFailure))
+        runBlocking { manager.loadModel(tmp.newFile("model-${System.nanoTime()}.litertlm").absolutePath, "CPU") }
+        return manager
+    }
+
+    @Test
+    fun nonStreamingResponseCarriesTheEngineUsage() = withServer(usageManager(Triple(7, 3, 12))) {
+        val text = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(chatBody)
+        }.bodyAsText().replace(" ", "").replace("\n", "")
+        assertTrue(text, text.contains("\"prompt_tokens\":9"))
+        assertTrue(text, text.contains("\"completion_tokens\":3"))
+        assertTrue(text, text.contains("\"total_tokens\":12"))
+        assertTrue(text, text.contains("\"cached_tokens\":2"))
+    }
+
+    @Test
+    fun streamWithIncludeUsageEndsWithAUsageChunkThenDone() = withServer(usageManager()) {
+        val text = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody("""{"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"ping"}]}""")
+        }.bodyAsText()
+        val events = text.trim().split("\n\n")
+        assertEquals("data: [DONE]", events.last())
+        assertTrue(text, events[events.size - 2].contains("\"usage\"") && events[events.size - 2].contains("\"choices\":[]"))
+        assertTrue(text, events[events.size - 2].contains("\"prompt_tokens\":7"))
+    }
+
+    @Test
+    fun streamWithoutIncludeUsageHasNoUsageChunk() = withServer(usageManager()) {
+        val text = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(streamBody)
+        }.bodyAsText()
+        assertTrue(text, !text.contains("usage"))
+        assertTrue(text, text.trimEnd().endsWith("data: [DONE]"))
+    }
+
+    @Test
+    fun unreadableUsageGivesTheFixed500() = withServer(usageManager(usageFailure = IllegalStateException("secret detail"))) {
+        val response = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(chatBody)
+        }
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val text = response.bodyAsText()
+        assertTrue(text, text.contains("Token usage unavailable"))
+        assertTrue(text, !text.contains("secret detail"))
+    }
+
+    @Test
+    fun unreadableUsageOnAStreamSendsTheErrorEventWithoutDone() = withServer(usageManager(usageFailure = IllegalStateException("secret detail"))) {
+        val text = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(streamBody)
+        }.bodyAsText()
+        assertTrue(text, text.contains("Token usage unavailable"))
+        assertTrue(text, !text.contains("[DONE]") && !text.contains("secret detail"))
     }
 }

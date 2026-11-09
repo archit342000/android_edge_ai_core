@@ -1,10 +1,13 @@
 package com.aanand.edgeaicore
 
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.BenchmarkInfo
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ExperimentalApi
+import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 
@@ -17,11 +20,32 @@ class FakeConversation(
     /** When true the reply never ends until [cancelProcess], which then ends it with a cancellation error like the native engine. */
     private val hangUntilCancelled: Boolean = false,
     /** Runs at the end of [sendMessageAsync], to simulate a cancel that lands right after the send. */
-    private val onSend: (() -> Unit)? = null
+    private val onSend: (() -> Unit)? = null,
+    /** Counts the fake reports after a generation: prefilled tokens, decoded tokens, tokens in the KV cache. */
+    private val counts: Triple<Int, Int, Int> = Triple(7, 3, 10),
+    /** When set, reading the token counts throws it. */
+    private val usageFailure: Throwable? = null
 ) : LlmConversation {
     @Volatile var closed = false
     @Volatile var sent = 0
     @Volatile private var pending: MessageCallback? = null
+
+    override fun getTokenCount(): Int {
+        usageFailure?.let { throw it }
+        return counts.third
+    }
+
+    override fun getBenchmarkInfo(): BenchmarkInfo {
+        usageFailure?.let { throw it }
+        return BenchmarkInfo(
+            initTimeInSecond = 0.0,
+            timeToFirstTokenInSecond = 0.0,
+            lastPrefillTokenCount = counts.first,
+            lastDecodeTokenCount = counts.second,
+            lastPrefillTokensPerSecond = 0.0,
+            lastDecodeTokensPerSecond = 0.0
+        )
+    }
     override val isAlive: Boolean get() = !closed
 
     override fun sendMessageAsync(message: Message, callback: MessageCallback) {
@@ -57,7 +81,9 @@ class FakeEngine(
     private val chunks: List<String>,
     private val failure: Throwable?,
     /** Conversations created while this is true hang until cancelled (see [FakeConversation]). */
-    @Volatile var hangUntilCancelled: Boolean = false
+    @Volatile var hangUntilCancelled: Boolean = false,
+    private val counts: Triple<Int, Int, Int> = Triple(7, 3, 10),
+    private val usageFailure: Throwable? = null
 ) : LlmEngine {
     /** Runs inside [createConversation], to simulate a cancel while the conversation is being built. */
     @Volatile var onCreateConversation: (() -> Unit)? = null
@@ -68,7 +94,7 @@ class FakeEngine(
 
     override fun createConversation(config: ConversationConfig): LlmConversation {
         onCreateConversation?.invoke()
-        return FakeConversation(chunks, failure, hangUntilCancelled, onSendMessage).also { conversations.add(it) }
+        return FakeConversation(chunks, failure, hangUntilCancelled, onSendMessage, counts, usageFailure).also { conversations.add(it) }
     }
 
     override fun close() {
@@ -80,17 +106,23 @@ class FakeEngineFactory(
     private val chunks: List<String> = listOf("Hel", "lo"),
     private val failure: Throwable? = null,
     private val failOnGpu: Boolean = false,
-    private val hangUntilCancelled: Boolean = false
+    private val hangUntilCancelled: Boolean = false,
+    private val counts: Triple<Int, Int, Int> = Triple(7, 3, 10),
+    private val usageFailure: Throwable? = null
 ) : (EngineConfig) -> LlmEngine {
     val configs = mutableListOf<EngineConfig>()
+    /** `ExperimentalFlags.enableBenchmark` as it was when each engine was created (the flag is read at creation). */
+    val benchmarkFlagAtCreation = mutableListOf<Boolean>()
     lateinit var engine: FakeEngine
 
     override fun invoke(config: EngineConfig): LlmEngine {
         configs.add(config)
+        @OptIn(ExperimentalApi::class)
+        benchmarkFlagAtCreation.add(ExperimentalFlags.enableBenchmark)
         if (failOnGpu && config.backend is Backend.GPU) {
             throw IllegalStateException("GPU unavailable")
         }
-        engine = FakeEngine(chunks, failure, hangUntilCancelled)
+        engine = FakeEngine(chunks, failure, hangUntilCancelled, counts, usageFailure)
         return engine
     }
 }

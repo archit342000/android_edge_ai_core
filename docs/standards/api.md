@@ -33,6 +33,7 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 | `top_p` | number | `0.95` |
 | `top_k` | integer | `40` |
 | `stream` | boolean | `false` |
+| `stream_options` | `{"include_usage": boolean}`; with `stream: true`, `include_usage: true` adds a final usage chunk | none |
 
 `content` is a string or an array of parts: `{"type": "text", "text": ...}`, `{"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}`,
 `{"type": "audio_url", "audio_url": {"url": "data:audio/...;base64,..."}}`. Only base64 data URLs are read.
@@ -46,7 +47,9 @@ the context from `messages`. The response never depends on whether the cache was
 ## Responses
 
 Non-streaming: `ChatCompletionResponse` with `id` `chatcmpl-<uuid>`, `object` `chat.completion`, `created` (seconds), one `choices[0]`
-with `message.role = "assistant"` and `finish_reason = "stop"`, and `usage` all zeros.
+with `message.role = "assistant"` and `finish_reason = "stop"`, and `usage`: `prompt_tokens`, `completion_tokens`, `total_tokens`
+and `prompt_tokens_details.cached_tokens` (prompt tokens already in the conversation's KV cache; they are included in `prompt_tokens`).
+The counts come from the engine (LiteRT-LM benchmark info), not from re-tokenising text. If the engine cannot report them the response is `500 {"error": "Token usage unavailable"}`.
 
 Streaming (`Content-Type: text/event-stream`): one event per token,
 
@@ -55,6 +58,9 @@ data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":...,"model
 
 data: [DONE]
 ```
+
+With `stream_options.include_usage: true` the last event before `[DONE]` is a chunk with `"choices": []` and the `usage` object; without it no
+chunk carries `usage`.
 
 On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`.
 If the client disconnects mid-stream, the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops.
@@ -65,7 +71,7 @@ If the client disconnects mid-stream, the server cancels the generation (`cancel
 |--------|------|
 | `400` | body does not parse, or any other exception before or during a non-streaming generation (including "Model not loaded") |
 | `401` | missing or invalid token |
-| `500` | the engine reported an error, or returned no text (non-streaming) |
+| `500` | the engine reported an error, returned no text (non-streaming), or its token usage could not be read (`Token usage unavailable`) |
 | `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`) |
 
 All error bodies are `ErrorResponse` (`{"error": "<message>"}`).

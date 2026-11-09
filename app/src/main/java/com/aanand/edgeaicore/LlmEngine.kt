@@ -1,9 +1,11 @@
 package com.aanand.edgeaicore
 
+import com.google.ai.edge.litertlm.BenchmarkInfo
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 
@@ -27,6 +29,12 @@ interface LlmConversation : AutoCloseable {
      * @throws IllegalStateException if the conversation is closed.
      */
     fun cancelProcess()
+
+    /** Tokens now in the KV cache (prefill plus decode). */
+    fun getTokenCount(): Int
+
+    /** Counts of the last generation; needs `ExperimentalFlags.enableBenchmark` before the engine is created. */
+    fun getBenchmarkInfo(): BenchmarkInfo
 }
 
 /** Production adapter over the LiteRT-LM [Engine]; forwards every call. */
@@ -45,6 +53,11 @@ class LiteRtConversation(private val conversation: Conversation) : LlmConversati
         conversation.sendMessageAsync(message, callback)
 
     override fun cancelProcess() = conversation.cancelProcess()
+
+    override fun getTokenCount(): Int = conversation.getTokenCount()
+
+    @OptIn(ExperimentalApi::class)
+    override fun getBenchmarkInfo(): BenchmarkInfo = conversation.getBenchmarkInfo()
 
     override fun close() = conversation.close()
 }

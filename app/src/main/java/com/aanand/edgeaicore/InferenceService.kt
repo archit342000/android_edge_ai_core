@@ -145,7 +145,7 @@ class InferenceService : Service() {
                                  state = newDummyState,
                                  messages = dummyMessage,
                                  onToken = {},
-                                 onComplete = { responseText = it },
+                                 onComplete = { text, _ -> responseText = text },
                                  onErrorCallback = { throw it }
                              )                       
                              if (responseText.isNotEmpty()) {
