@@ -66,7 +66,7 @@ On a generation error the stream sends `data: {"error": "..."}` and closes witho
 
 | Status | When |
 |--------|------|
-| `400` | body does not parse, or any other exception before or during a non-streaming generation (including "Model not loaded") |
+| `400` | body does not parse, an `image_url` part for a model without a vision encoder or an `audio_url` part for a model without an audio encoder (`Model does not support image input` / `... audio input`), or any other exception before or during a non-streaming generation (including "Model not loaded") |
 | `401` | missing or invalid token |
 | `500` | the engine reported an error, returned no text (non-streaming), or its token usage could not be read (`Token usage unavailable`) |
 | `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`) |
