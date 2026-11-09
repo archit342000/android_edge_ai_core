@@ -2,7 +2,14 @@ package com.aanand.edgeaicore
 
 import com.google.ai.edge.litertlm.Backend
 import com.google.gson.JsonPrimitive
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -193,5 +200,153 @@ class AiEngineManagerTest {
         assertFalse(manager.isModelLoaded)
         assertTrue(factory.engine.closed)
         assertTrue(factory.engine.conversations[0].closed)
+    }
+
+    @Test
+    fun cancellingTheCallerCancelsNativeDecodingOnceAndFreesTheLock() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        var completed = 0
+
+        val job = launch(Dispatchers.Default) {
+            manager.generateConversationResponseAsync(
+                state = state("c1"),
+                messages = listOf(userMessage("hi")),
+                onToken = {},
+                onComplete = { completed++ },
+                onErrorCallback = { errors.add(it) }
+            )
+        }
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) { while (factory.engine.conversations.firstOrNull()?.sent != 1) delay(5) }
+        }
+        job.cancelAndJoin()
+
+        val first = factory.engine.conversations[0]
+        assertEquals(1, first.cancelCount)
+        assertTrue(first.closed) // the partial KV state is dropped
+        assertEquals(0, completed)
+        assertEquals(1, errors.size)
+        assertTrue(errors[0] is CancellationException)
+
+        // The lock is free: the next request runs and completes.
+        factory.engine.hangUntilCancelled = false
+        var response = ""
+        manager.generateConversationResponseAsync(
+            state = state("c2"),
+            messages = listOf(userMessage("again")),
+            onToken = {},
+            onComplete = { response = it },
+            onErrorCallback = { fail("unexpected error ${it.message}") }
+        )
+        assertEquals("Hello", response)
+    }
+
+    @Test
+    fun cancelSkipsCancelProcessOnAClosedConversation() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = AiEngineManager(factory)
+        manager.cancelWaitMs = 50
+        manager.loadModel(modelFile(), "CPU")
+        val job = launch(Dispatchers.Default) {
+            manager.generateConversationResponseAsync(
+                state = state(), messages = listOf(userMessage("hi")),
+                onToken = {}, onComplete = {}, onErrorCallback = {}
+            )
+        }
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) { while (factory.engine.conversations.firstOrNull()?.sent != 1) delay(5) }
+        }
+        manager.closeAllConversations() // closes the conversation under the running request
+        job.cancelAndJoin()
+        assertEquals(0, factory.engine.conversations[0].cancelCount)
+    }
+
+    @Test
+    fun cancellingAQueuedRequestReportsOnceAndNeverReachesTheEngine() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val first = launch(Dispatchers.Default) {
+            manager.generateConversationResponseAsync(
+                state = state("c1"), messages = listOf(userMessage("hi")),
+                onToken = {}, onComplete = {}, onErrorCallback = {}
+            )
+        }
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) { while (factory.engine.conversations.firstOrNull()?.sent != 1) delay(5) }
+        }
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val queued = launch(Dispatchers.Default) {
+            manager.generateConversationResponseAsync(
+                state = state("c2"), messages = listOf(userMessage("queued")),
+                onToken = {}, onComplete = {}, onErrorCallback = { errors.add(it) }
+            )
+        }
+        withContext(Dispatchers.Default) { delay(100) } // let the second request reach the lock
+        queued.cancelAndJoin()
+
+        assertEquals(1, errors.size)
+        assertTrue(errors[0] is CancellationException)
+        assertEquals(1, factory.engine.conversations.size) // the queued request never created a conversation
+        first.cancelAndJoin()
+    }
+
+    @Test
+    fun cancelDuringConversationCreationNeverStartsDecodingAndFreesTheLock() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        lateinit var job: kotlinx.coroutines.Job
+        factory.engine.onCreateConversation = { job.cancel() } // the client goes away while the history is rebuilt
+        job = launch(Dispatchers.Default) {
+            manager.generateConversationResponseAsync(
+                state = state("c1"), messages = listOf(userMessage("hi")),
+                onToken = {}, onComplete = {}, onErrorCallback = { errors.add(it) }
+            )
+        }
+        job.join()
+
+        assertEquals(0, factory.engine.conversations[0].sent) // decoding never started
+        assertEquals(1, errors.size)
+
+        // The lock is free: the next request completes.
+        factory.engine.onCreateConversation = null
+        factory.engine.hangUntilCancelled = false
+        var response = ""
+        manager.generateConversationResponseAsync(
+            state = state("c2"), messages = listOf(userMessage("again")),
+            onToken = {}, onComplete = { response = it }, onErrorCallback = { fail("unexpected ${it.message}") }
+        )
+        assertEquals("Hello", response)
+    }
+
+    @Test
+    fun cancelRightAfterTheSendStopsTheDecodingThatJustStarted() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        lateinit var job: kotlinx.coroutines.Job
+        factory.engine.onSendMessage = { job.cancel() } // the client goes away just as decoding starts
+        job = launch(Dispatchers.Default) {
+            manager.generateConversationResponseAsync(
+                state = state("c1"), messages = listOf(userMessage("hi")),
+                onToken = {}, onComplete = {}, onErrorCallback = {}
+            )
+        }
+        job.join()
+        assertTrue(factory.engine.conversations[0].cancelCount >= 1) // native decoding was told to stop
+
+        factory.engine.onSendMessage = null
+        factory.engine.hangUntilCancelled = false
+        var response = ""
+        manager.generateConversationResponseAsync(
+            state = state("c2"), messages = listOf(userMessage("again")),
+            onToken = {}, onComplete = { response = it }, onErrorCallback = { fail("unexpected ${it.message}") }
+        )
+        assertEquals("Hello", response)
     }
 }

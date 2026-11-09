@@ -14,15 +14,18 @@ import com.aanand.edgeaicore.ConversationState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AiEngineManager(
     private val engineFactory: (EngineConfig) -> LlmEngine = ::createLiteRtEngine
 ) {
+    /** How long a cancelled request waits for native decoding to stop; tests shorten it. */
+    @Volatile internal var cancelWaitMs: Long = CANCEL_WAIT_MS
     private var engine: LlmEngine? = null
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
@@ -157,7 +160,17 @@ class AiEngineManager(
 
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
         
-        inferenceMutex.withLock {
+        // A cancel while this request is still queued for the lock is reported here, once.
+        try {
+            inferenceMutex.lock()
+        } catch (e: CancellationException) {
+            onErrorCallback(e)
+            throw e
+        }
+        try {
+            var generation: CancellableGeneration? = null
+            // Whichever of completion and cancel claims this first is the one that reports (exactly one callback).
+            val outcomeReported = AtomicBoolean(false)
             try {
                 Log.d(TAG, "Processing request for ConversationId=${state.conversationId}. Total messages=${messages.size}")
                 
@@ -219,16 +232,30 @@ class AiEngineManager(
 
                 var lastResponseText = ""
                 
+                // cancelProcess() throws on a closed conversation, so skip it then. A close can still race in
+                // between, and an exception here would escape the cancellation handler, so log it instead.
+                val stopNative: () -> Unit = {
+                    try {
+                        if (conversation.isAlive) conversation.cancelProcess()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "cancelProcess failed", e)
+                    }
+                }
+                val currentGeneration = CancellableGeneration(cancelAction = stopNative)
+                generation = currentGeneration
+
                 suspendCancellableCoroutine<Unit> { cont ->
-                    cont.invokeOnCancellation {
-                        // Note: For stateful conversations, we don't necessarily want to close the KV cache
-                        // unless specifically requested, but we should at least stop the current inference.
-                        // SDK might not have a dedicated 'stopInference' on Conversation, but closing it
-                        // acts as a hard stop.
-                        conversation.close() 
+                    // Stop native decoding (the conversation and its KV state are closed after the wait below).
+                    cont.invokeOnCancellation { currentGeneration.cancel() }
+                    // Cancelled before the send (for example while the conversation was being built): the handler
+                    // above has already run and cancelProcess() would find nothing to stop, so never start decoding.
+                    if (!cont.isActive) {
+                        currentGeneration.finish()
+                        return@suspendCancellableCoroutine
                     }
                     conversation.sendMessageAsync(toLiteRTMessage(lastMsg), object : MessageCallback {
                         override fun onMessage(message: Message) {
+                            if (!cont.isActive) return // cancelled: drop late tokens
                             val chunk = extractText(message.contents)
                             Log.v(TAG, "onMessage: Received chunk length=${chunk.length}")
                             
@@ -239,6 +266,9 @@ class AiEngineManager(
                         }
 
                         override fun onDone() {
+                            currentGeneration.finish()
+                            // A cancelled request reports the cancel once, not a completion.
+                            if (!cont.isActive || !outcomeReported.compareAndSet(false, true)) return
                             Log.d(TAG, "Inference complete for ID=${state.conversationId}. Total Response Length: ${lastResponseText.length}")
                             
                             // 5. Update History with Response
@@ -252,18 +282,37 @@ class AiEngineManager(
                         }
 
                         override fun onError(error: Throwable) {
+                            currentGeneration.finish()
+                            // A cancelled request reports the cancel once, from the catch below.
+                            if (!cont.isActive) return
                             Log.e(TAG, "Inference error", error)
                             // Resolve the double-error callback issue by only calling resumeWithException
                             // The outer try-catch will handle calling onErrorCallback
                             if (cont.isActive) cont.resumeWithException(error)
                         }
                     })
+                    // Cancelled between the check above and the send: the handler's cancelProcess() found nothing to
+                    // stop, so stop the decoding that has just started.
+                    if (cont.isCancelled) stopNative()
                 }
 
+            } catch (e: CancellationException) {
+                // The caller was cancelled (for example a streaming client disconnected). Wait for native decoding
+                // to stop so the next request does not start on a busy engine, then drop the conversation: its KV
+                // state holds a partial reply. If the wait times out, the lock is still released below and native
+                // decoding may still be running; that is logged as a warning.
+                val stopped = generation?.awaitStopped(cancelWaitMs) ?: true
+                closeAllConversations()
+                val stopMessage = "Generation stopped ${generation?.msSinceCancel() ?: 0} ms after cancel (stopped=$stopped)"
+                if (stopped) Log.i(TAG, stopMessage) else Log.w(TAG, stopMessage)
+                if (outcomeReported.compareAndSet(false, true)) onErrorCallback(e)
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Error in generateConversationResponseAsync", e)
                 onErrorCallback(e)
             }
+        } finally {
+            inferenceMutex.unlock()
         }
     }
 
@@ -360,6 +409,9 @@ class AiEngineManager(
 
     companion object {
         private const val TAG = "AiEngineManager"
+
+        /** How long a cancelled request waits for native decoding to stop before releasing the inference lock. */
+        private const val CANCEL_WAIT_MS = 2000L
     }
 }
 
