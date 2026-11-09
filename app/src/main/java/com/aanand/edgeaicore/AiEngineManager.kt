@@ -6,6 +6,9 @@ import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.ThinkingConfig
+import com.google.ai.edge.litertlm.ToolCall
+import com.google.ai.edge.litertlm.ToolProvider
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.ExperimentalFlags
@@ -110,7 +113,10 @@ class AiEngineManager(
         topK: Int? = null,
         seed: Int? = null,
         systemInstruction: String? = null,
-        initialMessages: List<Message> = emptyList()
+        initialMessages: List<Message> = emptyList(),
+        tools: List<ToolProvider> = emptyList(),
+        thinkingConfig: ThinkingConfig? = null,
+        enableResponseFormat: Boolean = false
     ): LlmConversation {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
         
@@ -119,6 +125,10 @@ class AiEngineManager(
         val conversationConfig = ConversationConfig(
             systemInstruction = systemInstruction?.let { Contents.of(Content.Text(it)) },
             initialMessages = initialMessages,
+            tools = tools,
+            automaticToolCalling = false, // the client runs its tools; the model's calls are returned as tool_calls
+            thinkingConfig = thinkingConfig,
+            enableResponseFormat = enableResponseFormat,
             samplerConfig = SamplerConfig(
                 topK = topK ?: 40,
                 topP = topP ?: 0.95,
@@ -143,7 +153,10 @@ class AiEngineManager(
         onToken: (String) -> Unit,
         onComplete: (String, TokenUsage) -> Unit,
         onErrorCallback: (Throwable) -> Unit,
-        options: GenerationOptions = GenerationOptions()
+        options: GenerationOptions = GenerationOptions(),
+        chatOptions: ChatOptions = ChatOptions(),
+        onReasoning: (String) -> Unit = {},
+        onToolCalls: (List<ToolCall>) -> Unit = {}
     ) = withContext(Dispatchers.IO) {
         if (messages.isEmpty()) {
             onErrorCallback(IllegalArgumentException("No messages provided"))
@@ -179,7 +192,11 @@ class AiEngineManager(
 
                 // 2. Reuse the cached conversation when this request only extends it (same settings, and the history
                 // before the last message is exactly what the conversation already holds); otherwise build a new one.
-                val settings = CacheSettings(state.temperature, state.topP, state.topK, state.systemInstruction, state.seed)
+                val settings = CacheSettings(
+                    state.temperature, state.topP, state.topK, state.systemInstruction, state.seed,
+                    toolsKey = chatOptions.toolsKey, thinking = chatOptions.thinking, responseFormatEnabled = chatOptions.responseFormatEnabled
+                )
+                val toolNames = OpenAIToolMapper.toolCallNames(fullHistory)
                 val context = fullHistory.dropLast(1)
                 val cached = conversationCache.take(settings, context)?.takeIf { it.isAlive }
                 if (cached != null) {
@@ -193,7 +210,10 @@ class AiEngineManager(
                         topK = state.topK,
                         seed = state.seed,
                         systemInstruction = state.systemInstruction,
-                        initialMessages = context.map { toLiteRTMessage(it) }
+                        initialMessages = context.map { toLiteRTMessage(it, toolNames) },
+                        tools = chatOptions.tools,
+                        thinkingConfig = chatOptions.thinking,
+                        enableResponseFormat = chatOptions.responseFormatEnabled
                     )
                 }
                 val active: LlmConversation = conversation
@@ -203,6 +223,7 @@ class AiEngineManager(
                 Log.d(TAG, "Triggering inference with role=${lastMsg.role}")
 
                 var lastResponseText = ""
+                var loggedChannels = false
 
                 // cancelProcess() throws on a closed conversation, so skip it then. A close can still race in
                 // between, and an exception here would escape the cancellation handler, so log it instead.
@@ -225,11 +246,21 @@ class AiEngineManager(
                         currentGeneration.finish()
                         return@suspendCancellableCoroutine
                     }
-                    active.sendMessageAsync(toLiteRTMessage(lastMsg), object : MessageCallback {
+                    active.sendMessageAsync(toLiteRTMessage(lastMsg, toolNames), object : MessageCallback {
                         override fun onMessage(message: Message) {
                             if (!cont.isActive) return // cancelled: drop late tokens
                             val chunk = extractText(message.contents)
                             Log.v(TAG, "onMessage: Received chunk length=${chunk.length}")
+
+                            if (message.channels.isNotEmpty()) {
+                                if (!loggedChannels) {
+                                    loggedChannels = true
+                                    Log.d(TAG, "Message channels: ${message.channels.keys}")
+                                }
+                                val reasoning = message.channels.values.joinToString("")
+                                if (reasoning.isNotEmpty()) onReasoning(reasoning)
+                            }
+                            if (message.toolCalls.isNotEmpty()) onToolCalls(message.toolCalls)
 
                             if (chunk.isNotEmpty()) {
                                 lastResponseText += chunk
@@ -271,7 +302,7 @@ class AiEngineManager(
                             // The outer try-catch will handle calling onErrorCallback
                             if (cont.isActive) cont.resumeWithException(error)
                         }
-                    }, options)
+                    }, options, chatOptions.responseFormat, chatOptions.thinking)
                     // Cancelled between the check above and the send: the handler's cancelProcess() found nothing to
                     // stop, so stop the decoding that has just started.
                     if (cont.isCancelled) stopNative()
@@ -423,13 +454,18 @@ class AiEngineManager(
     }
 
     /** `system` and `developer` messages never get here: [SystemPromptSplitter] turns them into the system instruction. */
-    private fun toLiteRTMessage(chatMessage: ChatMessage): Message {
+    private fun toLiteRTMessage(chatMessage: ChatMessage, toolNames: Map<String, String>): Message {
+        if (chatMessage.role.equals("tool", ignoreCase = true)) {
+            return OpenAIToolMapper.toToolMessage(chatMessage, toolNames)
+        }
         val contents = mutableListOf<Content>()
-        
-        if (chatMessage.content.isJsonPrimitive) {
-            contents.add(Content.Text(chatMessage.content.asString))
-        } else if (chatMessage.content.isJsonArray) {
-            for (element in chatMessage.content.asJsonArray) {
+        // Gson parses "content": null as JsonNull, not as a Kotlin null
+        val content = chatMessage.content?.takeUnless { it.isJsonNull }
+
+        if (content != null && content.isJsonPrimitive) {
+            contents.add(Content.Text(content.asString))
+        } else if (content != null && content.isJsonArray) {
+            for (element in content.asJsonArray) {
                 if (element.isJsonObject) {
                     val obj = element.asJsonObject
                     val type = obj.get("type")?.asString ?: "text"
@@ -464,13 +500,15 @@ class AiEngineManager(
             }
         }
         
-        if (contents.isEmpty()) {
-            contents.add(Content.Text(chatMessage.content.toString()))
+        val toolCalls = chatMessage.tool_calls.orEmpty().map { OpenAIToolMapper.toToolCall(it) }
+        // A message with neither parts nor tool calls falls back to the raw content text (as before)
+        if (contents.isEmpty() && toolCalls.isEmpty()) {
+            contents.add(Content.Text(content?.toString() ?: ""))
         }
-        
+
         val lrtContents = Contents.of(contents)
         return if (chatMessage.role.equals("assistant", ignoreCase = true)) {
-            Message.model(lrtContents)
+            Message.model(lrtContents, toolCalls)
         } else {
             Message.user(lrtContents)
         }
@@ -483,22 +521,6 @@ class AiEngineManager(
             else -> return anyContents.toString()
         }
         return list.filterIsInstance<Content.Text>().joinToString("") { it.text }
-    }
-
-    /**
-     * Extracts text content from a ChatMessage.
-     */
-    private fun extractTextFromChatMessage(chatMessage: ChatMessage): String {
-        return if (chatMessage.content.isJsonPrimitive) {
-            chatMessage.content.asString
-        } else if (chatMessage.content.isJsonArray) {
-            chatMessage.content.asJsonArray
-                .filter { it.isJsonObject && it.asJsonObject.get("type")?.asString == "text" }
-                .mapNotNull { it.asJsonObject.get("text")?.asString }
-                .joinToString("")
-        } else {
-            chatMessage.content.toString()
-        }
     }
 
 

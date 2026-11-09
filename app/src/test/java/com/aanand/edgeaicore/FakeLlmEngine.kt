@@ -10,6 +10,9 @@ import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
+import com.google.ai.edge.litertlm.ResponseFormat
+import com.google.ai.edge.litertlm.ThinkingConfig
+import com.google.ai.edge.litertlm.ToolCall
 
 // Shared fakes for AiEngineManagerTest and OpenAIServerTest: no native library or model needed.
 
@@ -24,7 +27,11 @@ class FakeConversation(
     /** Counts the fake reports after a generation: prefilled tokens, decoded tokens, tokens in the KV cache. */
     private val counts: Triple<Int, Int, Int> = Triple(7, 3, 10),
     /** When set, reading the token counts throws it. */
-    private val usageFailure: Throwable? = null
+    private val usageFailure: Throwable? = null,
+    /** Tool calls the fake model returns with its reply. */
+    private val toolCalls: List<ToolCall> = emptyList(),
+    /** Thinking text the fake model returns on the `thought` channel before its reply. */
+    private val thinking: String? = null
 ) : LlmConversation {
     @Volatile var closed = false
     @Volatile var sent = 0
@@ -50,9 +57,22 @@ class FakeConversation(
 
     /** The per-request options of the last message sent. */
     @Volatile var lastOptions: GenerationOptions? = null
+    /** The per-request response format, thinking and message of the last send. */
+    var lastResponseFormat: ResponseFormat? = null
+    var lastThinking: ThinkingConfig? = null
+    var lastMessage: Message? = null
 
-    override fun sendMessageAsync(message: Message, callback: MessageCallback, options: GenerationOptions) {
+    override fun sendMessageAsync(
+        message: Message,
+        callback: MessageCallback,
+        options: GenerationOptions,
+        responseFormat: ResponseFormat?,
+        thinkingConfig: ThinkingConfig?
+    ) {
         lastOptions = options
+        lastResponseFormat = responseFormat
+        lastThinking = thinkingConfig
+        lastMessage = message
         if (hangUntilCancelled) {
             pending = callback
             sent++
@@ -64,7 +84,9 @@ class FakeConversation(
             callback.onError(failure)
             return
         }
+        thinking?.let { callback.onMessage(Message.model(Contents.of(emptyList<Content>()), emptyList(), mapOf("thought" to it))) }
         chunks.forEach { callback.onMessage(Message.model(Contents.of(Content.Text(it)))) }
+        if (toolCalls.isNotEmpty()) callback.onMessage(Message.model(Contents.of(emptyList<Content>()), toolCalls))
         callback.onDone()
     }
 
@@ -87,7 +109,9 @@ class FakeEngine(
     /** Conversations created while this is true hang until cancelled (see [FakeConversation]). */
     @Volatile var hangUntilCancelled: Boolean = false,
     private val counts: Triple<Int, Int, Int> = Triple(7, 3, 10),
-    private val usageFailure: Throwable? = null
+    private val usageFailure: Throwable? = null,
+    private val toolCalls: List<ToolCall> = emptyList(),
+    private val thinking: String? = null
 ) : LlmEngine {
     /** Runs inside [createConversation], to simulate a cancel while the conversation is being built. */
     @Volatile var onCreateConversation: (() -> Unit)? = null
@@ -104,7 +128,7 @@ class FakeEngine(
         conversationConfigs.add(config)
         conversationSeeds.add(config.samplerConfig?.seed ?: 0)
         onCreateConversation?.invoke()
-        return FakeConversation(chunks, failure, hangUntilCancelled, onSendMessage, counts, usageFailure).also { conversations.add(it) }
+        return FakeConversation(chunks, failure, hangUntilCancelled, onSendMessage, counts, usageFailure, toolCalls, thinking).also { conversations.add(it) }
     }
 
     override fun close() {
@@ -118,7 +142,9 @@ class FakeEngineFactory(
     private val failOnGpu: Boolean = false,
     private val hangUntilCancelled: Boolean = false,
     private val counts: Triple<Int, Int, Int> = Triple(7, 3, 10),
-    private val usageFailure: Throwable? = null
+    private val usageFailure: Throwable? = null,
+    private val toolCalls: List<ToolCall> = emptyList(),
+    private val thinking: String? = null
 ) : (EngineConfig) -> LlmEngine {
     val configs = mutableListOf<EngineConfig>()
     /** `ExperimentalFlags.enableBenchmark` as it was when each engine was created (the flag is read at creation). */
@@ -132,7 +158,7 @@ class FakeEngineFactory(
         if (failOnGpu && config.backend is Backend.GPU) {
             throw IllegalStateException("GPU unavailable")
         }
-        engine = FakeEngine(chunks, failure, hangUntilCancelled, counts, usageFailure)
+        engine = FakeEngine(chunks, failure, hangUntilCancelled, counts, usageFailure, toolCalls, thinking)
         return engine
     }
 }

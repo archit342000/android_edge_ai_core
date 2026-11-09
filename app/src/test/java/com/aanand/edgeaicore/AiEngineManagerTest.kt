@@ -1,6 +1,7 @@
 package com.aanand.edgeaicore
 
 import com.google.ai.edge.litertlm.Backend
+import com.google.gson.Gson
 import com.google.gson.JsonPrimitive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -214,11 +215,15 @@ class AiEngineManagerTest {
     private fun assistantChat(text: String) = ChatMessage("assistant", JsonPrimitive(text))
 
     /** Sends [messages] as a fresh stateless request (a new conversation id, as the REST server does). */
-    private suspend fun AiEngineManager.request(messages: List<ChatMessage>, reply: (String) -> Unit = {}, error: (Throwable) -> Unit = {}) =
-        generateConversationResponseAsync(
-            ConversationState(conversationId = "req-${System.nanoTime()}", apiToken = "t", ttlMs = 0),
-            messages, onToken = {}, onComplete = { text, _ -> reply(text) }, onErrorCallback = error
-        )
+    private suspend fun AiEngineManager.request(
+        messages: List<ChatMessage>,
+        reply: (String) -> Unit = {},
+        error: (Throwable) -> Unit = {},
+        chatOptions: ChatOptions = ChatOptions()
+    ) = generateConversationResponseAsync(
+        ConversationState(conversationId = "req-${System.nanoTime()}", apiToken = "t", ttlMs = 0),
+        messages, onToken = {}, onComplete = { text, _ -> reply(text) }, onErrorCallback = error, chatOptions = chatOptions
+    )
 
     @Test
     fun aRequestThatExtendsThePreviousTurnReusesItAndSendsOnlyTheNewMessage() = runTest {
@@ -870,5 +875,96 @@ class AiEngineManagerTest {
         manager.loadModel(modelFile(), "bogus")
         assertEquals("CPU", manager.activeBackend)
         assertTrue(manager.fellBackFromGpu)
+    }
+
+    private val weatherTool = ToolDto("function", ToolFunctionDto("get_weather", "d", null))
+
+    @Test
+    fun toolsReachTheConversationConfigWithManualToolCalling() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val options = OpenAIToolMapper.prepare(ChatCompletionRequest(messages = listOf(userChat("hi")), tools = listOf(weatherTool)))
+        manager.request(listOf(userChat("hi")), chatOptions = options)
+        val config = factory.engine.conversationConfigs[0]
+        assertEquals(1, config.tools.size)
+        assertEquals(false, config.automaticToolCalling)
+    }
+
+    @Test
+    fun toolCallsAndReasoningReachTheCallbacks() = runTest {
+        val factory = FakeEngineFactory(
+            chunks = emptyList(),
+            toolCalls = listOf(com.google.ai.edge.litertlm.ToolCall("get_weather", mapOf("city" to "Paris"))),
+            thinking = "let me think"
+        )
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val calls = mutableListOf<com.google.ai.edge.litertlm.ToolCall>()
+        val reasoning = StringBuilder()
+        manager.generateConversationResponseAsync(
+            ConversationState(conversationId = "x", apiToken = "t", ttlMs = 0), listOf(userChat("hi")),
+            onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) },
+            onReasoning = { reasoning.append(it) }, onToolCalls = { calls.addAll(it) }
+        )
+        assertEquals("get_weather", calls.single().name)
+        assertEquals("let me think", reasoning.toString())
+    }
+
+    @Test
+    fun perRequestResponseFormatAndThinkingReachTheSend() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val options = OpenAIToolMapper.prepare(
+            ChatCompletionRequest(messages = listOf(userChat("hi")), response_format = ResponseFormatDto("json_object"), reasoning_effort = "high")
+        )
+        manager.request(listOf(userChat("hi")), chatOptions = options)
+        val conversation = factory.engine.conversations[0]
+        assertEquals(true, conversation.lastResponseFormat != null)
+        assertEquals(true, conversation.lastThinking!!.enableThinking)
+        assertEquals(true, factory.engine.conversationConfigs[0].enableResponseFormat)
+    }
+
+    @Test
+    fun aToolResultInTheHistoryBecomesAToolMessage() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val assistant = ChatMessage("assistant", null, listOf(ToolCallDto(id = "call_1", function = FunctionCallDto("get_weather", "{\"city\":\"Paris\"}"))))
+        val toolResult = ChatMessage("tool", JsonPrimitive("{\"temp\":20}"), tool_call_id = "call_1")
+        manager.request(listOf(userChat("weather in Paris?"), assistant, toolResult))
+        val config = factory.engine.conversationConfigs[0]
+        val roles = config.initialMessages.map { it.role }
+        assertEquals(listOf(com.google.ai.edge.litertlm.Role.USER, com.google.ai.edge.litertlm.Role.MODEL), roles)
+        assertEquals("get_weather", config.initialMessages[1].toolCalls.single().name)
+        assertEquals(com.google.ai.edge.litertlm.Role.TOOL, factory.engine.conversations[0].lastMessage!!.role)
+    }
+
+    @Test
+    fun differentToolsDoNotReuseACachedConversation() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val withTools = OpenAIToolMapper.prepare(ChatCompletionRequest(messages = listOf(userChat("hi")), tools = listOf(weatherTool)))
+        manager.request(listOf(userChat("one")), chatOptions = withTools)
+        manager.request(listOf(userChat("one"), assistantChat("Hello"), userChat("two")))
+        assertEquals(2, factory.engine.conversations.size)
+    }
+
+    @Test
+    fun anAssistantTurnWithNullContentAndToolCallsMapsWithoutANullText() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val assistant = Gson().fromJson(
+            """{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","function":{"name":"f","arguments":"{}"}}]}""",
+            ChatMessage::class.java
+        )
+        val toolResult = ChatMessage("tool", JsonPrimitive("done"), tool_call_id = "call_1")
+        manager.request(listOf(userChat("q"), assistant, toolResult))
+        val model = factory.engine.conversationConfigs[0].initialMessages[1]
+        assertEquals(0, model.contents.contents.filterIsInstance<com.google.ai.edge.litertlm.Content.Text>().size)
+        assertEquals("f", model.toolCalls.single().name)
     }
 }

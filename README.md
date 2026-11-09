@@ -75,6 +75,18 @@ Mimics the OpenAI API.
 
 Also supported: `max_tokens` / `max_completion_tokens`, `top_p`, `top_k`, `presence_penalty`, `frequency_penalty` and `seed`. Values out of range are rejected with `400` (see `docs/standards/api.md`).
 
+**Tool calling, JSON output and thinking** (supported by models such as Gemma 4):
+```json
+{
+  "messages": [{"role": "user", "content": "Weather in Paris?"}],
+  "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Current weather",
+             "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}],
+  "reasoning_effort": "high"
+}
+```
+The reply has `finish_reason: "tool_calls"` and `message.tool_calls`; run the tool yourself and send the call and a `{"role": "tool", "tool_call_id": ..., "content": ...}` message back.
+`response_format` (`json_object` or `json_schema`) makes the reply valid JSON; thinking text comes back as `reasoning_content`.
+
 **Response (Streaming):**
 Returns a stream of Server-Sent Events (SSE).
 ```

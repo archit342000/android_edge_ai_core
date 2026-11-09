@@ -82,6 +82,13 @@ class OpenAIServer(
                             call.respond(HttpStatusCode.BadRequest, ErrorResponse(validationError))
                             return@post
                         }
+                        // Tools, response format, reasoning effort and tool messages: invalid input is a fixed 400
+                        val chatOptions = try {
+                            OpenAIToolMapper.prepare(request)
+                        } catch (e: IllegalArgumentException) {
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "Invalid request"))
+                            return@post
+                        }
                         val options = GenerationOptions(
                             maxOutputTokens = request.maxOutputTokens,
                             presencePenalty = request.presence_penalty?.toFloat(),
@@ -112,6 +119,18 @@ class OpenAIServer(
                             try {
                                 call.respondTextWriter(contentType = ContentType.Text.EventStream) {
                                     val channel = Channel<String>(Channel.UNLIMITED)
+                                    // Updated from the engine's callback thread, read when the reply completes
+                                    val streamedToolCalls = java.util.concurrent.atomic.AtomicInteger()
+                                    val gson = GsonBuilder().create()
+                                    fun sendDelta(delta: ChunkDelta, finishReason: String? = null) {
+                                        val chunk = ChatCompletionChunk(
+                                            id = "chatcmpl-${UUID.randomUUID()}",
+                                            created = System.currentTimeMillis() / 1000,
+                                            model = request.model ?: DEFAULT_MODEL_ID,
+                                            choices = listOf(ChunkChoice(index = 0, delta = delta, finish_reason = finishReason))
+                                        )
+                                        channel.trySend("data: ${gson.toJson(chunk)}\n\n")
+                                    }
 
                                     // The generation job is a child of this call: a failed write cancels it, which
                                     // cancels native decoding (AiEngineManager) and frees the inference lock.
@@ -121,23 +140,16 @@ class OpenAIServer(
                                                 aiEngineManager.generateConversationResponseAsync(
                                                     state = state,
                                                     messages = turns,
-                                                    onToken = { token ->
-                                                        val chunk = ChatCompletionChunk(
-                                                            id = "chatcmpl-${UUID.randomUUID()}",
-                                                            created = System.currentTimeMillis() / 1000,
-                                                            model = request.model ?: DEFAULT_MODEL_ID,
-                                                            choices = listOf(
-                                                                ChunkChoice(
-                                                                    index = 0,
-                                                                    delta = ChunkDelta(content = token),
-                                                                    finish_reason = null
-                                                                )
-                                                            )
-                                                        )
-                                                        val json = GsonBuilder().create().toJson(chunk)
-                                                        channel.trySend("data: $json\n\n")
+                                                    chatOptions = chatOptions,
+                                                    onReasoning = { sendDelta(ChunkDelta(reasoning_content = it)) },
+                                                    onToolCalls = { calls ->
+                                                        val mapped = OpenAIToolMapper.toOpenAiToolCalls(calls)
+                                                            .map { it.copy(index = streamedToolCalls.getAndIncrement()) }
+                                                        sendDelta(ChunkDelta(tool_calls = mapped))
                                                     },
+                                                    onToken = { token -> sendDelta(ChunkDelta(content = token)) },
                                                     onComplete = { _, usage ->
+                                                        sendDelta(ChunkDelta(), if (streamedToolCalls.get() > 0) "tool_calls" else "stop")
                                                         if (request.stream_options?.include_usage == true) {
                                                             val usageChunk = ChatCompletionChunk(
                                                                 id = "chatcmpl-${UUID.randomUUID()}",
@@ -187,6 +199,8 @@ class OpenAIServer(
                             var finalResponse: String? = null
                             var finalUsage: TokenUsage? = null
                             var errorOccurred: Throwable? = null
+                            val reasoning = StringBuilder()
+                            val toolCalls = mutableListOf<com.google.ai.edge.litertlm.ToolCall>()
 
                             // Call the engine
                             aiEngineManager.generateConversationResponseAsync(
@@ -195,7 +209,10 @@ class OpenAIServer(
                                 onToken = { /* No-op for non-streaming */ },
                                 onComplete = { text, usage -> finalResponse = text; finalUsage = usage },
                                 onErrorCallback = { errorOccurred = it },
-                                options = options
+                                options = options,
+                                chatOptions = chatOptions,
+                                onReasoning = { reasoning.append(it) },
+                                onToolCalls = { toolCalls.addAll(it) }
                             )
 
                             if (errorOccurred != null) {
@@ -220,9 +237,11 @@ class OpenAIServer(
                                         index = 0,
                                         message = ChatMessageResponse(
                                             role = "assistant",
-                                            content = text
+                                            content = text.takeIf { toolCalls.isEmpty() || it.isNotBlank() },
+                                            tool_calls = toolCalls.takeIf { it.isNotEmpty() }?.let { calls -> OpenAIToolMapper.toOpenAiToolCalls(calls).map { it.copy(index = null) } }, // index is for streaming only
+                                            reasoning_content = reasoning.toString().takeIf { it.isNotEmpty() }
                                         ),
-                                        finish_reason = "stop"
+                                        finish_reason = if (toolCalls.isEmpty()) "stop" else "tool_calls"
                                     )
                                 ),
                                 usage = usage.toUsage()
@@ -374,5 +393,7 @@ data class ChunkChoice(
 
 data class ChunkDelta(
     val content: String? = null,
-    val role: String? = null
+    val role: String? = null,
+    val reasoning_content: String? = null,
+    val tool_calls: List<ToolCallDto>? = null
 )

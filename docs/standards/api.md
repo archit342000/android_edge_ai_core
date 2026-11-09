@@ -38,6 +38,10 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 | `presence_penalty` | number, -2 to 2 | none |
 | `frequency_penalty` | number, -2 to 2 | none |
 | `seed` | integer; the same seed with the same request gives the same reply (best effort, per backend) | `0` |
+| `tools` | list of `{type: "function", function: {name, description, parameters}}`, at most 32; `parameters` is a JSON schema | none |
+| `tool_choice` | `"auto"` (offer the tools) or `"none"` (answer in text); anything else is a 400 | `"auto"` |
+| `response_format` | `{type: "text"}`, `{type: "json_object"}` or `{type: "json_schema", json_schema: {name, schema}}` (schema object up to 16 KB); constrained decoding | none |
+| `reasoning_effort` | `none` turns thinking off; `minimal`, `low`, `medium`, `high`, `xhigh` turn it on (no token budget per level) | the model's default |
 | `stream_options` | `{"include_usage": boolean}`; with `stream: true`, `include_usage: true` adds a final usage chunk | none |
 
 Ranges are checked before generation: `messages` has 1 to 256 items, `temperature` is 0 to 2, `top_p` is above 0 and at most 1, `top_k` is at least 1, the
@@ -47,9 +51,16 @@ and applied when the server starts.
 
 `content` is a string or an array of parts: `{"type": "text", "text": ...}`, `{"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}`,
 `{"type": "audio_url", "audio_url": {"url": "data:audio/...;base64,..."}}`. Only base64 data URLs are read.
-Role `assistant` maps to a model turn. `system` (and OpenAI's `developer`) messages are not turns: all of them, wherever they appear, are merged in order
+Role `assistant` maps to a model turn (its `content` may be `null` when it only carries `tool_calls`); role `tool` is a tool result and needs the `tool_call_id` of an
+earlier assistant `tool_calls` entry (an unknown id is a 400). `system` (and OpenAI's `developer`) messages are not turns: all of them, wherever they appear, are merged in order
 (blank line between) into the conversation's system instruction. Every other role maps to a user turn. With no system message the model's default is used (no built-in
 prompt). A request with no message left after the system messages (only system messages, or an empty `messages` array) is rejected with `400 {"error": "messages must include a non-system message"}`.
+
+**Tools** are run by the client, never on the device: when the model decides to call one, the response has `finish_reason: "tool_calls"` and
+`message.tool_calls[]` (`id` `call_<uuid>`, `type` `function`, `function.name`, `function.arguments` as a JSON string). Send the result back as an assistant message
+with those `tool_calls` plus a `tool` message with the same `tool_call_id`. Tool, response-format and reasoning settings are part of the conversation-reuse key.
+`tools` and `response_format` cannot be combined (the engine would constrain the tool-call turn to the schema): that is a 400. Tool-call arguments and tool results are limited to 16 KB each.
+Invalid tools, tool calls, schemas or `reasoning_effort` values give a 400 with a fixed message. Support depends on the model (tested with Gemma 4 E2B).
 
 Each request is independent: send the full history every time. The server reuses its cached engine conversation when your `messages` extend the previous
 request exactly (same settings, the earlier messages and the assistant reply unchanged, as text), so only the new message is prefilled; otherwise it rebuilds
@@ -58,7 +69,8 @@ the context from `messages`. The response never depends on whether the cache was
 ## Responses
 
 Non-streaming: `ChatCompletionResponse` with `id` `chatcmpl-<uuid>`, `object` `chat.completion`, `created` (seconds), one `choices[0]`
-with `message.role = "assistant"` and `finish_reason = "stop"`, and `usage`: `prompt_tokens`, `completion_tokens`, `total_tokens`
+with `message.role = "assistant"` and `finish_reason = "stop"` (`"tool_calls"` when the model called a tool, then `content` is omitted when empty and
+`message.tool_calls` is set), `message.reasoning_content` when thinking produced text (separate from `content`), and `usage`: `prompt_tokens`, `completion_tokens`, `total_tokens`
 and `prompt_tokens_details.cached_tokens` (prompt tokens already in the conversation's KV cache; they are included in `prompt_tokens`).
 The counts come from the engine (LiteRT-LM benchmark info), not from re-tokenising text. If the engine cannot report them the response is `500 {"error": "Token usage unavailable"}`.
 
@@ -69,6 +81,9 @@ data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":...,"model
 
 data: [DONE]
 ```
+
+Streams end with a chunk with an empty `delta` and `finish_reason` `"stop"` (or `"tool_calls"`) before the optional usage chunk and `[DONE]`. Thinking text arrives as `delta.reasoning_content`
+chunks, and tool calls as one `delta.tool_calls` chunk (each with `index`, `id`, `function`).
 
 With `stream_options.include_usage: true` the last event before `[DONE]` is a chunk with `"choices": []` and the `usage` object; without it no
 chunk carries `usage`.

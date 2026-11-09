@@ -18,7 +18,7 @@ object SystemPromptSplitter {
         val turns = mutableListOf<ChatMessage>()
         for (message in messages) {
             if (message.role.lowercase() in SYSTEM_ROLES) {
-                val text = textOf(message.content)
+                val text = message.content?.let { textOf(it) } ?: ""
                 if (text.isNotBlank()) systemTexts.add(text)
             } else {
                 turns.add(message)
