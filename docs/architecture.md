@@ -59,6 +59,7 @@ request builds a new conversation from `messages[:-1]`. A conversation that fail
 | Data | Location |
 |------|----------|
 | Copied model file | `filesDir/<name>`, path in SharedPreferences `litertlm_prefs` (`MainActivity`) |
+| Engine cache written by LiteRT-LM | `cacheDir` (`EngineConfig.cacheDir`); Android may clear it |
 | Service restart state | SharedPreferences `inference_service_prefs` |
 | API tokens | SharedPreferences `edge_ai_core_tokens_v2` + `filesDir/auth_tokens_backup.json` |
 | Conversations | `filesDir/conversations/` |
