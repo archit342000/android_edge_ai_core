@@ -10,6 +10,7 @@
 #   MODEL         .litertlm on the host        (default ~/.cache/edgeaicore-test-models/gemma-4-E2B-it.litertlm)
 #   HOST_PORT     host port forwarded to 8080  (default 18080)
 #   STATE_DIR     token and emulator log       (default ~/.cache/edgeaicore-device)
+#   SPEC          speculative decoding for `start`: OFF, ON or ADAPTIVE (default: ADAPTIVE, the service's default; this script does not read the app's radio setting)
 set -euo pipefail
 
 SDK=${ANDROID_HOME:-$HOME/Android/Sdk}
@@ -81,10 +82,11 @@ cmd_model() {
 }
 
 cmd_start() {
+  case "${SPEC:-}" in ""|[Oo][Ff][Ff]|[Oo][Nn]|[Aa][Dd][Aa][Pp][Tt][Ii][Vv][Ee]) ;; *) die "SPEC must be OFF, ON or ADAPTIVE";; esac
   local backend=${1:-CPU} name; name=$(basename "$MODEL")
   adb logcat -c
   adb shell am start-foreground-service -n "$PKG/.InferenceService" \
-    --es MODEL_PATH "/data/user/0/$PKG/files/$name" --es BACKEND "$backend" >/dev/null
+    --es MODEL_PATH "/data/user/0/$PKG/files/$name" --es BACKEND "$backend" ${SPEC:+--es SPECULATIVE_DECODING "$SPEC"} >/dev/null
   local s=$SECONDS line
   while :; do
     line=$(adb logcat -d -s InferenceService:* | grep -E "Ping response.*Success|Ping failed|Failed to|Error|crash loop" | tail -n 1 || true)

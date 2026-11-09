@@ -9,14 +9,22 @@ import com.google.ai.edge.litertlm.ModelType
 enum class ModelKind { LLM, EMBEDDING, UNKNOWN }
 
 /** The values [ModelInspector] copies out of LiteRT-LM's `ModelInfo`; plain data so tests need no native code. */
-data class RawModelInfo(val kind: ModelKind, val text: Boolean, val vision: Boolean, val audio: Boolean)
+data class RawModelInfo(
+    val kind: ModelKind,
+    val text: Boolean,
+    val vision: Boolean,
+    val audio: Boolean,
+    val speculativeSupport: Boolean = false
+)
 
 /** What the app needs to know about a model before it loads it. */
 data class ModelCapabilities(
     val kind: ModelKind,
     val supportsText: Boolean,
     val supportsVision: Boolean,
-    val supportsAudio: Boolean
+    val supportsAudio: Boolean,
+    /** True for an LLM that ships a speculative decoding (MTP) drafter. */
+    val speculativeDecoding: Boolean = false
 )
 
 /** The model file cannot be served by this app (corrupt, not an LLM, or without text input). */
@@ -45,7 +53,10 @@ class ModelInspector(private val reader: (String) -> RawModelInfo = ::readModelI
         private const val TAG = "ModelInspector"
 
         fun toCapabilities(raw: RawModelInfo) =
-            ModelCapabilities(kind = raw.kind, supportsText = raw.text, supportsVision = raw.vision, supportsAudio = raw.audio)
+            ModelCapabilities(
+                kind = raw.kind, supportsText = raw.text, supportsVision = raw.vision, supportsAudio = raw.audio,
+                speculativeDecoding = raw.kind == ModelKind.LLM && raw.speculativeSupport
+            )
 
         /** @throws UnsupportedModelException unless the model is an LLM that accepts text. */
         fun validate(capabilities: ModelCapabilities) {
@@ -68,5 +79,8 @@ internal fun readModelInfo(modelPath: String): RawModelInfo =
             ModelType.EMBEDDING -> ModelKind.EMBEDDING
             ModelType.UNKNOWN -> ModelKind.UNKNOWN
         }
-        RawModelInfo(kind, modalities.text, modalities.vision, modalities.audio)
+        RawModelInfo(
+            kind, modalities.text, modalities.vision, modalities.audio,
+            speculativeSupport = info is ModelInfo.Llm && info.hasSpeculativeDecodingSupport()
+        )
     }

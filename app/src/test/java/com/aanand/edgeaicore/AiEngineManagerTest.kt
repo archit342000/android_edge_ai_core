@@ -3,6 +3,7 @@ package com.aanand.edgeaicore
 import com.google.ai.edge.litertlm.Backend
 import com.google.gson.JsonPrimitive
 import kotlinx.coroutines.test.runTest
+import com.google.ai.edge.litertlm.SpeculativeDecodingMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -22,6 +23,8 @@ class AiEngineManagerTest {
     private fun modelFile(): String = tmp.newFile("model.litertlm").absolutePath
 
     private fun state(id: String = "c1") = ConversationState(conversationId = id, apiToken = "t", ttlMs = 0)
+
+    private val withDrafter = FULL_LLM.copy(speculativeDecoding = true)
 
     private fun userMessage(text: String) = ChatMessage("user", JsonPrimitive(text))
 
@@ -325,5 +328,68 @@ class AiEngineManagerTest {
         } catch (e: IllegalStateException) {
             assertNull(manager.modelCapabilities)
         }
+    }
+
+    @Test
+    fun aSupportingModelGetsTheConfiguredSpeculativeMode() = runTest {
+        val path = modelFile()
+        for ((option, mode) in listOf(
+            SpeculativeDecodingOption.ON to SpeculativeDecodingMode.ON,
+            SpeculativeDecodingOption.ADAPTIVE to SpeculativeDecodingMode.ADAPTIVE
+        )) {
+            val factory = FakeEngineFactory()
+            val manager = newManager(factory) { withDrafter }
+            manager.loadModel(path, "CPU", option)
+            assertEquals(mode, factory.configs[0].speculativeDecodingConfig?.mode)
+        }
+    }
+
+    @Test
+    fun offAndUnsupportedModelsGetNoSpeculativeConfig() = runTest {
+        val path = modelFile()
+        val off = FakeEngineFactory()
+        newManager(off) { withDrafter }.loadModel(path, "CPU", SpeculativeDecodingOption.OFF)
+        assertNull(off.configs[0].speculativeDecodingConfig)
+        val unsupported = FakeEngineFactory()
+        newManager(unsupported) { FULL_LLM }.loadModel(path, "CPU", SpeculativeDecodingOption.ADAPTIVE)
+        assertNull(unsupported.configs[0].speculativeDecodingConfig)
+    }
+
+    @Test
+    fun theSpeculativeModeSurvivesTheCpuRetry() = runTest {
+        val factory = FakeEngineFactory(failOnGpu = true)
+        val manager = newManager(factory) { withDrafter }
+        manager.loadModel(modelFile(), "GPU", SpeculativeDecodingOption.ADAPTIVE)
+        assertEquals(2, factory.configs.size)
+        assertEquals(SpeculativeDecodingMode.ADAPTIVE, factory.configs[1].speculativeDecodingConfig?.mode)
+    }
+
+    @Test
+    fun theDefaultOptionIsAdaptive() = runTest {
+        val factory = FakeEngineFactory()
+        newManager(factory) { withDrafter }.loadModel(modelFile(), "CPU")
+        assertEquals(SpeculativeDecodingMode.ADAPTIVE, factory.configs[0].speculativeDecodingConfig?.mode)
+    }
+
+    @Test
+    fun theActiveSpeculativeModeIsReportedAndClearedByClose() = runTest {
+        val manager = newManager(FakeEngineFactory()) { withDrafter }
+        manager.loadModel(modelFile(), "CPU", SpeculativeDecodingOption.ON)
+        assertEquals(SpeculativeDecodingMode.ON, manager.activeSpeculativeMode)
+        manager.close()
+        assertNull(manager.activeSpeculativeMode)
+    }
+
+    @Test
+    fun aChangedSpeculativeOptionReloadsTheSameModel() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory) { withDrafter }
+        val path = modelFile()
+        manager.loadModel(path, "CPU", SpeculativeDecodingOption.ADAPTIVE)
+        manager.loadModel(path, "CPU", SpeculativeDecodingOption.ADAPTIVE)
+        assertEquals(1, factory.configs.size)
+        manager.loadModel(path, "CPU", SpeculativeDecodingOption.OFF)
+        assertEquals(2, factory.configs.size)
+        assertNull(manager.activeSpeculativeMode)
     }
 }

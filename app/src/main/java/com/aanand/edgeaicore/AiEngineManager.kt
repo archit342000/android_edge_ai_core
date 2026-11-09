@@ -7,6 +7,8 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.SpeculativeDecodingConfig
+import com.google.ai.edge.litertlm.SpeculativeDecodingMode
 import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.Message
@@ -35,6 +37,11 @@ class AiEngineManager(
     private var engine: LlmEngine? = null
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
+    private var currentSpeculativeOption: SpeculativeDecodingOption? = null
+
+    /** The speculative decoding mode the loaded engine was configured with; null when it runs without MTP. */
+    @Volatile var activeSpeculativeMode: SpeculativeDecodingMode? = null
+        private set
     private val inferenceMutex = Mutex()
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
     @Volatile private var activeEngineConversation: LlmConversation? = null
@@ -48,8 +55,13 @@ class AiEngineManager(
         }
     }
 
-    suspend fun loadModel(modelPath: String, backendType: String = "GPU"): Unit = withContext(Dispatchers.IO) {
-        if (currentModelPath == modelPath && engine != null) {
+    /** @param speculativeDecoding the MTP setting; only used when the model ships a drafter */
+    suspend fun loadModel(
+        modelPath: String,
+        backendType: String = "GPU",
+        speculativeDecoding: SpeculativeDecodingOption = SpeculativeDecodingOption.DEFAULT
+    ): Unit = withContext(Dispatchers.IO) {
+        if (currentModelPath == modelPath && currentSpeculativeOption == speculativeDecoding && engine != null) {
             return@withContext
         }
 
@@ -66,7 +78,7 @@ class AiEngineManager(
         val capabilities = modelInspector(modelPath)
         ModelInspector.validate(capabilities)
 
-        loadEngine(modelPath, backendType, capabilities)
+        loadEngine(modelPath, backendType, capabilities, speculativeDecoding)
     }
 
     fun closeAllConversations() {
@@ -260,7 +272,12 @@ class AiEngineManager(
         }
     }
 
-    private fun loadEngine(modelPath: String, backendType: String, capabilities: ModelCapabilities) {
+    private fun loadEngine(
+        modelPath: String,
+        backendType: String,
+        capabilities: ModelCapabilities,
+        speculativeDecoding: SpeculativeDecodingOption
+    ) {
         try {
             val backendEnum = when (backendType.uppercase()) {
                 "CPU" -> Backend.CPU()
@@ -269,11 +286,19 @@ class AiEngineManager(
                 else -> Backend.GPU()
             }
 
+            val speculativeMode = SpeculativeDecodingOption.toConfigMode(speculativeDecoding, capabilities.speculativeDecoding)
+            Log.i(
+                TAG,
+                if (speculativeMode != null) "Speculative decoding (MTP): $speculativeMode"
+                else "Speculative decoding off (${if (capabilities.speculativeDecoding) "user setting" else "unsupported model"})"
+            )
+
             val config = EngineConfig(
                 modelPath = modelPath,
                 backend = backendEnum,
                 visionBackend = Backend.GPU(),
-                audioBackend = Backend.CPU()
+                audioBackend = Backend.CPU(),
+                speculativeDecodingConfig = speculativeMode?.let { SpeculativeDecodingConfig(it) }
             )
 
             // Needed for per-request token counts; read when the engine is created.
@@ -283,6 +308,8 @@ class AiEngineManager(
             val newEngine = engineFactory(config)
             engine = newEngine
             currentModelPath = modelPath
+            currentSpeculativeOption = speculativeDecoding
+            activeSpeculativeMode = speculativeMode
             // Set together with the engine, so it is non-null exactly while a model is loaded.
             modelCapabilities = capabilities
 
@@ -291,7 +318,7 @@ class AiEngineManager(
             Log.e(TAG, "Failed to load model with Backend=$backendType. Error: ${t.message}", t)
             if (backendType.equals("GPU", ignoreCase = true)) {
                  Log.w(TAG, "Retrying with CPU backend...")
-                 loadEngine(modelPath, "CPU", capabilities)
+                 loadEngine(modelPath, "CPU", capabilities, speculativeDecoding)
             } else {
                 if (t is Exception) throw t else throw Exception(t)
             }
@@ -393,6 +420,8 @@ class AiEngineManager(
         engine?.close()
         engine = null
         currentModelPath = null
+        currentSpeculativeOption = null
+        activeSpeculativeMode = null
         modelCapabilities = null
     }
 

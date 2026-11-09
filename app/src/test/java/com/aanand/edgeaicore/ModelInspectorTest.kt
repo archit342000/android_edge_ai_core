@@ -59,4 +59,14 @@ class ModelInspectorTest {
             assertEquals("closed", e.message)
         }
     }
+
+    @Test
+    fun speculativeDecodingIsTrueOnlyForAnLlmWithADrafter() {
+        fun caps(kind: ModelKind, drafter: Boolean) =
+            ModelInspector { RawModelInfo(kind, text = true, vision = false, audio = false, speculativeSupport = drafter) }.inspect("/p")
+        assertEquals(true, caps(ModelKind.LLM, drafter = true).speculativeDecoding)
+        assertEquals(false, caps(ModelKind.LLM, drafter = false).speculativeDecoding)
+        assertEquals(false, caps(ModelKind.EMBEDDING, drafter = true).speculativeDecoding)
+        assertEquals(false, caps(ModelKind.UNKNOWN, drafter = true).speculativeDecoding)
+    }
 }

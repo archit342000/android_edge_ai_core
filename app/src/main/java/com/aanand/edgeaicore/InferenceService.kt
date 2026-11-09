@@ -68,12 +68,14 @@ class InferenceService : Service() {
         val prefs = getSharedPreferences("inference_service_prefs", Context.MODE_PRIVATE)
         var modelPath = intent?.getStringExtra(EXTRA_MODEL_PATH)
         var backend = intent?.getStringExtra(EXTRA_BACKEND)
+        var speculativeValue = intent?.getStringExtra(EXTRA_SPECULATIVE_DECODING)
 
         if (modelPath != null) {
             // Save to prefs for sticky restarts
             prefs.edit()
                 .putString(KEY_SAVED_MODEL_PATH, modelPath)
                 .putString("saved_backend", backend ?: "GPU")
+                .putString(KEY_SAVED_SPECULATIVE, speculativeValue)
                 .putBoolean(KEY_CRASHED_DURING_INIT, false) // Reset on new manual start
                 .apply()
         } else {
@@ -87,6 +89,7 @@ class InferenceService : Service() {
 
             modelPath = prefs.getString(KEY_SAVED_MODEL_PATH, null)
             backend = prefs.getString("saved_backend", "GPU")
+            speculativeValue = prefs.getString(KEY_SAVED_SPECULATIVE, null)
             if (modelPath != null) {
                 Log.i(TAG, "Restored model path from prefs: $modelPath")
                 sendStatusBroadcast("Restoring service state...")
@@ -96,6 +99,10 @@ class InferenceService : Service() {
         if (modelPath != null) {
             sendStatusBroadcast("Loading model from path: $modelPath")
             val finalBackend = backend ?: "GPU"
+            if (SpeculativeDecodingOption.isUnknown(speculativeValue)) {
+                Log.w(TAG, "Unknown speculative decoding setting, using ${SpeculativeDecodingOption.DEFAULT}")
+            }
+            val speculativeOption = SpeculativeDecodingOption.fromStored(speculativeValue)
             
             serviceScope.launch {
                 try {
@@ -120,7 +127,7 @@ class InferenceService : Service() {
                     sendStatusBroadcast("Initializing engine...")
                     
                     withTimeout(300000) { // 5 minutes timeout
-                        aiEngineManager.loadModel(modelPath, finalBackend)
+                        aiEngineManager.loadModel(modelPath, finalBackend, speculativeOption)
                     }
 
                     // If we reached here, we didn't crash (Java-wise).
@@ -172,7 +179,8 @@ class InferenceService : Service() {
                     lastDummyId?.let { aiEngineManager.closeConversation(it) }
 
                     if (isReady) {
-                        sendStatusBroadcast("Model loaded successfully ($finalBackend)")
+                        val mtp = aiEngineManager.activeSpeculativeMode?.let { ", MTP ${it.name.lowercase()}" } ?: ""
+                        sendStatusBroadcast("Model loaded successfully ($finalBackend$mtp)")
                     } else {
                         sendStatusBroadcast("Error: Model verification failed")
                     }
@@ -253,6 +261,8 @@ class InferenceService : Service() {
         const val ACTION_STOP = "STOP"
         const val EXTRA_MODEL_PATH = "MODEL_PATH"
         const val EXTRA_BACKEND = "BACKEND"
+        const val EXTRA_SPECULATIVE_DECODING = "SPECULATIVE_DECODING"
+        private const val KEY_SAVED_SPECULATIVE = "saved_speculative_decoding"
         const val ACTION_STATUS_UPDATE = "com.aanand.edgeaicore.STATUS_UPDATE"
         const val EXTRA_STATUS = "STATUS"
         const val ACTION_TOKEN_REQUEST = "com.aanand.edgeaicore.TOKEN_REQUEST"
