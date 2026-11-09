@@ -11,7 +11,11 @@ import com.google.ai.edge.litertlm.Message
 import android.util.Base64
 import com.google.ai.edge.litertlm.MessageCallback
 import com.aanand.edgeaicore.ConversationState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,6 +30,14 @@ class AiEngineManager(
     private var engine: LlmEngine? = null
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
+
+    /** The backend the loaded engine actually runs on ("CPU", "GPU" or "NPU"); null while no model is loaded. */
+    @Volatile var activeBackend: String? = null
+        private set
+
+    /** True when the engine runs on CPU because the requested GPU could not be used. */
+    @Volatile var fellBackFromGpu: Boolean = false
+        private set
     private val inferenceMutex = Mutex()
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
     @Volatile private var activeEngineConversation: LlmConversation? = null
@@ -53,11 +65,16 @@ class AiEngineManager(
             throw java.io.FileNotFoundException("Model file not found: $modelPath")
         }
 
+        // An unknown name runs GPU, and that is what is used, reported and (on failure) retried on CPU.
+        val resolvedBackend = when (backendType.uppercase()) {
+            BackendFallbackPolicy.CPU -> BackendFallbackPolicy.CPU
+            NPU -> NPU
+            else -> BackendFallbackPolicy.GPU
+        }
         try {
-            val backendEnum = when (backendType.uppercase()) {
-                "CPU" -> Backend.CPU()
-                "GPU" -> Backend.GPU()
-                "NPU" -> Backend.NPU(nativeLibraryDir = "")
+            val backendEnum = when (resolvedBackend) {
+                BackendFallbackPolicy.CPU -> Backend.CPU()
+                NPU -> Backend.NPU(nativeLibraryDir = "")
                 else -> Backend.GPU()
             }
 
@@ -70,15 +87,19 @@ class AiEngineManager(
 
             Log.d(TAG, "Initializing Engine with config: $config")
             val newEngine = engineFactory(config)
+            // activeBackend first, so a concurrent reader that sees the engine also sees its backend.
+            activeBackend = resolvedBackend
             engine = newEngine
             currentModelPath = modelPath
 
-            Log.d(TAG, "Model loaded successfully with Backend=$backendType")
+            Log.d(TAG, "Model loaded successfully with Backend=$resolvedBackend")
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to load model with Backend=$backendType. Error: ${t.message}", t)
-            if (backendType.equals("GPU", ignoreCase = true)) {
-                 Log.w(TAG, "Retrying with CPU backend...")
-                 loadModel(modelPath, "CPU")
+            val fallback = BackendFallbackPolicy.next(resolvedBackend)
+            if (fallback != null) {
+                 Log.w(TAG, "Retrying with $fallback backend...")
+                 loadModel(modelPath, fallback)
+                 fellBackFromGpu = true
             } else {
                 if (t is Exception) throw t else throw Exception(t)
             }
@@ -267,6 +288,58 @@ class AiEngineManager(
         }
     }
 
+    /**
+     * Sends a "Hello" request to prove the loaded model answers. Returns null on success, otherwise the last error
+     * (an engine that loaded can still fail on its first request, for example a GPU without OpenCL).
+     *
+     * @param onAttempt called after each attempt with its number and the error, or null on success
+     */
+    suspend fun verifyReady(
+        attempts: Int,
+        retryDelayMs: Long = PING_RETRY_DELAY_MS,
+        onAttempt: (Int, Throwable?) -> Unit = { _, _ -> }
+    ): Throwable? {
+        var lastError: Throwable? = null
+        for (attempt in 1..attempts) {
+            val pingState = ConversationState(conversationId = "ping_${System.currentTimeMillis()}", apiToken = "self_test", ttlMs = 60000)
+            var response = ""
+            var error: Throwable? = null
+            try {
+                generateConversationResponseAsync(
+                    state = pingState,
+                    messages = listOf(ChatMessage(role = "user", content = com.google.gson.JsonPrimitive("Hello"))),
+                    onToken = {},
+                    onComplete = { response = it },
+                    onErrorCallback = { error = it }
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = e
+            } finally {
+                closeConversation(pingState.conversationId)
+            }
+            currentCoroutineContext().ensureActive() // generateConversationResponseAsync reports a cancel as an error
+            val failure = error ?: if (response.isEmpty()) IllegalStateException("Empty response") else null
+            onAttempt(attempt, failure)
+            if (failure == null) return null
+            lastError = failure
+            if (attempt < attempts) delay(retryDelayMs)
+        }
+        return lastError
+    }
+
+    /** Reloads the current model on CPU after the GPU engine failed its readiness check. */
+    suspend fun fallBackToCpu(modelPath: String) {
+        require(activeBackend == BackendFallbackPolicy.GPU) { "Only a GPU engine falls back to CPU" }
+        // Under the inference lock, so no request is using the GPU engine while it is closed.
+        inferenceMutex.withLock {
+            close()
+            loadModel(modelPath, BackendFallbackPolicy.CPU)
+            fellBackFromGpu = true
+        }
+    }
+
     // ===================================================================
     // Helper Methods
     // ===================================================================
@@ -356,10 +429,14 @@ class AiEngineManager(
         engine?.close()
         engine = null
         currentModelPath = null
+        activeBackend = null
+        fellBackFromGpu = false
     }
 
     companion object {
         private const val TAG = "AiEngineManager"
+        private const val PING_RETRY_DELAY_MS = 2000L
+        private const val NPU = "NPU"
     }
 }
 

@@ -5,6 +5,7 @@ import com.google.gson.JsonPrimitive
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
@@ -46,6 +47,8 @@ class AiEngineManagerTest {
         assertTrue(factory.configs[0].backend is Backend.GPU)
         assertTrue(factory.configs[1].backend is Backend.CPU)
         assertTrue(manager.isModelLoaded)
+        assertEquals("CPU", manager.activeBackend)
+        assertTrue(manager.fellBackFromGpu)
     }
 
     @Test
@@ -193,5 +196,108 @@ class AiEngineManagerTest {
         assertFalse(manager.isModelLoaded)
         assertTrue(factory.engine.closed)
         assertTrue(factory.engine.conversations[0].closed)
+    }
+
+    @Test
+    fun aGpuThatLoadsIsReportedAsGpuWithoutFallback() = runTest {
+        val manager = AiEngineManager(FakeEngineFactory())
+        manager.loadModel(modelFile(), "GPU")
+        assertEquals("GPU", manager.activeBackend)
+        assertFalse(manager.fellBackFromGpu)
+        manager.close()
+        assertNull(manager.activeBackend)
+        assertFalse(manager.fellBackFromGpu)
+    }
+
+    @Test
+    fun verifyReadyReturnsNullWhenTheModelAnswers() = runTest {
+        val manager = AiEngineManager(FakeEngineFactory())
+        manager.loadModel(modelFile(), "CPU")
+        val attempts = mutableListOf<Throwable?>()
+        val result = manager.verifyReady(attempts = 3, retryDelayMs = 0) { _, error -> attempts.add(error) }
+        assertNull(result)
+        assertEquals(listOf<Throwable?>(null), attempts) // stops at the first success
+    }
+
+    @Test
+    fun verifyReadyReturnsTheLastErrorAfterAllAttempts() = runTest {
+        val manager = AiEngineManager(FakeEngineFactory(failure = IllegalStateException("no OpenCL")))
+        manager.loadModel(modelFile(), "CPU")
+        var calls = 0
+        val result = manager.verifyReady(attempts = 2, retryDelayMs = 0) { _, _ -> calls++ }
+        assertEquals("no OpenCL", result?.message)
+        assertEquals(2, calls)
+    }
+
+    @Test
+    fun fallBackToCpuReloadsOnCpuAndRecordsIt() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = AiEngineManager(factory)
+        val path = modelFile()
+        manager.loadModel(path, "GPU")
+        manager.fallBackToCpu(path)
+        assertEquals("CPU", manager.activeBackend)
+        assertTrue(manager.fellBackFromGpu)
+        assertTrue(factory.configs.last().backend is Backend.CPU)
+    }
+
+    @Test
+    fun anUnknownBackendNameRunsAndReportsGpu() = runTest {
+        val manager = AiEngineManager(FakeEngineFactory())
+        manager.loadModel(modelFile(), "bogus")
+        assertEquals("GPU", manager.activeBackend)
+    }
+
+    @Test
+    fun verifyReadyTreatsAnEmptyReplyAsAFailureAndClosesThePingConversation() = runTest {
+        val factory = FakeEngineFactory(chunks = emptyList())
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val result = manager.verifyReady(attempts = 1, retryDelayMs = 0)
+        assertEquals("Empty response", result?.message)
+        assertTrue(factory.engine.conversations.all { it.closed })
+    }
+
+    @Test
+    fun fallBackToCpuIsRefusedForANonGpuEngine() = runTest {
+        val manager = AiEngineManager(FakeEngineFactory())
+        val path = modelFile()
+        manager.loadModel(path, "CPU")
+        try {
+            manager.fallBackToCpu(path)
+            fail("expected IllegalArgumentException")
+        } catch (e: IllegalArgumentException) {
+            assertFalse(manager.fellBackFromGpu)
+            assertEquals("CPU", manager.activeBackend)
+        }
+    }
+
+    @Test
+    fun aFailingCpuReloadLeavesNoBackendAndNoFallbackFlag() = runTest {
+        var failCpu = false
+        val manager = AiEngineManager({ config ->
+            if (failCpu) throw IllegalStateException("cpu boom")
+            FakeEngineFactory().invoke(config)
+        })
+        val path = modelFile()
+        manager.loadModel(path, "GPU")
+        failCpu = true
+        try {
+            manager.fallBackToCpu(path)
+            fail("expected IllegalStateException")
+        } catch (e: IllegalStateException) {
+            assertNull(manager.activeBackend)
+            assertFalse(manager.fellBackFromGpu)
+            assertFalse(manager.isModelLoaded)
+        }
+    }
+
+    @Test
+    fun anUnknownBackendWhoseGpuInitFailsFallsBackToCpu() = runTest {
+        val factory = FakeEngineFactory(failOnGpu = true)
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "bogus")
+        assertEquals("CPU", manager.activeBackend)
+        assertTrue(manager.fellBackFromGpu)
     }
 }

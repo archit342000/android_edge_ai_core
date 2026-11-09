@@ -220,7 +220,7 @@ class OpenAIServer(
                     }
 
                     if (aiEngineManager.isModelLoaded) {
-                        call.respond(mapOf("status" to "ok"))
+                        call.respond(HealthResponse("ok", aiEngineManager.activeBackend))
                     } else {
                         call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
                     }
@@ -251,7 +251,7 @@ class OpenAIServer(
                      return@get
                  }
                  if (aiEngineManager.isModelLoaded) {
-                     call.respond(mapOf("status" to "ok"))
+                     call.respond(HealthResponse("ok", aiEngineManager.activeBackend))
                  } else {
                      call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
                  }

@@ -87,8 +87,12 @@ cmd_start() {
     --es MODEL_PATH "/data/user/0/$PKG/files/$name" --es BACKEND "$backend" >/dev/null
   local s=$SECONDS line
   while :; do
-    line=$(adb logcat -d -s InferenceService:* | grep -E "Ping response.*Success|Ping failed|Failed to|Error|crash loop" | tail -n 1 || true)
-    case "$line" in *Success*) echo "ready on $backend in $((SECONDS - s)) s"; return;; ?*) die "start failed: ${line#*: }";; esac
+    # Ready when the service logs "Model loaded successfully (<backend in use>)"; "Ping failed" lines are retries, not errors.
+    line=$(adb logcat -d -s InferenceService:* | grep -E "Model loaded successfully|Model verification failed|Failed to initialize|crash loop" | tail -n 1 || true)
+    case "$line" in
+      *"Model loaded successfully"*) echo "ready in $((SECONDS - s)) s (requested $backend): ${line#*: }"; return;;
+      ?*) die "start failed: ${line#*: }";;
+    esac
     [ $((SECONDS - s)) -lt 300 ] || die "model not ready after 300 s"
     sleep 3
   done
@@ -138,7 +142,7 @@ Commands:
   build                 ./gradlew assembleDebug
   install [APK]         install the debug APK and grant runtime permissions
   model [FILE]          copy a model into the app's files dir and seed its saved model path
-  start [BACKEND]       start InferenceService with the model; waits for the readiness ping
+  start [BACKEND]       start InferenceService with the model; waits for 'Model loaded successfully' in logcat
   stop-service          send ACTION_STOP to InferenceService
   token                 generate an API token through the UI and save it (never printed)
   forward               adb forward HOST_PORT -> device 8080

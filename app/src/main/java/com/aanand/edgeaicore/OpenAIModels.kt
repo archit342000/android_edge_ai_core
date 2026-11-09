@@ -76,6 +76,14 @@ data class SuccessResponse(
 )
 
 /**
+ * Body of the health routes: `backend` is the backend the engine actually runs on.
+ */
+data class HealthResponse(
+    val status: String,
+    val backend: String?
+)
+
+/**
  * Generic error response
  */
 data class ErrorResponse(
