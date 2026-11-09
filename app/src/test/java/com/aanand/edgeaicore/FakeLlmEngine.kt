@@ -19,7 +19,11 @@ class FakeConversation(
     var sent = 0
     override val isAlive: Boolean get() = !closed
 
-    override fun sendMessageAsync(message: Message, callback: MessageCallback) {
+    /** The per-request options of the last message sent. */
+    var lastOptions: GenerationOptions? = null
+
+    override fun sendMessageAsync(message: Message, callback: MessageCallback, options: GenerationOptions) {
+        lastOptions = options
         sent++
         if (failure != null) {
             callback.onError(failure)
@@ -39,10 +43,14 @@ class FakeEngine(
     private val failure: Throwable?
 ) : LlmEngine {
     val conversations = mutableListOf<FakeConversation>()
+    /** The sampler seed of every conversation created, in order. */
+    val conversationSeeds = mutableListOf<Int>()
     var closed = false
 
-    override fun createConversation(config: ConversationConfig): LlmConversation =
-        FakeConversation(chunks, failure).also { conversations.add(it) }
+    override fun createConversation(config: ConversationConfig): LlmConversation {
+        conversationSeeds.add(config.samplerConfig?.seed ?: 0)
+        return FakeConversation(chunks, failure).also { conversations.add(it) }
+    }
 
     override fun close() {
         closed = true

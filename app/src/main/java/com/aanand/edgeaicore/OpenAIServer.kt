@@ -73,6 +73,17 @@ class OpenAIServer(
                     activeRequests.incrementAndGet()
                     try {
                         val request = call.receive<ChatCompletionRequest>()
+                        val validationError = ChatRequestValidator.validate(request)
+                        if (validationError != null) {
+                            activeRequests.decrementAndGet()
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse(validationError))
+                            return@post
+                        }
+                        val options = GenerationOptions(
+                            maxOutputTokens = request.maxOutputTokens,
+                            presencePenalty = request.presence_penalty?.toFloat(),
+                            frequencyPenalty = request.frequency_penalty?.toFloat()
+                        )
                         val conversationId = UUID.randomUUID().toString()
 
                         // Create transient state for this request
@@ -82,7 +93,8 @@ class OpenAIServer(
                             ttlMs = 0, // Transient
                             temperature = request.temperature ?: 0.8,
                             topP = request.top_p ?: 0.95,
-                            topK = request.top_k ?: 40
+                            topK = request.top_k ?: 40,
+                            seed = request.seed ?: 0
                         )
 
                         if (request.stream == true) {
@@ -116,6 +128,7 @@ class OpenAIServer(
                                                 channel.close()
                                                 activeRequests.decrementAndGet()
                                             },
+                                            options = options,
                                             onErrorCallback = { error ->
                                                 Log.e(TAG, "Streaming error", error)
                                                 val errorJson = GsonBuilder().create().toJson(ErrorResponse(error.message ?: "Unknown error"))
@@ -148,7 +161,8 @@ class OpenAIServer(
                                     messages = request.messages,
                                     onToken = { /* No-op for non-streaming */ },
                                     onComplete = { finalResponse = it },
-                                    onErrorCallback = { errorOccurred = it }
+                                    onErrorCallback = { errorOccurred = it },
+                                    options = options
                                 )
 
                                 if (errorOccurred != null) {

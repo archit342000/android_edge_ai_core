@@ -20,17 +20,21 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.launch
 
+/** The settings a reused engine conversation must match. */
+private data class ConversationParams(val temperature: Double, val topP: Double, val topK: Int, val seed: Int)
+
 class AiEngineManager(
     private val engineFactory: (EngineConfig) -> LlmEngine = ::createLiteRtEngine
 ) {
     private var engine: LlmEngine? = null
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
+    private var currentMaxNumTokens: Int? = null
     private val inferenceMutex = Mutex()
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
     @Volatile private var activeEngineConversation: LlmConversation? = null
     @Volatile private var activeConversationId: String? = null
-    private var activeConversationParams: Triple<Double, Double, Int>? = null
+    private var activeConversationParams: ConversationParams? = null
 
     fun closeConversation(conversationId: String) {
         if (activeConversationId == conversationId) {
@@ -39,8 +43,9 @@ class AiEngineManager(
         }
     }
 
-    suspend fun loadModel(modelPath: String, backendType: String = "GPU"): Unit = withContext(Dispatchers.IO) {
-        if (currentModelPath == modelPath && engine != null) {
+    /** @param maxNumTokens the KV-cache size (input plus output tokens); null keeps the model's default */
+    suspend fun loadModel(modelPath: String, backendType: String = "GPU", maxNumTokens: Int? = null): Unit = withContext(Dispatchers.IO) {
+        if (currentModelPath == modelPath && currentMaxNumTokens == maxNumTokens && engine != null) {
             return@withContext
         }
 
@@ -65,20 +70,22 @@ class AiEngineManager(
                 modelPath = modelPath,
                 backend = backendEnum,
                 visionBackend = Backend.GPU(),
-                audioBackend = Backend.CPU()
+                audioBackend = Backend.CPU(),
+                maxNumTokens = maxNumTokens
             )
 
             Log.d(TAG, "Initializing Engine with config: $config")
             val newEngine = engineFactory(config)
             engine = newEngine
             currentModelPath = modelPath
+            currentMaxNumTokens = maxNumTokens
 
             Log.d(TAG, "Model loaded successfully with Backend=$backendType")
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to load model with Backend=$backendType. Error: ${t.message}", t)
             if (backendType.equals("GPU", ignoreCase = true)) {
                  Log.w(TAG, "Retrying with CPU backend...")
-                 loadModel(modelPath, "CPU")
+                 loadModel(modelPath, "CPU", maxNumTokens)
             } else {
                 if (t is Exception) throw t else throw Exception(t)
             }
@@ -110,6 +117,7 @@ class AiEngineManager(
         temperature: Double? = null,
         topP: Double? = null,
         topK: Int? = null,
+        seed: Int? = null,
         preamble: String? = null,
         initialMessages: List<Message> = emptyList()
     ): LlmConversation {
@@ -128,7 +136,8 @@ class AiEngineManager(
             samplerConfig = SamplerConfig(
                 topK = topK ?: 40,
                 topP = topP ?: 0.95,
-                temperature = temperature ?: 0.8
+                temperature = temperature ?: 0.8,
+                seed = seed ?: 0
             )
         )
         val conversation = currentEngine.createConversation(conversationConfig)
@@ -148,7 +157,8 @@ class AiEngineManager(
         messages: List<ChatMessage>,
         onToken: (String) -> Unit,
         onComplete: (String) -> Unit,
-        onErrorCallback: (Throwable) -> Unit
+        onErrorCallback: (Throwable) -> Unit,
+        options: GenerationOptions = GenerationOptions()
     ) = withContext(Dispatchers.IO) {
         if (messages.isEmpty()) {
             onErrorCallback(IllegalArgumentException("No messages provided"))
@@ -171,7 +181,7 @@ class AiEngineManager(
                     state.history.toMutableList()
                 }
 
-                val currentParams = Triple(state.temperature, state.topP, state.topK)
+                val currentParams = ConversationParams(state.temperature, state.topP, state.topK, state.seed)
                 
                 // Check if we can reuse the active conversation
                 // Optimization: If the incoming request is for the *current* active conversation 
@@ -206,6 +216,7 @@ class AiEngineManager(
                         temperature = state.temperature,
                         topP = state.topP,
                         topK = state.topK,
+                        seed = state.seed,
                         preamble = systemPrompt,
                         initialMessages = initialMessages.map { toLiteRTMessage(it) }
                     )
@@ -257,7 +268,7 @@ class AiEngineManager(
                             // The outer try-catch will handle calling onErrorCallback
                             if (cont.isActive) cont.resumeWithException(error)
                         }
-                    })
+                    }, options)
                 }
 
             } catch (e: Exception) {
@@ -356,6 +367,7 @@ class AiEngineManager(
         engine?.close()
         engine = null
         currentModelPath = null
+        currentMaxNumTokens = null
     }
 
     companion object {

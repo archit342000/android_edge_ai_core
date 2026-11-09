@@ -67,12 +67,15 @@ class InferenceService : Service() {
         val prefs = getSharedPreferences("inference_service_prefs", Context.MODE_PRIVATE)
         var modelPath = intent?.getStringExtra(EXTRA_MODEL_PATH)
         var backend = intent?.getStringExtra(EXTRA_BACKEND)
+        // 0 or absent means the model's default context size
+        var maxNumTokens = intent?.getIntExtra(EXTRA_MAX_NUM_TOKENS, 0)?.takeIf { it > 0 }
 
         if (modelPath != null) {
             // Save to prefs for sticky restarts
             prefs.edit()
                 .putString("saved_model_path", modelPath)
                 .putString("saved_backend", backend ?: "GPU")
+                .putInt(KEY_SAVED_MAX_NUM_TOKENS, maxNumTokens ?: 0)
                 .putBoolean("crashed_during_init", false) // Reset on new manual start
                 .apply()
         } else {
@@ -86,6 +89,7 @@ class InferenceService : Service() {
 
             modelPath = prefs.getString("saved_model_path", null)
             backend = prefs.getString("saved_backend", "GPU")
+            maxNumTokens = prefs.getInt(KEY_SAVED_MAX_NUM_TOKENS, 0).takeIf { it > 0 }
             if (modelPath != null) {
                 Log.i(TAG, "Restored model path from prefs: $modelPath")
                 sendStatusBroadcast("Restoring service state...")
@@ -119,7 +123,7 @@ class InferenceService : Service() {
                     sendStatusBroadcast("Initializing engine...")
                     
                     withTimeout(300000) { // 5 minutes timeout
-                        aiEngineManager.loadModel(modelPath, finalBackend)
+                        aiEngineManager.loadModel(modelPath, finalBackend, maxNumTokens)
                     }
 
                     // If we reached here, we didn't crash (Java-wise).
@@ -244,6 +248,8 @@ class InferenceService : Service() {
         const val ACTION_STOP = "STOP"
         const val EXTRA_MODEL_PATH = "MODEL_PATH"
         const val EXTRA_BACKEND = "BACKEND"
+        const val EXTRA_MAX_NUM_TOKENS = "MAX_NUM_TOKENS"
+        private const val KEY_SAVED_MAX_NUM_TOKENS = "saved_max_num_tokens"
         const val ACTION_STATUS_UPDATE = "com.aanand.edgeaicore.STATUS_UPDATE"
         const val EXTRA_STATUS = "STATUS"
         const val ACTION_TOKEN_REQUEST = "com.aanand.edgeaicore.TOKEN_REQUEST"

@@ -313,6 +313,31 @@
                             android:textAppearance="?attr/textAppearanceTitleLarge" />
                     </RadioGroup>
                 </com.google.android.material.card.MaterialCardView>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="32dp"
+                    android:text="@string/context_size_title"
+                    android:textAppearance="?attr/textAppearanceTitleLarge" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/context_size_help"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <EditText
+                    android:id="@+id/et_context_size"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/context_size_hint"
+                    android:importantForAutofill="no"
+                    android:inputType="number"
+                    android:maxLength="7" />
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
 
