@@ -326,4 +326,56 @@ class AiEngineManagerTest {
             assertNull(manager.modelCapabilities)
         }
     }
+
+    private val cpuOnlyVision = FULL_LLM.copy(visionBackends = listOf(com.google.ai.edge.litertlm.BackendType.CPU))
+    private val textOnly = FULL_LLM.copy(supportsVision = false, supportsAudio = false, visionBackends = null, audioBackends = null)
+
+    @Test
+    fun aTextOnlyModelGetsNoEncoders() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory) { textOnly }
+        manager.loadModel(modelFile(), "GPU")
+        assertNull(factory.configs[0].visionBackend)
+        assertNull(factory.configs[0].audioBackend)
+        assertEquals(false, manager.activeEncoders.supportsImages)
+        assertEquals(false, manager.activeEncoders.supportsAudio)
+    }
+
+    @Test
+    fun aMultimodalModelGetsEncodersOnTheChosenBackends() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "GPU", EncoderBackendOption.CPU, EncoderBackendOption.AUTO)
+        assertTrue(factory.configs[0].visionBackend is Backend.CPU)
+        assertTrue(factory.configs[0].audioBackend is Backend.GPU) // AUTO follows the main backend
+        assertEquals(true, manager.activeEncoders.supportsImages)
+    }
+
+    @Test
+    fun anUnsupportedOverrideFallsBackAndIsReported() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory) { cpuOnlyVision }
+        manager.loadModel(modelFile(), "CPU", EncoderBackendOption.GPU)
+        assertTrue(factory.configs[0].visionBackend is Backend.CPU)
+        assertEquals(true, manager.activeEncoders.visionOverrideIgnored)
+    }
+
+    @Test
+    fun theEncoderOptionsSurviveTheMainBackendCpuRetry() = runTest {
+        val factory = FakeEngineFactory(failOnGpu = true)
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "GPU", EncoderBackendOption.CPU, EncoderBackendOption.CPU)
+        assertEquals(2, factory.configs.size)
+        assertTrue(factory.configs[1].visionBackend is Backend.CPU)
+        assertTrue(factory.configs[1].audioBackend is Backend.CPU)
+    }
+
+    @Test
+    fun closeClearsTheActiveEncoders() = runTest {
+        val manager = newManager(FakeEngineFactory())
+        manager.loadModel(modelFile(), "CPU")
+        assertEquals(true, manager.activeEncoders.supportsImages)
+        manager.close()
+        assertEquals(false, manager.activeEncoders.supportsImages)
+    }
 }

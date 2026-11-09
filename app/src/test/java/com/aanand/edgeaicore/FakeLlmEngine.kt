@@ -101,7 +101,11 @@ class FakeEngineFactory(
 }
 
 /** A model every test accepts: an LLM with text, vision and audio input. */
-val FULL_LLM = ModelCapabilities(ModelKind.LLM, supportsText = true, supportsVision = true, supportsAudio = true)
+val FULL_LLM = ModelCapabilities(
+    ModelKind.LLM, supportsText = true, supportsVision = true, supportsAudio = true,
+    visionBackends = listOf(com.google.ai.edge.litertlm.BackendType.CPU, com.google.ai.edge.litertlm.BackendType.GPU),
+    audioBackends = listOf(com.google.ai.edge.litertlm.BackendType.CPU, com.google.ai.edge.litertlm.BackendType.GPU)
+)
 
 /** An [AiEngineManager] whose model inspection is faked, so tests need no native library or model file. */
 fun newManager(

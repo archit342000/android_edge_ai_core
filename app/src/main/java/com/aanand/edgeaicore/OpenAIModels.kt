@@ -131,4 +131,3 @@ data class SuccessResponse(
 data class ErrorResponse(
     val error: String
 )
-

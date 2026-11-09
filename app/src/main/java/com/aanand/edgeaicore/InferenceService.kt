@@ -68,12 +68,16 @@ class InferenceService : Service() {
         val prefs = getSharedPreferences("inference_service_prefs", Context.MODE_PRIVATE)
         var modelPath = intent?.getStringExtra(EXTRA_MODEL_PATH)
         var backend = intent?.getStringExtra(EXTRA_BACKEND)
+        var visionValue = intent?.getStringExtra(EXTRA_VISION_BACKEND)
+        var audioValue = intent?.getStringExtra(EXTRA_AUDIO_BACKEND)
 
         if (modelPath != null) {
             // Save to prefs for sticky restarts
             prefs.edit()
                 .putString(KEY_SAVED_MODEL_PATH, modelPath)
                 .putString("saved_backend", backend ?: "GPU")
+                .putString(KEY_SAVED_VISION_BACKEND, visionValue)
+                .putString(KEY_SAVED_AUDIO_BACKEND, audioValue)
                 .putBoolean(KEY_CRASHED_DURING_INIT, false) // Reset on new manual start
                 .apply()
         } else {
@@ -87,6 +91,8 @@ class InferenceService : Service() {
 
             modelPath = prefs.getString(KEY_SAVED_MODEL_PATH, null)
             backend = prefs.getString("saved_backend", "GPU")
+            visionValue = prefs.getString(KEY_SAVED_VISION_BACKEND, null)
+            audioValue = prefs.getString(KEY_SAVED_AUDIO_BACKEND, null)
             if (modelPath != null) {
                 Log.i(TAG, "Restored model path from prefs: $modelPath")
                 sendStatusBroadcast("Restoring service state...")
@@ -96,6 +102,11 @@ class InferenceService : Service() {
         if (modelPath != null) {
             sendStatusBroadcast("Loading model from path: $modelPath")
             val finalBackend = backend ?: "GPU"
+            if (EncoderBackendOption.isUnknown(visionValue) || EncoderBackendOption.isUnknown(audioValue)) {
+                Log.w(TAG, "Unknown encoder backend setting, using ${EncoderBackendOption.AUTO}")
+            }
+            val visionOption = EncoderBackendOption.fromStored(visionValue)
+            val audioOption = EncoderBackendOption.fromStored(audioValue)
             
             serviceScope.launch {
                 try {
@@ -120,7 +131,7 @@ class InferenceService : Service() {
                     sendStatusBroadcast("Initializing engine...")
                     
                     withTimeout(300000) { // 5 minutes timeout
-                        aiEngineManager.loadModel(modelPath, finalBackend)
+                        aiEngineManager.loadModel(modelPath, finalBackend, visionOption, audioOption)
                     }
 
                     // If we reached here, we didn't crash (Java-wise).
@@ -172,7 +183,7 @@ class InferenceService : Service() {
                     lastDummyId?.let { aiEngineManager.closeConversation(it) }
 
                     if (isReady) {
-                        sendStatusBroadcast("Model loaded successfully ($finalBackend)")
+                        sendStatusBroadcast("Model loaded successfully ($finalBackend; ${aiEngineManager.activeEncoders.describe()})")
                     } else {
                         sendStatusBroadcast("Error: Model verification failed")
                     }
@@ -253,6 +264,10 @@ class InferenceService : Service() {
         const val ACTION_STOP = "STOP"
         const val EXTRA_MODEL_PATH = "MODEL_PATH"
         const val EXTRA_BACKEND = "BACKEND"
+        const val EXTRA_VISION_BACKEND = "VISION_BACKEND"
+        const val EXTRA_AUDIO_BACKEND = "AUDIO_BACKEND"
+        private const val KEY_SAVED_VISION_BACKEND = "saved_vision_backend"
+        private const val KEY_SAVED_AUDIO_BACKEND = "saved_audio_backend"
         const val ACTION_STATUS_UPDATE = "com.aanand.edgeaicore.STATUS_UPDATE"
         const val EXTRA_STATUS = "STATUS"
         const val ACTION_TOKEN_REQUEST = "com.aanand.edgeaicore.TOKEN_REQUEST"

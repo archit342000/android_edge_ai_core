@@ -16,6 +16,10 @@
     <string name="backend_cpu">CPU</string>
     <string name="backend_gpu">GPU</string>
     <string name="backend_npu">NPU</string>
+    <string name="encoder_vision_title">Vision encoder</string>
+    <string name="encoder_audio_title">Audio encoder</string>
+    <string name="encoder_help">Backend for the image or audio part of multimodal models. Auto follows the backend above. Models without that encoder ignore it. Applied the next time the server starts.</string>
+    <string name="encoder_auto">Auto</string>
     <string name="logs_label">Logs:</string>
     <string name="notification_channel_id">inference_channel</string>
     <string name="notification_channel_name">Inference Service</string>

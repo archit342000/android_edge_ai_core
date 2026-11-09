@@ -1,7 +1,9 @@
 package com.aanand.edgeaicore
 
 import android.util.Log
+import com.google.ai.edge.litertlm.BackendType
 import com.google.ai.edge.litertlm.LiteRtLmJniException
+import com.google.ai.edge.litertlm.Modality
 import com.google.ai.edge.litertlm.ModelInfo
 import com.google.ai.edge.litertlm.ModelType
 
@@ -9,14 +11,25 @@ import com.google.ai.edge.litertlm.ModelType
 enum class ModelKind { LLM, EMBEDDING, UNKNOWN }
 
 /** The values [ModelInspector] copies out of LiteRT-LM's `ModelInfo`; plain data so tests need no native code. */
-data class RawModelInfo(val kind: ModelKind, val text: Boolean, val vision: Boolean, val audio: Boolean)
+data class RawModelInfo(
+    val kind: ModelKind,
+    val text: Boolean,
+    val vision: Boolean,
+    val audio: Boolean,
+    /** The backends the model lists for its encoders; empty when the model records none. */
+    val visionBackends: List<BackendType> = emptyList(),
+    val audioBackends: List<BackendType> = emptyList()
+)
 
 /** What the app needs to know about a model before it loads it. */
 data class ModelCapabilities(
     val kind: ModelKind,
     val supportsText: Boolean,
     val supportsVision: Boolean,
-    val supportsAudio: Boolean
+    val supportsAudio: Boolean,
+    /** CPU/GPU backends the vision encoder can run on; null when the model has no (usable) vision encoder. */
+    val visionBackends: List<BackendType>? = null,
+    val audioBackends: List<BackendType>? = null
 )
 
 /** The model file cannot be served by this app (corrupt, not an LLM, or without text input). */
@@ -45,7 +58,11 @@ class ModelInspector(private val reader: (String) -> RawModelInfo = ::readModelI
         private const val TAG = "ModelInspector"
 
         fun toCapabilities(raw: RawModelInfo) =
-            ModelCapabilities(kind = raw.kind, supportsText = raw.text, supportsVision = raw.vision, supportsAudio = raw.audio)
+            ModelCapabilities(
+                kind = raw.kind, supportsText = raw.text, supportsVision = raw.vision, supportsAudio = raw.audio,
+                visionBackends = EncoderBackendSelector.usableBackends(raw.vision, raw.visionBackends),
+                audioBackends = EncoderBackendSelector.usableBackends(raw.audio, raw.audioBackends)
+            )
 
         /** @throws UnsupportedModelException unless the model is an LLM that accepts text. */
         fun validate(capabilities: ModelCapabilities) {
@@ -68,5 +85,9 @@ internal fun readModelInfo(modelPath: String): RawModelInfo =
             ModelType.EMBEDDING -> ModelKind.EMBEDDING
             ModelType.UNKNOWN -> ModelKind.UNKNOWN
         }
-        RawModelInfo(kind, modalities.text, modalities.vision, modalities.audio)
+        RawModelInfo(
+            kind, modalities.text, modalities.vision, modalities.audio,
+            visionBackends = if (modalities.vision) info.supportedBackends(Modality.VISION) else emptyList(),
+            audioBackends = if (modalities.audio) info.supportedBackends(Modality.AUDIO) else emptyList()
+        )
     }

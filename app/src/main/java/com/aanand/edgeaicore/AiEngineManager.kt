@@ -2,6 +2,7 @@ package com.aanand.edgeaicore
 
 import android.util.Log
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.BackendType
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
@@ -35,6 +36,10 @@ class AiEngineManager(
     private var engine: LlmEngine? = null
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
+
+    /** The encoders of the loaded model and the backends they run on (null = the model has no usable such encoder). */
+    @Volatile var activeEncoders: EncoderSummary = EncoderSummary()
+        private set
     private val inferenceMutex = Mutex()
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
     @Volatile private var activeEngineConversation: LlmConversation? = null
@@ -48,7 +53,16 @@ class AiEngineManager(
         }
     }
 
-    suspend fun loadModel(modelPath: String, backendType: String = "GPU"): Unit = withContext(Dispatchers.IO) {
+    /**
+     * @param visionOption backend for the vision encoder (AUTO follows [backendType]); the encoder is only created when the model has one
+     * @param audioOption same for the audio encoder
+     */
+    suspend fun loadModel(
+        modelPath: String,
+        backendType: String = "GPU",
+        visionOption: EncoderBackendOption = EncoderBackendOption.AUTO,
+        audioOption: EncoderBackendOption = EncoderBackendOption.AUTO
+    ): Unit = withContext(Dispatchers.IO) {
         if (currentModelPath == modelPath && engine != null) {
             return@withContext
         }
@@ -66,7 +80,7 @@ class AiEngineManager(
         val capabilities = modelInspector(modelPath)
         ModelInspector.validate(capabilities)
 
-        loadEngine(modelPath, backendType, capabilities)
+        loadEngine(modelPath, backendType, capabilities, visionOption, audioOption)
     }
 
     fun closeAllConversations() {
@@ -260,7 +274,15 @@ class AiEngineManager(
         }
     }
 
-    private fun loadEngine(modelPath: String, backendType: String, capabilities: ModelCapabilities) {
+    private fun toEngineBackend(type: BackendType): Backend = if (type == BackendType.GPU) Backend.GPU() else Backend.CPU()
+
+    private fun loadEngine(
+        modelPath: String,
+        backendType: String,
+        capabilities: ModelCapabilities,
+        visionOption: EncoderBackendOption,
+        audioOption: EncoderBackendOption
+    ) {
         try {
             val backendEnum = when (backendType.uppercase()) {
                 "CPU" -> Backend.CPU()
@@ -269,11 +291,19 @@ class AiEngineManager(
                 else -> Backend.GPU()
             }
 
+            // Encoders exist only when the model has them; each runs on a backend it supports
+            val mainBackend = when (backendType.uppercase()) { "CPU", "NPU" -> backendType.uppercase() else -> "GPU" } // as `backendEnum` above
+            val vision = EncoderBackendSelector.select(capabilities.visionBackends, mainBackend, visionOption)
+            val audio = EncoderBackendSelector.select(capabilities.audioBackends, mainBackend, audioOption)
+            if (vision.overrideIgnored) Log.w(TAG, "Vision encoder override $visionOption is not supported by the model, using ${vision.backend}")
+            if (audio.overrideIgnored) Log.w(TAG, "Audio encoder override $audioOption is not supported by the model, using ${audio.backend}")
+            Log.d(TAG, "Encoders: vision=${vision.backend ?: "none"}, audio=${audio.backend ?: "none"}")
+
             val config = EngineConfig(
                 modelPath = modelPath,
                 backend = backendEnum,
-                visionBackend = Backend.GPU(),
-                audioBackend = Backend.CPU()
+                visionBackend = vision.backend?.let(::toEngineBackend),
+                audioBackend = audio.backend?.let(::toEngineBackend)
             )
 
             // Needed for per-request token counts; read when the engine is created.
@@ -281,6 +311,8 @@ class AiEngineManager(
             ExperimentalFlags.enableBenchmark = true
             Log.d(TAG, "Initializing Engine with config: $config")
             val newEngine = engineFactory(config)
+            // Encoders first, so a concurrent reader that sees the engine also sees its encoders
+            activeEncoders = EncoderSummary(vision.backend, audio.backend, vision.overrideIgnored, audio.overrideIgnored)
             engine = newEngine
             currentModelPath = modelPath
             // Set together with the engine, so it is non-null exactly while a model is loaded.
@@ -291,7 +323,7 @@ class AiEngineManager(
             Log.e(TAG, "Failed to load model with Backend=$backendType. Error: ${t.message}", t)
             if (backendType.equals("GPU", ignoreCase = true)) {
                  Log.w(TAG, "Retrying with CPU backend...")
-                 loadEngine(modelPath, "CPU", capabilities)
+                 loadEngine(modelPath, "CPU", capabilities, visionOption, audioOption)
             } else {
                 if (t is Exception) throw t else throw Exception(t)
             }
@@ -393,6 +425,7 @@ class AiEngineManager(
         engine?.close()
         engine = null
         currentModelPath = null
+        activeEncoders = EncoderSummary()
         modelCapabilities = null
     }
 

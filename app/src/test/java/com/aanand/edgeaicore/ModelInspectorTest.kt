@@ -32,7 +32,11 @@ class ModelInspectorTest {
     fun inspectMapsTheRawValues() {
         val inspector = ModelInspector { RawModelInfo(ModelKind.LLM, text = true, vision = true, audio = false) }
         assertEquals(
-            ModelCapabilities(ModelKind.LLM, supportsText = true, supportsVision = true, supportsAudio = false),
+            ModelCapabilities(
+                ModelKind.LLM, supportsText = true, supportsVision = true, supportsAudio = false,
+                // no backends recorded by the model: normalised to CPU and GPU; no audio encoder: null
+                visionBackends = listOf(com.google.ai.edge.litertlm.BackendType.CPU, com.google.ai.edge.litertlm.BackendType.GPU)
+            ),
             inspector.inspect("/any/path")
         )
     }
@@ -58,5 +62,20 @@ class ModelInspectorTest {
         } catch (e: IllegalStateException) {
             assertEquals("closed", e.message)
         }
+    }
+
+    @Test
+    fun encoderBackendsComeFromTheModelOnlyWhenTheEncoderExists() {
+        fun caps(vision: Boolean, audio: Boolean, visionBackends: List<com.google.ai.edge.litertlm.BackendType>, audioBackends: List<com.google.ai.edge.litertlm.BackendType> = emptyList()) =
+            ModelInspector { RawModelInfo(ModelKind.LLM, true, vision, audio, visionBackends, audioBackends) }.inspect("/p")
+        val textOnly = caps(false, false, listOf(com.google.ai.edge.litertlm.BackendType.GPU))
+        assertEquals(null, textOnly.visionBackends)
+        assertEquals(null, textOnly.audioBackends)
+        val gpuOnly = caps(true, true, listOf(com.google.ai.edge.litertlm.BackendType.GPU), listOf(com.google.ai.edge.litertlm.BackendType.CPU))
+        assertEquals(listOf(com.google.ai.edge.litertlm.BackendType.GPU), gpuOnly.visionBackends)
+        assertEquals(listOf(com.google.ai.edge.litertlm.BackendType.CPU), gpuOnly.audioBackends)
+        val unconstrained = caps(true, false, emptyList())
+        assertEquals(listOf(com.google.ai.edge.litertlm.BackendType.CPU, com.google.ai.edge.litertlm.BackendType.GPU), unconstrained.visionBackends)
+        assertEquals(null, caps(true, false, listOf(com.google.ai.edge.litertlm.BackendType.NPU)).visionBackends)
     }
 }

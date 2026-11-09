@@ -73,6 +73,18 @@ class OpenAIServer(
                     activeRequests.incrementAndGet()
                     try {
                         val request = call.receive<ChatCompletionRequest>()
+                        // Media input needs an encoder; a model without one gets a fixed 400 instead of a native failure
+                        val encoders = aiEngineManager.activeEncoders
+                        val unsupportedInput = when {
+                            aiEngineManager.isModelLoaded && MessageParts.hasImage(request.messages) && !encoders.supportsImages -> "Model does not support image input"
+                            aiEngineManager.isModelLoaded && MessageParts.hasAudio(request.messages) && !encoders.supportsAudio -> "Model does not support audio input"
+                            else -> null
+                        }
+                        if (unsupportedInput != null) {
+                            activeRequests.decrementAndGet()
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse(unsupportedInput))
+                            return@post
+                        }
                         val conversationId = UUID.randomUUID().toString()
 
                         // Create transient state for this request

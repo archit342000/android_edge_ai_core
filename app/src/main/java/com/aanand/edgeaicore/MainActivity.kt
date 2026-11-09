@@ -17,6 +17,7 @@ import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.edit
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.gson.Gson
@@ -55,6 +56,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var switchEnableServer: MaterialSwitch
     private lateinit var tvStatus: TextView
     private lateinit var rgBackend: RadioGroup
+    private lateinit var rgVisionBackend: RadioGroup
+    private lateinit var rgAudioBackend: RadioGroup
     private lateinit var btnTestInference: MaterialButton
     private lateinit var btnTestVision: MaterialButton
     private lateinit var btnTestAudio: MaterialButton
@@ -154,6 +157,8 @@ class MainActivity : AppCompatActivity() {
         switchEnableServer = findViewById(R.id.switch_enable_server)
         tvStatus = findViewById(R.id.tv_status)
         rgBackend = findViewById(R.id.rg_backend)
+        rgVisionBackend = findViewById(R.id.rg_vision_backend)
+        rgAudioBackend = findViewById(R.id.rg_audio_backend)
         btnTestInference = findViewById(R.id.btn_test_inference)
         btnTestVision = findViewById(R.id.btn_test_vision)
         btnTestAudio = findViewById(R.id.btn_test_audio)
@@ -233,6 +238,8 @@ class MainActivity : AppCompatActivity() {
 
         // Restore saved model path
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        rgVisionBackend.check(encoderRadioId(EncoderBackendOption.fromStored(prefs.getString(KEY_VISION_BACKEND, null)), R.id.rb_vision_auto, R.id.rb_vision_cpu, R.id.rb_vision_gpu))
+        rgAudioBackend.check(encoderRadioId(EncoderBackendOption.fromStored(prefs.getString(KEY_AUDIO_BACKEND, null)), R.id.rb_audio_auto, R.id.rb_audio_cpu, R.id.rb_audio_gpu))
         val savedPath = prefs.getString(KEY_MODEL_PATH, null)
         if (savedPath != null) {
             val file = File(savedPath)
@@ -845,6 +852,18 @@ class MainActivity : AppCompatActivity() {
         return result
     }
 
+    private fun encoderRadioId(option: EncoderBackendOption, autoId: Int, cpuId: Int, gpuId: Int) = when (option) {
+        EncoderBackendOption.AUTO -> autoId
+        EncoderBackendOption.CPU -> cpuId
+        EncoderBackendOption.GPU -> gpuId
+    }
+
+    private fun encoderOption(checkedId: Int, cpuId: Int, gpuId: Int) = when (checkedId) {
+        cpuId -> EncoderBackendOption.CPU
+        gpuId -> EncoderBackendOption.GPU
+        else -> EncoderBackendOption.AUTO
+    }
+
     private fun startInferenceService() {
         val selectedBackend = when(rgBackend.checkedRadioButtonId) {
             R.id.rb_cpu -> "CPU"
@@ -853,9 +872,18 @@ class MainActivity : AppCompatActivity() {
             else -> "GPU"
         }
 
+        val vision = encoderOption(rgVisionBackend.checkedRadioButtonId, R.id.rb_vision_cpu, R.id.rb_vision_gpu)
+        val audio = encoderOption(rgAudioBackend.checkedRadioButtonId, R.id.rb_audio_cpu, R.id.rb_audio_gpu)
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
+            putString(KEY_VISION_BACKEND, vision.name)
+            putString(KEY_AUDIO_BACKEND, audio.name)
+        }
+
         val intent = Intent(this, InferenceService::class.java).apply {
             putExtra(InferenceService.EXTRA_MODEL_PATH, selectedModelPath)
             putExtra(InferenceService.EXTRA_BACKEND, selectedBackend)
+            putExtra(InferenceService.EXTRA_VISION_BACKEND, vision.name)
+            putExtra(InferenceService.EXTRA_AUDIO_BACKEND, audio.name)
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -1088,5 +1116,7 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "MainActivity"
         private const val PREFS_NAME = "litertlm_prefs"
         private const val KEY_MODEL_PATH = "model_path"
+        private const val KEY_VISION_BACKEND = "vision_backend"
+        private const val KEY_AUDIO_BACKEND = "audio_backend"
     }
 }
