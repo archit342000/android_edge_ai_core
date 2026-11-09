@@ -57,7 +57,7 @@ request builds a new conversation from `messages[:-1]`. A conversation that fail
 - `MainActivity` starts `InferenceService` with `EXTRA_MODEL_PATH` and `EXTRA_BACKEND`. Stop sends `ACTION_STOP`, which clears the service prefs, deletes all conversations and stops the server.
 - `InferenceService.onCreate` builds `TokenManager`, `ConversationManager` and `OpenAIServer`.
   `onStartCommand` starts the server, goes foreground, loads the model and returns `START_STICKY`.
-  On a sticky restart it restores the model path from `inference_service_prefs`, and refuses to start if `crashed_during_init` is set. A model rejected as unsupported clears the saved path (pitfall 21).
+  On a sticky restart it restores the model path from `inference_service_prefs`, and refuses to start if `crashed_during_init` is set (the flag spans the model load and the readiness check, including a GPU to CPU fallback). A model rejected as unsupported clears the saved path (pitfall 21).
 - `InferenceService` alone owns `ConversationManager` (create, `deleteAllConversations`, `shutdown`).
 - `onDestroy` cancels coroutines, shuts down conversations, closes the engine and stops the server. Tokens survive restarts.
 
