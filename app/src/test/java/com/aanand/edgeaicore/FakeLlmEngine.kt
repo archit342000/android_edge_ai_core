@@ -39,10 +39,14 @@ class FakeEngine(
     private val failure: Throwable?
 ) : LlmEngine {
     val conversations = mutableListOf<FakeConversation>()
+    /** The config of every conversation created, in order. */
+    val conversationConfigs = mutableListOf<ConversationConfig>()
     var closed = false
 
-    override fun createConversation(config: ConversationConfig): LlmConversation =
-        FakeConversation(chunks, failure).also { conversations.add(it) }
+    override fun createConversation(config: ConversationConfig): LlmConversation {
+        conversationConfigs.add(config)
+        return FakeConversation(chunks, failure).also { conversations.add(it) }
+    }
 
     override fun close() {
         closed = true
@@ -66,3 +70,7 @@ class FakeEngineFactory(
         return engine
     }
 }
+
+/** The text of a conversation config's system instruction, or null when it has none. */
+fun ConversationConfig.systemInstructionText(): String? =
+    systemInstruction?.contents?.filterIsInstance<Content.Text>()?.joinToString("") { it.text }

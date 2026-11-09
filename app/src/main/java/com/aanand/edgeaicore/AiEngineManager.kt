@@ -20,6 +20,9 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.launch
 
+/** The settings a reused engine conversation must match: sampling parameters and the system instruction. */
+private data class ConversationParams(val temperature: Double, val topP: Double, val topK: Int, val systemInstruction: String?)
+
 class AiEngineManager(
     private val engineFactory: (EngineConfig) -> LlmEngine = ::createLiteRtEngine
 ) {
@@ -30,7 +33,7 @@ class AiEngineManager(
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
     @Volatile private var activeEngineConversation: LlmConversation? = null
     @Volatile private var activeConversationId: String? = null
-    private var activeConversationParams: Triple<Double, Double, Int>? = null
+    private var activeConversationParams: ConversationParams? = null
 
     fun closeConversation(conversationId: String) {
         if (activeConversationId == conversationId) {
@@ -110,7 +113,7 @@ class AiEngineManager(
         temperature: Double? = null,
         topP: Double? = null,
         topK: Int? = null,
-        preamble: String? = null,
+        systemInstruction: String? = null,
         initialMessages: List<Message> = emptyList()
     ): LlmConversation {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
@@ -118,12 +121,10 @@ class AiEngineManager(
         // Enforce single-session limit
         closeAllConversations()
 
-        if(preamble == null){
-            Log.d(TAG, "No preamble provided, using default")
-        }
+        Log.d(TAG, "System instruction: ${systemInstruction?.let { "${it.length} chars" } ?: "none (model default)"}")
 
         val conversationConfig = ConversationConfig(
-            systemInstruction = Contents.of(Content.Text(preamble ?: "You are a helpful assistant.")),
+            systemInstruction = systemInstruction?.let { Contents.of(Content.Text(it)) },
             initialMessages = initialMessages,
             samplerConfig = SamplerConfig(
                 topK = topK ?: 40,
@@ -171,12 +172,12 @@ class AiEngineManager(
                     state.history.toMutableList()
                 }
 
-                val currentParams = Triple(state.temperature, state.topP, state.topK)
+                val currentParams = ConversationParams(state.temperature, state.topP, state.topK, state.systemInstruction)
                 
                 // Check if we can reuse the active conversation
                 // Optimization: If the incoming request is for the *current* active conversation 
                 // AND it's a simple append (1 new message), we reuse the session (KV Cache).
-                // AND the sampling parameters haven't changed.
+                // AND the sampling parameters and the system instruction haven't changed.
                 val isReuse = (activeConversationId == state.conversationId) && 
                               (activeEngineConversation != null) && 
                               (messages.size == 1) &&
@@ -198,15 +199,12 @@ class AiEngineManager(
 
                     // 3. Recreate Conversation (Implicitly closes old one via createEngineConversation)
                     Log.d(TAG, "Recreating conversation for ID=${state.conversationId}. History size: ${initialMessages.size}")
-                    
-                    val systemPrompt = state.systemInstruction ?: "You are a helpful assistant."
-                    Log.d(TAG, "System Prompt configured (length=${systemPrompt.length})")
-                    
+
                     conversation = createEngineConversation(
                         temperature = state.temperature,
                         topP = state.topP,
                         topK = state.topK,
-                        preamble = systemPrompt,
+                        systemInstruction = state.systemInstruction,
                         initialMessages = initialMessages.map { toLiteRTMessage(it) }
                     )
                     activeConversationId = state.conversationId
@@ -271,6 +269,7 @@ class AiEngineManager(
     // Helper Methods
     // ===================================================================
 
+    /** `system` and `developer` messages never get here: [SystemPromptSplitter] turns them into the system instruction. */
     private fun toLiteRTMessage(chatMessage: ChatMessage): Message {
         val contents = mutableListOf<Content>()
         

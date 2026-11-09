@@ -11,6 +11,7 @@ import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -115,5 +116,63 @@ class OpenAIServerTest {
             setBody("not json")
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun aSystemMessageBecomesTheSystemInstructionNotAUserTurn() {
+        val factory = FakeEngineFactory(chunks = listOf("ok"))
+        val manager = AiEngineManager(factory)
+        runBlocking { manager.loadModel(tmp.newFile("m-sys.litertlm").absolutePath, "CPU") }
+        withServer(manager) {
+            val response = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody("""{"messages":[{"role":"system","content":"Always answer in French."},{"role":"user","content":"hi"}]}""")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+        }
+        assertEquals("Always answer in French.", factory.engine.conversationConfigs.last().systemInstructionText())
+    }
+
+    @Test
+    fun withoutASystemMessageNoInstructionIsSent() {
+        val factory = FakeEngineFactory(chunks = listOf("ok"))
+        val manager = AiEngineManager(factory)
+        runBlocking { manager.loadModel(tmp.newFile("m-nosys.litertlm").absolutePath, "CPU") }
+        withServer(manager) {
+            client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody(chatBody)
+            }.bodyAsText()
+        }
+        assertNull(factory.engine.conversationConfigs.last().systemInstructionText())
+    }
+
+    @Test
+    fun aSystemOnlyRequestIsRejectedWith400AndTheLoadCounterReturnsToZero() = withServer(loadedManager()) {
+        val response = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody("""{"messages":[{"role":"system","content":"Only a system message."}]}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertTrue(response.bodyAsText().contains("messages must include a non-system message"))
+        val load = client.get("/v1/load") { header(HttpHeaders.Authorization, "Bearer $validToken") }.bodyAsText().replace(" ", "")
+        assertTrue(load, load.contains("\"load\":0"))
+    }
+
+    @Test
+    fun anEmptyMessagesArrayIsRejectedWith400OnBothPaths() = withServer(loadedManager()) {
+        for (body in listOf("""{"messages":[]}""", """{"stream":true,"messages":[]}""")) {
+            val response = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody(body)
+            }
+            assertEquals(body, HttpStatusCode.BadRequest, response.status)
+        }
+        val load = client.get("/v1/load") { header(HttpHeaders.Authorization, "Bearer $validToken") }.bodyAsText().replace(" ", "")
+        assertTrue(load, load.contains("\"load\":0"))
     }
 }
