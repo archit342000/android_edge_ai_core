@@ -36,8 +36,9 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 
 `content` is a string or an array of parts: `{"type": "text", "text": ...}`, `{"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}`,
 `{"type": "audio_url", "audio_url": {"url": "data:audio/...;base64,..."}}`. Only base64 data URLs are read.
-Role `assistant` maps to a model turn; every other role, including `system`, maps to a user turn. The system prompt is fixed to
-"You are a helpful assistant." because REST requests carry no `systemInstruction`.
+Role `assistant` maps to a model turn. `system` (and OpenAI's `developer`) messages are not turns: all of them, wherever they appear, are merged in order
+(blank line between) into the conversation's system instruction. Every other role maps to a user turn. With no system message the model's default is used (no built-in
+prompt). A request with no message left after the system messages (only system messages, or an empty `messages` array) is rejected with `400 {"error": "messages must include a non-system message"}`.
 
 Each request is independent: the server builds a transient conversation from `messages`, so send the full history every time.
 
@@ -60,7 +61,7 @@ On a generation error the stream sends `data: {"error": "..."}` and closes witho
 
 | Status | When |
 |--------|------|
-| `400` | body does not parse, or any other exception before or during a non-streaming generation (including "Model not loaded") |
+| `400` | body does not parse, the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
 | `401` | missing or invalid token |
 | `500` | the engine reported an error, or returned no text (non-streaming) |
 | `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`) |

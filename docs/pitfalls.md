@@ -13,11 +13,10 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 4. **`/v1/health` and root `/health` duplicate the same handler.** Change both or neither.
 5. **The raw token is accepted without `Bearer `.** `extractToken` strips the prefix if present and otherwise uses the whole header value.
 6. **No KV-cache reuse over REST.** Every request gets a new random `conversationId` and `ttlMs = 0`, so `AiEngineManager`'s reuse check
-   (same id, one new message, same sampling parameters) never passes for REST clients. The README's "Smart Session Reuse", custom TTL and crash-recovery
+   (same id, one new message, same sampling parameters and system instruction) never passes for REST clients. The README's "Smart Session Reuse", custom TTL and crash-recovery
    features belong to the conversation model that REST does not use.
 7. **`usage` is always zero.** Non-streaming responses send `Usage(0, 0, 0)`.
-8. **`system` messages become user turns.** `AiEngineManager.toLiteRTMessage` maps only `assistant` to a model turn, and the preamble is fixed
-   to "You are a helpful assistant." because REST requests set no `systemInstruction`.
+8. *(Removed.)* `system` messages are now the system instruction and there is no built-in prompt (`SystemPromptSplitter`). The number is kept because docs and tickets cite later entries.
 
 ## Security and logging
 
