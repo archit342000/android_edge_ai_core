@@ -6,7 +6,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 
 1. **The server listens on all interfaces.** `embeddedServer(Netty, port = 8080)` in `OpenAIServer.start` sets no `host`, so Netty binds `0.0.0.0`.
    The README says localhost, but other devices on the same network can reach the port. Only the token protects it.
-2. **Error bodies leak exception text.** The 400 path returns `"Bad Request: ${e.message}"`, and the 500 path and SSE errors return `error.message`.
+2. **Some error bodies still leak exception text.** An unreadable request body now gets the fixed `400 "Invalid request body"` (logged with the exception class only), but the outer 400 for other failures returns `"Bad Request: ${e.message}"`, and the 500 path and SSE errors return `error.message`.
    New code should return a short fixed message and log the detail (`docs/standards/errors-and-logging.md`).
 3. **"Model not loaded" on chat becomes 400.** `generateConversationResponseAsync` throws `IllegalStateException` when no engine is loaded.
    For a non-streaming request the outer `catch` turns it into `400 Bad Request`, not `503`.
@@ -59,7 +59,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 25. **Debug and release builds share the application id.** A debug APK cannot update a release install (different keys); uninstalling deletes tokens and models.
 26. **Coroutines 1.11.0 breaks Ktor request bodies of about 1 MB or more.** Ktor 2.3.12 reads large bodies (image or audio parts) through
     `EventLoopKt.processNextEventInCurrentThread()`, which kotlinx-coroutines 1.11.0 removed. LiteRT-LM 0.19.1 asks for 1.11.0, so `app/build.gradle.kts` forces 1.10.2;
-    without the pin such requests fail with `NoSuchMethodError`, reported as HTTP 400 "Failed to convert request body". Route tests do not show it (the Ktor test host
+    without the pin such requests fail with `NoSuchMethodError`, reported as HTTP 400 `Invalid request body` (the `NoSuchMethodError` is only in logcat). Route tests do not show it (the Ktor test host
     reads bodies in memory); `CoroutinesPinTest` only guards the pin, so check large bodies on a device after touching Ktor, coroutines or LiteRT-LM versions. Remove the pin when Ktor is upgraded.
 27. **A dropped stream is noticed only when a token write fails.** `OpenAIServer` cancels the generation (`cancelProcess()`) from the failed write, so a client that leaves during prompt
     processing is noticed at the first token. After a cancel `AiEngineManager` waits up to `CANCEL_WAIT_MS` (2 s) for the native terminal callback while holding `inferenceMutex`; if it
