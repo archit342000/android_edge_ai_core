@@ -3,7 +3,7 @@
 ## Rules
 
 1. **Test mapping:** every new or changed source class has a test class with the same package in `app/src/test/java/com/aanand/edgeaicore/`
-   (`TokenManager.kt` has `TokenManagerTest.kt`). Current test classes: `OpenAIModelsTest`, `AiEngineManagerTest`, `OpenAIServerTest`, `CancellableGenerationTest`, plus `CoroutinesPinTest` (a build guard, `docs/pitfalls.md` 26). The other classes are a known gap, filled as they are touched.
+   (`TokenManager.kt` has `TokenManagerTest.kt`). Current test classes: `OpenAIModelsTest`, `AiEngineManagerTest`, `OpenAIServerTest`, `CancellableGenerationTest`, `NettyDisconnectTest`, plus `CoroutinesPinTest` (a build guard, `docs/pitfalls.md` 26). The other classes are a known gap, filled as they are touched.
    Agreed exception: Android framework classes (`InferenceService`, `MainActivity`) and `LlmEngine.kt` (logic-free interfaces plus the thin LiteRT-LM adapters) have no test class; they are covered by plain-Kotlin helpers and device checks.
 2. **Coverage:** test each public function you add or change, including failure paths.
 3. **Keep tests current:** if a change breaks a test because the intended behaviour changed, update the test.
@@ -20,7 +20,7 @@
 
 Local unit tests cannot call real `android.*` APIs. Keep logic in plain Kotlin where possible so it can be unit-tested, and fake the boundary
 (LiteRT-LM `Engine`, `Context`, HTTP) instead of loading a model.
-The engine seam is `LlmEngine` (`AiEngineManager` takes an `engineFactory`; tests pass a fake, see `FakeLlmEngine.kt`). The server seam is `OpenAIServer(aiEngineManager, isValidToken)` with `internal fun Application.module()`; route tests use Ktor `testApplication`. Unit tests run with `unitTests.isReturnDefaultValues = true`: `android.util.Log` calls are no-ops and `android.util.Base64.decode` returns null, so do not unit-test code that depends on them (image and audio parts); use a device check.
+The engine seam is `LlmEngine` (`AiEngineManager` takes an `engineFactory`; tests pass a fake, see `FakeLlmEngine.kt`). The server seam is `OpenAIServer(aiEngineManager, onClientGone, isValidToken)` (`onClientGone` lets a test simulate a client disconnect; the default watches the Netty connection) with `internal fun Application.module()`; route tests use Ktor `testApplication`. Unit tests run with `unitTests.isReturnDefaultValues = true`: `android.util.Log` calls are no-ops and `android.util.Base64.decode` returns null, so do not unit-test code that depends on them (image and audio parts); use a device check.
 No test may need a model file, the network or a fixed port.
 
 ## Commands
