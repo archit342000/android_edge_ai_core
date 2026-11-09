@@ -4,16 +4,12 @@ import android.util.Log
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
-import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.SamplerConfig
-import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.Message
 import android.util.Base64
 import com.google.ai.edge.litertlm.MessageCallback
-import com.google.ai.edge.litertlm.SessionConfig
-import com.google.ai.edge.litertlm.Session as LiteRTSession
 import com.aanand.edgeaicore.ConversationState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,13 +20,15 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.launch
 
-class AiEngineManager {
-    private var engine: Engine? = null
+class AiEngineManager(
+    private val engineFactory: (EngineConfig) -> LlmEngine = ::createLiteRtEngine
+) {
+    private var engine: LlmEngine? = null
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
     private val inferenceMutex = Mutex()
     // Track active conversations/sessions to support multi-session and handle hardware resource limits
-    @Volatile private var activeEngineConversation: Conversation? = null
+    @Volatile private var activeEngineConversation: LlmConversation? = null
     @Volatile private var activeConversationId: String? = null
     private var activeConversationParams: Triple<Double, Double, Int>? = null
 
@@ -57,23 +55,21 @@ class AiEngineManager {
 
         try {
             val backendEnum = when (backendType.uppercase()) {
-                "CPU" -> Backend.CPU
-                "GPU" -> Backend.GPU
-                "NPU" -> Backend.NPU
-                else -> Backend.GPU
+                "CPU" -> Backend.CPU()
+                "GPU" -> Backend.GPU()
+                "NPU" -> Backend.NPU(nativeLibraryDir = "")
+                else -> Backend.GPU()
             }
 
             val config = EngineConfig(
                 modelPath = modelPath,
                 backend = backendEnum,
-                visionBackend = Backend.GPU,
-                audioBackend = Backend.CPU
+                visionBackend = Backend.GPU(),
+                audioBackend = Backend.CPU()
             )
 
             Log.d(TAG, "Initializing Engine with config: $config")
-            val newEngine = Engine(config)
-            Log.d(TAG, "Calling engine.initialize()...")
-            newEngine.initialize()
+            val newEngine = engineFactory(config)
             engine = newEngine
             currentModelPath = modelPath
 
@@ -116,7 +112,7 @@ class AiEngineManager {
         topK: Int? = null,
         preamble: String? = null,
         initialMessages: List<Message> = emptyList()
-    ): Conversation {
+    ): LlmConversation {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
         
         // Enforce single-session limit
@@ -186,7 +182,7 @@ class AiEngineManager {
                               (messages.size == 1) &&
                               (activeConversationParams == currentParams)
 
-                val conversation: Conversation
+                val conversation: LlmConversation
 
                 if (isReuse) {
                     Log.d(TAG, "Reusing active conversation for ID=${state.conversationId}")

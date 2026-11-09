@@ -39,7 +39,7 @@ class InferenceService : Service() {
             context = this,
             onConversationRemoved = { id -> aiEngineManager.closeConversation(id) }
         )
-        openAIServer = OpenAIServer(aiEngineManager, tokenManager)
+        openAIServer = OpenAIServer(aiEngineManager, tokenManager::isValidToken)
         createNotificationChannel()
     }
 

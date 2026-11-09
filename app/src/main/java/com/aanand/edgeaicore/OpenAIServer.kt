@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class OpenAIServer(
     private val aiEngineManager: AiEngineManager,
-    private val tokenManager: TokenManager
+    private val isValidToken: (String?) -> Boolean
 ) {
     private var server: NettyApplicationEngine? = null
     private val activeRequests = AtomicInteger(0)
@@ -39,12 +39,7 @@ class OpenAIServer(
         Log.i(TAG, "Starting OpenAI Server on port 8080...")
 
         server = embeddedServer(Netty, port = 8080) {
-            install(ContentNegotiation) {
-                gson {
-                    setPrettyPrinting()
-                }
-            }
-            configureRouting()
+            module()
         }.start(wait = false)
     }
 
@@ -54,13 +49,23 @@ class OpenAIServer(
         server = null
     }
 
+    /** Installs JSON serialisation and the routes. Used by [start] and by route tests. */
+    internal fun Application.module() {
+        install(ContentNegotiation) {
+            gson {
+                setPrettyPrinting()
+            }
+        }
+        configureRouting()
+    }
+
     private fun Application.configureRouting() {
         routing {
             route("/v1") {
                 // Chat Completions
                 post("/chat/completions") {
                     val token = extractToken(call.request.header("Authorization"))
-                    if (!tokenManager.isValidToken(token)) {
+                    if (!isValidToken(token)) {
                         call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
                         return@post
                     }
@@ -190,7 +195,7 @@ class OpenAIServer(
                 // List Models
                 get("/models") {
                     val token = extractToken(call.request.header("Authorization"))
-                    if (!tokenManager.isValidToken(token)) {
+                    if (!isValidToken(token)) {
                         call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
                         return@get
                     }
@@ -209,7 +214,7 @@ class OpenAIServer(
                 // Health Check
                 get("/health") {
                      val token = extractToken(call.request.header("Authorization"))
-                    if (!tokenManager.isValidToken(token)) {
+                    if (!isValidToken(token)) {
                         call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
                         return@get
                     }
@@ -224,7 +229,7 @@ class OpenAIServer(
                 // Get Load
                 get("/load") {
                     val token = extractToken(call.request.header("Authorization"))
-                    if (!tokenManager.isValidToken(token)) {
+                    if (!isValidToken(token)) {
                         call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
                         return@get
                     }
@@ -241,7 +246,7 @@ class OpenAIServer(
             // Health check at root
              get("/health") {
                  val token = extractToken(call.request.header("Authorization"))
-                 if (!tokenManager.isValidToken(token)) {
+                 if (!isValidToken(token)) {
                      call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Invalid or missing API key"))
                      return@get
                  }
