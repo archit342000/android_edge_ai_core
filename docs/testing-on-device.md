@@ -66,6 +66,8 @@ Models: the app loads only **multimodal** `.litertlm` models (see `docs/pitfalls
 | `litert-community/Qwen3-0.6B` (text only) | `TF_LITE_VISION_ENCODER not found` (result with `0.9.0-alpha02`; not retested with `0.19.1`) |
 | `litert-community/gemma-4-E2B-it-litert-lm` (2.6 GB) | loads on CPU, chat works (emulator `claude_edgeaicore_api34`, 2026-11-09; aborted natively with `0.9.0-alpha02`) |
 
+A corrupt file (random bytes) or a truncated model is rejected before the engine is created: the log shows `ModelInspector: Model metadata could not be read`, the process survives, `/v1/health` is 503, and a valid model loads afterwards (checked on the emulator, 2026-11-09).
+
 `litert-community` Gemma 3 and 3n repositories on Hugging Face are gated (licence acceptance and login); Gemma 4 and Qwen are not.
 
 ## Using a phone

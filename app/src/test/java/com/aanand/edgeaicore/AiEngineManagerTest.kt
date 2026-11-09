@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
@@ -34,7 +35,7 @@ class AiEngineManagerTest {
     @Test
     fun loadModelThrowsWhenFileIsMissing() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         try {
             manager.loadModel(File(tmp.root, "missing.litertlm").absolutePath, "CPU")
             fail("expected FileNotFoundException")
@@ -47,7 +48,7 @@ class AiEngineManagerTest {
     @Test
     fun loadModelRetriesOnCpuWhenGpuFails() = runTest {
         val factory = FakeEngineFactory(failOnGpu = true)
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "GPU")
         assertEquals(2, factory.configs.size)
         assertTrue(factory.configs[0].backend is Backend.GPU)
@@ -58,7 +59,7 @@ class AiEngineManagerTest {
     @Test
     fun backendNameMapsToBackendType() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         val path = modelFile()
         manager.loadModel(path, "npu")
         manager.close()
@@ -69,20 +70,21 @@ class AiEngineManagerTest {
 
     @Test
     fun loadModelRethrowsCpuFailure() = runTest {
-        val manager = AiEngineManager { throw IllegalStateException("boom") }
+        val manager = newManager({ throw IllegalStateException("boom") })
         try {
             manager.loadModel(modelFile(), "CPU")
             fail("expected IllegalStateException")
         } catch (e: IllegalStateException) {
             assertEquals("boom", e.message)
             assertFalse(manager.isModelLoaded)
+            assertNull(manager.modelCapabilities) // inspected fine, but the engine failed: nothing is "loaded"
         }
     }
 
     @Test
     fun generateStreamsTokensAndCompletesOnce() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
 
         val tokens = mutableListOf<String>()
@@ -105,7 +107,7 @@ class AiEngineManagerTest {
     @Test
     fun generateReportsCallbackErrorOnce() = runTest {
         val factory = FakeEngineFactory(failure = RuntimeException("engine failed"))
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
 
         var completes = 0
@@ -124,7 +126,7 @@ class AiEngineManagerTest {
 
     @Test
     fun generateWithoutModelThrowsIllegalState() = runTest {
-        val manager = AiEngineManager(FakeEngineFactory())
+        val manager = newManager(FakeEngineFactory())
         try {
             manager.generateConversationResponseAsync(
                 state(), listOf(userMessage("hi")),
@@ -138,7 +140,7 @@ class AiEngineManagerTest {
 
     @Test
     fun emptyMessagesReportAnError() = runTest {
-        val manager = AiEngineManager(FakeEngineFactory())
+        val manager = newManager(FakeEngineFactory())
         manager.loadModel(modelFile(), "CPU")
         val errors = mutableListOf<Throwable>()
         manager.generateConversationResponseAsync(
@@ -152,7 +154,7 @@ class AiEngineManagerTest {
     @Test
     fun sameConversationWithOneNewMessageReusesConversation() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val state = state()
 
@@ -170,7 +172,7 @@ class AiEngineManagerTest {
     @Test
     fun changedSamplingParamsRebuildConversation() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val state = state()
 
@@ -193,7 +195,7 @@ class AiEngineManagerTest {
     @Test
     fun closeReleasesEngineAndConversation() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         manager.generateConversationResponseAsync(
             state(), listOf(userMessage("a")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
@@ -219,7 +221,7 @@ class AiEngineManagerTest {
     @Test
     fun aRequestThatExtendsThePreviousTurnReusesItAndSendsOnlyTheNewMessage() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         manager.request(listOf(userChat("one")))
         // The client sends the whole history back, with the reply unchanged ("Hello" is the fake's reply)
@@ -232,7 +234,7 @@ class AiEngineManagerTest {
     @Test
     fun aChangedEarlierMessageCreatesAFreshConversation() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         manager.request(listOf(userChat("one")))
         manager.request(listOf(userChat("ONE (edited)"), assistantChat("Hello"), userChat("two")))
@@ -242,7 +244,7 @@ class AiEngineManagerTest {
     @Test
     fun aChangedReplyTextCreatesAFreshConversation() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         manager.request(listOf(userChat("one")))
         manager.request(listOf(userChat("one"), assistantChat("Hello (trimmed by the client)"), userChat("two")))
@@ -252,7 +254,7 @@ class AiEngineManagerTest {
     @Test
     fun anErrorClosesTheConversationOnceAndDoesNotCacheIt() = runTest {
         val factory = FakeEngineFactory(failure = IllegalStateException("boom"))
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val errors = mutableListOf<Throwable>()
         manager.request(listOf(userChat("one")), error = { errors.add(it) })
@@ -266,7 +268,7 @@ class AiEngineManagerTest {
     @Test
     fun anEmptyReplyIsNotCached() = runTest {
         val factory = FakeEngineFactory(chunks = emptyList())
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         manager.request(listOf(userChat("one")))
         manager.request(listOf(userChat("one")))
@@ -277,7 +279,7 @@ class AiEngineManagerTest {
     @Test
     fun loadModelWithANewPathClosesTheCachedConversationsAndTheOldEngine() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val firstEngine = factory.engine
         manager.request(listOf(userChat("one")))
@@ -289,7 +291,7 @@ class AiEngineManagerTest {
     @Test
     fun cancellingMidGenerationClosesTheConversationOnceAndDoesNotCacheIt() = runTest {
         val factory = FakeEngineFactory(hangUntilCancelled = true)
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         var completed = 0
         var errors = 0
@@ -311,7 +313,7 @@ class AiEngineManagerTest {
     @Test
     fun clearConversationCacheClosesIdleConversations() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         manager.request(listOf(userChat("one")))
         assertFalse(factory.engine.conversations[0].closed) // cached
@@ -322,7 +324,7 @@ class AiEngineManagerTest {
     @Test
     fun changedTopPTopKOrSystemInstructionEachCreateAFreshConversation() = runTest {
         val factory = FakeEngineFactory()
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val history = listOf(userChat("one"))
         val followUp = listOf(userChat("one"), assistantChat("Hello"), userChat("two"))
@@ -346,7 +348,7 @@ class AiEngineManagerTest {
     @Test
     fun clearConversationCacheWaitsForAGenerationInProgress() = runTest {
         val factory = FakeEngineFactory(hangUntilCancelled = true)
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val generation = launch(Dispatchers.Default) { manager.request(listOf(userChat("one"))) }
         withContext(Dispatchers.Default) {
@@ -363,7 +365,7 @@ class AiEngineManagerTest {
     @Test
     fun cacheDirReachesTheEngineConfigAlsoOnTheCpuRetry() = runTest {
         val factory = FakeEngineFactory(failOnGpu = true)
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "GPU", cacheDir = "/cache/dir")
         assertEquals(2, factory.configs.size)
         assertEquals("/cache/dir", factory.configs[0].cacheDir)
@@ -373,7 +375,7 @@ class AiEngineManagerTest {
     @Test
     fun cacheDirDefaultsToNull() = runTest {
         val factory = FakeEngineFactory()
-        AiEngineManager(factory).loadModel(modelFile(), "CPU")
+        newManager(factory).loadModel(modelFile(), "CPU")
         org.junit.Assert.assertNull(factory.configs[0].cacheDir)
     }
 
@@ -382,7 +384,7 @@ class AiEngineManagerTest {
     @Test
     fun cancellingTheCallerCancelsNativeDecodingOnceAndFreesTheLock() = runTest {
         val factory = FakeEngineFactory(hangUntilCancelled = true)
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
         var completed = 0
@@ -424,7 +426,7 @@ class AiEngineManagerTest {
     @Test
     fun cancelSkipsCancelProcessOnAClosedConversation() = runTest {
         val factory = FakeEngineFactory(hangUntilCancelled = true)
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.cancelWaitMs = 50
         manager.loadModel(modelFile(), "CPU")
         val job = launch(Dispatchers.Default) {
@@ -444,7 +446,7 @@ class AiEngineManagerTest {
     @Test
     fun cancellingAQueuedRequestReportsOnceAndNeverReachesTheEngine() = runTest {
         val factory = FakeEngineFactory(hangUntilCancelled = true)
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val first = launch(Dispatchers.Default) {
             manager.generateConversationResponseAsync(
@@ -474,7 +476,7 @@ class AiEngineManagerTest {
     @Test
     fun cancelDuringConversationCreationNeverStartsDecodingAndFreesTheLock() = runTest {
         val factory = FakeEngineFactory(hangUntilCancelled = true)
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
         lateinit var job: kotlinx.coroutines.Job
@@ -504,7 +506,7 @@ class AiEngineManagerTest {
     @Test
     fun cancelRightAfterTheSendStopsTheDecodingThatJustStarted() = runTest {
         val factory = FakeEngineFactory(hangUntilCancelled = true)
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         lateinit var job: kotlinx.coroutines.Job
         factory.engine.onSendMessage = { job.cancel() } // the client goes away just as decoding starts
@@ -530,7 +532,7 @@ class AiEngineManagerTest {
     @Test
     fun completionCarriesTheTokenUsageFromTheEngineCounts() = runTest {
         // 2 of the 12 tokens in the KV cache were there before this generation
-        val manager = AiEngineManager(FakeEngineFactory(counts = Triple(7, 3, 12)))
+        val manager = newManager(FakeEngineFactory(counts = Triple(7, 3, 12)))
         manager.loadModel(modelFile(), "CPU")
         var usage: TokenUsage? = null
         manager.generateConversationResponseAsync(
@@ -543,7 +545,7 @@ class AiEngineManagerTest {
     @Test
     fun unreadableUsageIsAnErrorNotZeros() = runTest {
         val factory = FakeEngineFactory(usageFailure = IllegalStateException("benchmark off"))
-        val manager = AiEngineManager(factory)
+        val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val s = state()
         var completes = 0
@@ -569,7 +571,91 @@ class AiEngineManagerTest {
         @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
         com.google.ai.edge.litertlm.ExperimentalFlags.enableBenchmark = false // it is process-wide; start from off
         val factory = FakeEngineFactory(failOnGpu = true)
-        AiEngineManager(factory).loadModel(modelFile(), "GPU")
+        newManager(factory).loadModel(modelFile(), "GPU")
         assertEquals(listOf(true, true), factory.benchmarkFlagAtCreation)
+    }
+
+    @Test
+    fun anUnsupportedModelIsRejectedBeforeAnyEngineIsCreated() = runTest {
+        val path = modelFile()
+        for (backend in listOf("CPU", "GPU")) {
+            val factory = FakeEngineFactory()
+            val manager = newManager(factory) { throw UnsupportedModelException("bad file") }
+            try {
+                manager.loadModel(path, backend)
+                fail("expected UnsupportedModelException")
+            } catch (e: UnsupportedModelException) {
+                assertTrue(factory.configs.isEmpty())
+                assertFalse(manager.isModelLoaded)
+                assertNull(manager.modelCapabilities)
+            }
+        }
+    }
+
+    @Test
+    fun aModelThatIsNotAnLlmIsRejectedByValidation() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory) { ModelCapabilities(ModelKind.EMBEDDING, true, false, false) }
+        try {
+            manager.loadModel(modelFile(), "CPU")
+            fail("expected UnsupportedModelException")
+        } catch (e: UnsupportedModelException) {
+            assertTrue(factory.configs.isEmpty())
+        }
+    }
+
+    @Test
+    fun theGpuToCpuRetryDoesNotInspectTheFileAgain() = runTest {
+        var inspections = 0
+        val factory = FakeEngineFactory(failOnGpu = true)
+        val manager = newManager(factory) { inspections++; FULL_LLM }
+        manager.loadModel(modelFile(), "GPU")
+        assertEquals(1, inspections)
+        assertEquals(2, factory.configs.size)
+    }
+
+    @Test
+    fun capabilitiesAreSetAfterLoadAndClearedByClose() = runTest {
+        val manager = newManager(FakeEngineFactory())
+        assertNull(manager.modelCapabilities)
+        manager.loadModel(modelFile(), "CPU")
+        assertEquals(FULL_LLM, manager.modelCapabilities)
+        manager.close()
+        assertNull(manager.modelCapabilities)
+    }
+
+    @Test
+    fun aValidModelLoadsAfterAnUnsupportedOne() = runTest {
+        val factory = FakeEngineFactory()
+        var firstCall = true
+        val manager = newManager(factory) { if (firstCall) { firstCall = false; throw UnsupportedModelException("bad") } else FULL_LLM }
+        val path = modelFile()
+        try {
+            manager.loadModel(path, "CPU")
+            fail("expected UnsupportedModelException")
+        } catch (e: UnsupportedModelException) {
+            assertFalse(manager.isModelLoaded)
+        }
+        manager.loadModel(path, "CPU")
+        assertTrue(manager.isModelLoaded)
+    }
+
+    @Test
+    fun aFailedLoadAfterASuccessfulOneLeavesNoCapabilities() = runTest {
+        var failNext = false
+        val manager = newManager({ config ->
+            if (failNext) throw IllegalStateException("boom")
+            FakeEngineFactory().invoke(config)
+        })
+        val path = modelFile()
+        manager.loadModel(path, "CPU")
+        assertEquals(FULL_LLM, manager.modelCapabilities)
+        failNext = true
+        try {
+            manager.loadModel(File(tmp.root, "other.litertlm").also { it.writeText("x") }.absolutePath, "CPU")
+            fail("expected IllegalStateException")
+        } catch (e: IllegalStateException) {
+            assertNull(manager.modelCapabilities)
+        }
     }
 }

@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.util.Log
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -70,20 +71,20 @@ class InferenceService : Service() {
         if (modelPath != null) {
             // Save to prefs for sticky restarts
             prefs.edit()
-                .putString("saved_model_path", modelPath)
+                .putString(KEY_SAVED_MODEL_PATH, modelPath)
                 .putString("saved_backend", backend ?: "GPU")
-                .putBoolean("crashed_during_init", false) // Reset on new manual start
+                .putBoolean(KEY_CRASHED_DURING_INIT, false) // Reset on new manual start
                 .apply()
         } else {
             // Restore from prefs if this is a sticky restart
-            if (prefs.getBoolean("crashed_during_init", false)) {
+            if (prefs.getBoolean(KEY_CRASHED_DURING_INIT, false)) {
                 Log.e(TAG, "Detected crash loop during previous initialization. Aborting service start.")
                 sendStatusBroadcast("Error: Crash loop detected. Service stopped.")
                 stopSelf()
                 return START_NOT_STICKY
             }
 
-            modelPath = prefs.getString("saved_model_path", null)
+            modelPath = prefs.getString(KEY_SAVED_MODEL_PATH, null)
             backend = prefs.getString("saved_backend", "GPU")
             if (modelPath != null) {
                 Log.i(TAG, "Restored model path from prefs: $modelPath")
@@ -112,7 +113,7 @@ class InferenceService : Service() {
                     isModelLoading = true
 
                     // Mark as potentially crashing region
-                    prefs.edit().putBoolean("crashed_during_init", true).commit()
+                    prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, true).commit()
 
                     Log.d(TAG, "Attempting to load model with backend: $finalBackend")
                     sendStatusBroadcast("Initializing engine...")
@@ -123,7 +124,7 @@ class InferenceService : Service() {
 
                     // If we reached here, we didn't crash (Java-wise).
                     // Update flag to false implies success or handled exception
-                    prefs.edit().putBoolean("crashed_during_init", false).apply()
+                    prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
 
                     Log.d(TAG, "loadModel returned. Starting readiness verification...")
                     sendStatusBroadcast("Verifying model readiness...")
@@ -173,12 +174,20 @@ class InferenceService : Service() {
                         sendStatusBroadcast("Error: Model verification failed")
                     }
 
+                } catch (e: UnsupportedModelException) {
+                    Log.e(TAG, "Unsupported model file", e)
+                    sendStatusBroadcast(STATUS_UNSUPPORTED_MODEL)
+                    // A sticky restart must not retry a file known to be unusable.
+                    prefs.edit {
+                        putBoolean(KEY_CRASHED_DURING_INIT, false)
+                        remove(KEY_SAVED_MODEL_PATH)
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to initialize in service", e)
-                    sendStatusBroadcast("Error loading model: ${e.message}")
+                    sendStatusBroadcast(STATUS_LOAD_FAILED)
                     // Note: If we caught an exception, it's not a native crash, so clear the flag?
                     // Yes, because we handled it.
-                    prefs.edit().putBoolean("crashed_during_init", false).apply()
+                    prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
                 } finally {
                     isModelLoading = false
                 }
@@ -245,5 +254,9 @@ class InferenceService : Service() {
         const val EXTRA_STATUS = "STATUS"
         const val ACTION_TOKEN_REQUEST = "com.aanand.edgeaicore.TOKEN_REQUEST"
         const val EXTRA_PACKAGE_NAME = "PACKAGE_NAME"
+        private const val KEY_CRASHED_DURING_INIT = "crashed_during_init"
+        private const val KEY_SAVED_MODEL_PATH = "saved_model_path"
+        private const val STATUS_UNSUPPORTED_MODEL = "Error: Unsupported model file"
+        private const val STATUS_LOAD_FAILED = "Error: Model failed to load"
     }
 }

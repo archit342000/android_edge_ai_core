@@ -22,6 +22,7 @@ All sources are in `app/src/main/java/com/aanand/edgeaicore/`.
 | `InferenceService` | Foreground service (`dataSync`). Owns `AiEngineManager`, `TokenManager`, `ConversationManager` and `OpenAIServer`. Loads the model, runs a readiness ping, broadcasts status (`ACTION_STATUS_UPDATE`), and guards against crash loops during model load. |
 | `AiEngineManager` | Wraps an `LlmEngine` (the LiteRT-LM `Engine` in production). Loads a model on CPU, GPU or NPU, keeps a small cache of idle engine `Conversation`s (`ConversationCache`), serialises inference with a `Mutex`, and streams tokens through callbacks. |
 | `ConversationCache` | LRU cache (2 entries, 10 minute idle limit, checked lazily) of idle engine conversations keyed by their settings and the exact messages they hold. A request whose earlier messages match reuses the conversation and prefills only its new message. |
+| `ModelInspector` | Reads a model file's metadata with LiteRT-LM `ModelInfo` before the engine is created and rejects files the app cannot serve (`UnsupportedModelException`); `AiEngineManager.modelCapabilities` keeps the result. |
 | `LlmEngine` | `LlmEngine` and `LlmConversation` interfaces over the LiteRT-LM `Engine` and `Conversation`, plus the thin adapters and `createLiteRtEngine`. The seam that lets `AiEngineManager` be tested with a fake engine. |
 | `OpenAIServer` | Ktor `embeddedServer(Netty, port = 8080)` with the `/v1` routes and a root `/health`. Authenticates every request through an `isValidToken` function (`TokenManager.isValidToken`); `module()` installs JSON and the routes so route tests can host it. |
 | `OpenAIModels` | Gson data classes for requests, responses and `ErrorResponse`. The streaming chunk and model-list classes live at the bottom of `OpenAIServer.kt`. |
@@ -52,7 +53,7 @@ request builds a new conversation from `messages[:-1]`. A conversation that fail
 - `MainActivity` starts `InferenceService` with `EXTRA_MODEL_PATH` and `EXTRA_BACKEND`. Stop sends `ACTION_STOP`, which clears the service prefs, deletes all conversations and stops the server.
 - `InferenceService.onCreate` builds `TokenManager`, `ConversationManager` and `OpenAIServer`.
   `onStartCommand` starts the server, goes foreground, loads the model and returns `START_STICKY`.
-  On a sticky restart it restores the model path from `inference_service_prefs`, and refuses to start if `crashed_during_init` is set.
+  On a sticky restart it restores the model path from `inference_service_prefs`, and refuses to start if `crashed_during_init` is set. A model rejected as unsupported clears the saved path (pitfall 21).
 - `InferenceService` alone owns `ConversationManager` (create, `deleteAllConversations`, `shutdown`).
 - `onDestroy` cancels coroutines, shuts down conversations, closes the engine and stops the server. Tokens survive restarts.
 

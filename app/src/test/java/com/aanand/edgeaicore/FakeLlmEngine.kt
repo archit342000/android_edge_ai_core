@@ -126,3 +126,12 @@ class FakeEngineFactory(
         return engine
     }
 }
+
+/** A model every test accepts: an LLM with text, vision and audio input. */
+val FULL_LLM = ModelCapabilities(ModelKind.LLM, supportsText = true, supportsVision = true, supportsAudio = true)
+
+/** An [AiEngineManager] whose model inspection is faked, so tests need no native library or model file. */
+fun newManager(
+    engineFactory: (EngineConfig) -> LlmEngine,
+    capabilities: (String) -> ModelCapabilities = { FULL_LLM }
+): AiEngineManager = AiEngineManager(engineFactory).also { it.modelInspector = capabilities }

@@ -29,6 +29,14 @@ class AiEngineManager(
 ) {
     /** How long a cancelled request waits for native decoding to stop; tests shorten it. */
     @Volatile internal var cancelWaitMs: Long = CANCEL_WAIT_MS
+
+    /** Reads a model's metadata before it is loaded; tests replace it. */
+    @Volatile internal var modelInspector: (String) -> ModelCapabilities = ModelInspector()::inspect
+
+    /** What the loaded model supports; null while no model is loaded. */
+    @Volatile var modelCapabilities: ModelCapabilities? = null
+        private set
+
     private var engine: LlmEngine? = null
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
@@ -57,6 +65,7 @@ class AiEngineManager(
             engine?.close()
             engine = null
             currentModelPath = null
+            modelCapabilities = null
         }
         Log.d(TAG, "Loading model from $modelPath with Backend=$backendType")
 
@@ -66,43 +75,12 @@ class AiEngineManager(
             throw java.io.FileNotFoundException("Model file not found: $modelPath")
         }
 
-        val initStartedAt = System.nanoTime()
-        try {
-            val backendEnum = when (backendType.uppercase()) {
-                "CPU" -> Backend.CPU()
-                "GPU" -> Backend.GPU()
-                "NPU" -> Backend.NPU(nativeLibraryDir = "")
-                else -> Backend.GPU()
-            }
+        // Inspect before the native engine is created: an unsupported file must not reach Engine.initialize().
+        val capabilities = modelInspector(modelPath)
+        ModelInspector.validate(capabilities)
 
-            val config = EngineConfig(
-                modelPath = modelPath,
-                backend = backendEnum,
-                visionBackend = Backend.GPU(),
-                audioBackend = Backend.CPU(),
-                cacheDir = cacheDir
-            )
-
-            // Needed for per-request token counts; read when the engine is created.
-            @OptIn(ExperimentalApi::class)
-            ExperimentalFlags.enableBenchmark = true
-            Log.d(TAG, "Initializing Engine with config: $config")
-            val newEngine = engineFactory(config)
-            engine = newEngine
-            currentModelPath = modelPath
-
-            Log.i(TAG, "Engine initialized in ${(System.nanoTime() - initStartedAt) / 1_000_000} ms (backend=$backendType)")
-        } catch (t: Throwable) {
-            Log.e(TAG, "Failed to load model with Backend=$backendType after ${(System.nanoTime() - initStartedAt) / 1_000_000} ms. Error: ${t.message}", t)
-            if (backendType.equals("GPU", ignoreCase = true)) {
-                 Log.w(TAG, "Retrying with CPU backend...")
-                 loadModel(modelPath, "CPU", cacheDir)
-            } else {
-                if (t is Exception) throw t else throw Exception(t)
-            }
-        }
+        loadEngine(modelPath, backendType, capabilities, cacheDir)
     }
-
 
     /**
      * Creates a new engine-level conversation. Call inside [inferenceMutex].
@@ -310,6 +288,46 @@ class AiEngineManager(
         }
     }
 
+    private fun loadEngine(modelPath: String, backendType: String, capabilities: ModelCapabilities, cacheDir: String?) {
+        val initStartedAt = System.nanoTime()
+        try {
+            val backendEnum = when (backendType.uppercase()) {
+                "CPU" -> Backend.CPU()
+                "GPU" -> Backend.GPU()
+                "NPU" -> Backend.NPU(nativeLibraryDir = "")
+                else -> Backend.GPU()
+            }
+
+            val config = EngineConfig(
+                modelPath = modelPath,
+                backend = backendEnum,
+                visionBackend = Backend.GPU(),
+                audioBackend = Backend.CPU(),
+                cacheDir = cacheDir
+            )
+
+            // Needed for per-request token counts; read when the engine is created.
+            @OptIn(ExperimentalApi::class)
+            ExperimentalFlags.enableBenchmark = true
+            Log.d(TAG, "Initializing Engine with config: $config")
+            val newEngine = engineFactory(config)
+            engine = newEngine
+            currentModelPath = modelPath
+            // Set together with the engine, so it is non-null exactly while a model is loaded.
+            modelCapabilities = capabilities
+
+            Log.i(TAG, "Engine initialized in ${(System.nanoTime() - initStartedAt) / 1_000_000} ms (backend=$backendType)")
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to load model with Backend=$backendType after ${(System.nanoTime() - initStartedAt) / 1_000_000} ms. Error: ${t.message}", t)
+            if (backendType.equals("GPU", ignoreCase = true)) {
+                 Log.w(TAG, "Retrying with CPU backend...")
+                 loadEngine(modelPath, "CPU", capabilities, cacheDir)
+            } else {
+                if (t is Exception) throw t else throw Exception(t)
+            }
+        }
+    }
+
     // ===================================================================
     // Helper Methods
     // ===================================================================
@@ -405,6 +423,7 @@ class AiEngineManager(
         engine?.close()
         engine = null
         currentModelPath = null
+        modelCapabilities = null
     }
 
     /** Closes a conversation, logging instead of throwing (closing twice throws in LiteRT-LM). */
