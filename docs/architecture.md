@@ -35,7 +35,8 @@ All sources are in `app/src/main/java/com/aanand/edgeaicore/`.
 client app ──HTTP :8080──> OpenAIServer
    1. extractToken(Authorization) -> TokenManager.isValidToken      (401 if invalid)
    2. call.receive<ChatCompletionRequest>()                          (400 on parse error)
-   3. new transient ConversationState(ttlMs = 0, random UUID)
+   3. SystemPromptSplitter: system/developer messages -> the system instruction (400 if no other message is left);
+      new transient ConversationState(ttlMs = 0, random UUID, systemInstruction)
    4. AiEngineManager.generateConversationResponseAsync(state, messages, onToken, onComplete(text, usage), onError)
       (usage = prompt/completion/cached token counts read from the engine; if they cannot be read the request fails with "Token usage unavailable")
    5. stream=true  -> SSE chunks "data: {...}\n\n" ... "data: [DONE]"

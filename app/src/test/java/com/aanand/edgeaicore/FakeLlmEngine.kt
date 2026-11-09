@@ -90,9 +90,12 @@ class FakeEngine(
     /** Passed to conversations created from now on (see [FakeConversation]). */
     @Volatile var onSendMessage: (() -> Unit)? = null
     val conversations = java.util.concurrent.CopyOnWriteArrayList<FakeConversation>()
+    /** The config of every conversation created, in order. */
+    val conversationConfigs = java.util.concurrent.CopyOnWriteArrayList<ConversationConfig>()
     var closed = false
 
     override fun createConversation(config: ConversationConfig): LlmConversation {
+        conversationConfigs.add(config)
         onCreateConversation?.invoke()
         return FakeConversation(chunks, failure, hangUntilCancelled, onSendMessage, counts, usageFailure).also { conversations.add(it) }
     }
@@ -135,3 +138,7 @@ fun newManager(
     engineFactory: (EngineConfig) -> LlmEngine,
     capabilities: (String) -> ModelCapabilities = { FULL_LLM }
 ): AiEngineManager = AiEngineManager(engineFactory).also { it.modelInspector = capabilities }
+
+/** The text of a conversation config's system instruction, or null when it has none. */
+fun ConversationConfig.systemInstructionText(): String? =
+    systemInstruction?.contents?.filterIsInstance<Content.Text>()?.joinToString("") { it.text }

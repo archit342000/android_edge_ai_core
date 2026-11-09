@@ -37,8 +37,9 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 
 `content` is a string or an array of parts: `{"type": "text", "text": ...}`, `{"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}`,
 `{"type": "audio_url", "audio_url": {"url": "data:audio/...;base64,..."}}`. Only base64 data URLs are read.
-Role `assistant` maps to a model turn; every other role, including `system`, maps to a user turn. The system prompt is fixed to
-"You are a helpful assistant." because REST requests carry no `systemInstruction`.
+Role `assistant` maps to a model turn. `system` (and OpenAI's `developer`) messages are not turns: all of them, wherever they appear, are merged in order
+(blank line between) into the conversation's system instruction. Every other role maps to a user turn. With no system message the model's default is used (no built-in
+prompt). A request with no message left after the system messages (only system messages, or an empty `messages` array) is rejected with `400 {"error": "messages must include a non-system message"}`.
 
 Each request is independent: send the full history every time. The server reuses its cached engine conversation when your `messages` extend the previous
 request exactly (same settings, the earlier messages and the assistant reply unchanged, as text), so only the new message is prefilled; otherwise it rebuilds
@@ -69,7 +70,7 @@ If the client disconnects mid-stream, the server cancels the generation (`cancel
 
 | Status | When |
 |--------|------|
-| `400` | body does not parse, or any other exception before or during a non-streaming generation (including "Model not loaded") |
+| `400` | body does not parse, the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
 | `401` | missing or invalid token |
 | `500` | the engine reported an error, returned no text (non-streaming), or its token usage could not be read (`Token usage unavailable`) |
 | `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`) |

@@ -79,11 +79,19 @@ class OpenAIServer(
                         val request = call.receive<ChatCompletionRequest>()
                         val conversationId = UUID.randomUUID().toString()
 
+                        // System messages become the system instruction; the rest are the conversation turns.
+                        val (systemInstruction, turns) = SystemPromptSplitter.split(request.messages)
+                        if (turns.isEmpty()) {
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse("messages must include a non-system message"))
+                            return@post
+                        }
+
                         // Create transient state for this request
                         val state = ConversationState(
                             conversationId = conversationId,
                             apiToken = token!!,
                             ttlMs = 0, // Transient
+                            systemInstruction = systemInstruction,
                             temperature = request.temperature ?: 0.8,
                             topP = request.top_p ?: 0.95,
                             topK = request.top_k ?: 40
@@ -101,7 +109,7 @@ class OpenAIServer(
                                             try {
                                                 aiEngineManager.generateConversationResponseAsync(
                                                     state = state,
-                                                    messages = request.messages,
+                                                    messages = turns,
                                                     onToken = { token ->
                                                         val chunk = ChatCompletionChunk(
                                                             id = "chatcmpl-${UUID.randomUUID()}",
@@ -171,7 +179,7 @@ class OpenAIServer(
                             // Call the engine
                             aiEngineManager.generateConversationResponseAsync(
                                 state = state,
-                                messages = request.messages,
+                                messages = turns,
                                 onToken = { /* No-op for non-streaming */ },
                                 onComplete = { text, usage -> finalResponse = text; finalUsage = usage },
                                 onErrorCallback = { errorOccurred = it }

@@ -14,8 +14,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 5. **The raw token is accepted without `Bearer `.** `extractToken` strips the prefix if present and otherwise uses the whole header value.
 6. *(Removed.)* REST requests now reuse the cached engine conversation when they extend the previous one (`ConversationCache`). The number is kept because docs and tickets cite later entries.
 7. *(Removed.)* `usage` now reports real token counts (`TokenUsage`). The number is kept because docs and tickets cite later entries.
-8. **`system` messages become user turns.** `AiEngineManager.toLiteRTMessage` maps only `assistant` to a model turn, and the preamble is fixed
-   to "You are a helpful assistant." because REST requests set no `systemInstruction`.
+8. *(Removed.)* `system` messages are now the system instruction and there is no built-in prompt (`SystemPromptSplitter`). The number is kept because docs and tickets cite later entries.
 
 ## Security and logging
 

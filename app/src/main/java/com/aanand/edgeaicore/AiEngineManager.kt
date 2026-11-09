@@ -89,17 +89,15 @@ class AiEngineManager(
         temperature: Double? = null,
         topP: Double? = null,
         topK: Int? = null,
-        preamble: String? = null,
+        systemInstruction: String? = null,
         initialMessages: List<Message> = emptyList()
     ): LlmConversation {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
         
-        if(preamble == null){
-            Log.d(TAG, "No preamble provided, using default")
-        }
+        Log.d(TAG, "System instruction: ${systemInstruction?.let { "${it.length} chars" } ?: "none (model default)"}")
 
         val conversationConfig = ConversationConfig(
-            systemInstruction = Contents.of(Content.Text(preamble ?: "You are a helpful assistant.")),
+            systemInstruction = systemInstruction?.let { Contents.of(Content.Text(it)) },
             initialMessages = initialMessages,
             samplerConfig = SamplerConfig(
                 topK = topK ?: 40,
@@ -167,12 +165,11 @@ class AiEngineManager(
                     conversation = cached
                 } else {
                     Log.d(TAG, "Conversation cache miss, context size=${context.size}")
-                    val systemPrompt = state.systemInstruction ?: "You are a helpful assistant."
                     conversation = createEngineConversation(
                         temperature = state.temperature,
                         topP = state.topP,
                         topK = state.topK,
-                        preamble = systemPrompt,
+                        systemInstruction = state.systemInstruction,
                         initialMessages = context.map { toLiteRTMessage(it) }
                     )
                 }
@@ -338,6 +335,7 @@ class AiEngineManager(
         return TokenUsage.from(benchmark.lastPrefillTokenCount, benchmark.lastDecodeTokenCount, conversation.getTokenCount())
     }
 
+    /** `system` and `developer` messages never get here: [SystemPromptSplitter] turns them into the system instruction. */
     private fun toLiteRTMessage(chatMessage: ChatMessage): Message {
         val contents = mutableListOf<Content>()
         

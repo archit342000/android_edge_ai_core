@@ -658,4 +658,49 @@ class AiEngineManagerTest {
             assertNull(manager.modelCapabilities)
         }
     }
+
+    @Test
+    fun withoutASystemInstructionTheEngineGetsNone() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        manager.generateConversationResponseAsync(
+            state(), listOf(userMessage("hi")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+        )
+        assertNull(factory.engine.conversationConfigs[0].systemInstructionText())
+    }
+
+    @Test
+    fun aSystemInstructionReachesTheEngineConfig() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val s = state().copy(systemInstruction = "Always answer in French.")
+        manager.generateConversationResponseAsync(
+            s, listOf(userMessage("hi")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+        )
+        assertEquals("Always answer in French.", factory.engine.conversationConfigs[0].systemInstructionText())
+    }
+
+    @Test
+    fun aChangedSystemInstructionRebuildsTheConversation() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val first = state()
+        manager.generateConversationResponseAsync(
+            first, listOf(userMessage("hi")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+        )
+        // Same conversation id, one new message, same sampling: reused, unless the system instruction changed.
+        manager.generateConversationResponseAsync(
+            first, listOf(userMessage("again")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+        )
+        assertEquals(1, factory.engine.conversations.size)
+        val changed = first.copy(systemInstruction = "New rules.")
+        manager.generateConversationResponseAsync(
+            changed, listOf(userMessage("third")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+        )
+        assertEquals(2, factory.engine.conversations.size)
+        assertEquals("New rules.", factory.engine.conversationConfigs[1].systemInstructionText())
+    }
 }
