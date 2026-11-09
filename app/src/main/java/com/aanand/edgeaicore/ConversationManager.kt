@@ -136,7 +136,7 @@ class ConversationManager(
             ttlMs = ttlMs
         )
         conversations[conversationId] = state
-        Log.i(TAG, "Created conversation: ${conversationId.take(8)}... for token: ${apiToken.take(8)}... SystemInstruction: ${systemInstruction ?: "None"}")
+        Log.i(TAG, "Created conversation: ${conversationId.take(8)}... for token: ${apiToken.take(8)}... system instruction: ${systemInstruction?.let { "${it.length} chars" } ?: "none"}")
         saveConversation(state)
         return state
     }

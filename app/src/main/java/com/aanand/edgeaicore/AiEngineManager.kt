@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -100,8 +101,6 @@ class AiEngineManager(
             return@withContext
         }
 
-        // Replace the engine under the inference lock: a queued request then finds no engine ("Model not loaded"), never a closed one.
-        inferenceMutex.withLock { releaseEngine() }
         Log.d(TAG, "Loading model from $modelPath with Backend=$backendType")
 
         val file = java.io.File(modelPath)
@@ -110,11 +109,15 @@ class AiEngineManager(
             throw java.io.FileNotFoundException("Model file not found: $modelPath")
         }
 
-        // Inspect before the native engine is created: an unsupported file must not reach Engine.initialize().
+        // Inspect before the native engine is created, and before the running model is closed: an unsupported file must
+        // not reach Engine.initialize(), and a rejected file leaves the running model loaded.
         val inspectStartedAt = System.nanoTime()
         val capabilities = modelInspector(modelPath)
         ModelInspector.validate(capabilities)
         Log.d(TAG, "Model inspected in ${(System.nanoTime() - inspectStartedAt) / 1_000_000} ms")
+
+        // Replace the engine under the inference lock: a queued request then finds no engine ("Model not loaded"), never a closed one.
+        inferenceMutex.withLock { releaseEngine() }
 
         loadEngine(modelPath, backendType, capabilities, cacheDir, maxNumTokens, speculativeDecoding, visionOption, audioOption)
     }
@@ -611,6 +614,18 @@ class AiEngineManager(
 
     fun close() {
         releaseEngine()
+    }
+
+    /**
+     * Closes the engine once no generation holds the inference lock. After [timeoutMs] it closes anyway (logged), for
+     * a process that is ending.
+     */
+    suspend fun closeWhenIdle(timeoutMs: Long) {
+        val closed = withTimeoutOrNull(timeoutMs) { inferenceMutex.withLock { releaseEngine() } }
+        if (closed == null) {
+            Log.w(TAG, "A generation still held the engine after $timeoutMs ms, closing it anyway")
+            releaseEngine()
+        }
     }
 
     /** Closes a conversation, logging instead of throwing (closing twice throws in LiteRT-LM). */

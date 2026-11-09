@@ -645,4 +645,42 @@ class OpenAIServerTest {
             assertEquals(HttpStatusCode.OK, ok.status)
         }
     }
+
+    @Test
+    fun everyExitOfTheChatHandlerLeavesTheLoadCounterAtZero() {
+        // engine error (500 non-streaming, SSE error event streaming)
+        val failing = newManager(FakeEngineFactory(failure = IllegalStateException("boom")))
+        runBlocking { failing.loadModel(tmp.newFile("m-fail.litertlm").absolutePath, "CPU") }
+        withServer(failing) {
+            for (body in listOf(chatBody, streamBody)) {
+                client.post("/v1/chat/completions") {
+                    header(HttpHeaders.Authorization, "Bearer $validToken")
+                    header(HttpHeaders.ContentType, "application/json")
+                    setBody(body)
+                }.bodyAsText()
+            }
+            awaitLoadZero()
+        }
+        // no model loaded (/v1/load answers 503 then, so only the absence of a crash is checked)
+        withServer(AiEngineManager(FakeEngineFactory())) {
+            for (body in listOf(chatBody, streamBody)) {
+                client.post("/v1/chat/completions") {
+                    header(HttpHeaders.Authorization, "Bearer $validToken")
+                    header(HttpHeaders.ContentType, "application/json")
+                    setBody(body)
+                }.bodyAsText()
+            }
+        }
+        // success on both paths
+        withServer(loadedManager()) {
+            for (body in listOf(chatBody, streamBody)) {
+                client.post("/v1/chat/completions") {
+                    header(HttpHeaders.Authorization, "Bearer $validToken")
+                    header(HttpHeaders.ContentType, "application/json")
+                    setBody(body)
+                }.bodyAsText()
+            }
+            awaitLoadZero()
+        }
+    }
 }
