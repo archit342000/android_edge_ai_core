@@ -29,6 +29,7 @@
 1. **Grant Permissions**: Upon first launch, the app will request permissions for **Microphone** (audio inference), **Storage** (loading models), and **Battery Optimization** (to ensure the service stays alive in the background).
 2. **Select a Model**: Go to the **Backend Settings** tab. Tap **Select Model** and choose your `.litertlm`, `.bin`, or `.tflite` model file.
 3. **Choose Backend**: Select your preferred hardware accelerator (**CPU**, **GPU**, or **NPU**) depending on your device's capabilities.
+   Optionally set the **Context size (tokens)** below it (empty = the model's default); smaller values use less memory. It applies the next time the server starts.
 
 ### 2. Managing the Service
 - **Switch On**: In the **Server** tab, toggle the **Enable AI Server** switch. The status will change to `Loading...` and then `Ready (http://localhost:8080)` once the model is initialized.
@@ -67,9 +68,12 @@ Mimics the OpenAI API.
     {"role": "user", "content": "Hello!"}
   ],
   "stream": true,
-  "temperature": 0.8
+  "temperature": 0.8,
+  "max_tokens": 256
 }
 ```
+
+Also supported: `max_tokens` / `max_completion_tokens`, `top_p`, `top_k`, `presence_penalty`, `frequency_penalty` and `seed`. Values out of range are rejected with `400` (see `docs/standards/api.md`).
 
 **Response (Streaming):**
 Returns a stream of Server-Sent Events (SSE).
