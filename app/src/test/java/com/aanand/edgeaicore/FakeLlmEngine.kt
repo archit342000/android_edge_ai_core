@@ -1,10 +1,13 @@
 package com.aanand.edgeaicore
 
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.BenchmarkInfo
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ExperimentalApi
+import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 
@@ -13,10 +16,32 @@ import com.google.ai.edge.litertlm.MessageCallback
 /** Fake conversation: replies with [chunks], or fails with [failure]. */
 class FakeConversation(
     private val chunks: List<String>,
-    private val failure: Throwable?
+    private val failure: Throwable?,
+    /** Counts the fake reports after a generation: prefilled tokens, decoded tokens, tokens in the KV cache. */
+    private val counts: Triple<Int, Int, Int> = Triple(7, 3, 10),
+    /** When set, reading the token counts throws it. */
+    private val usageFailure: Throwable? = null
 ) : LlmConversation {
     var closed = false
     var sent = 0
+
+    override fun getTokenCount(): Int {
+        usageFailure?.let { throw it }
+        return counts.third
+    }
+
+    override fun getBenchmarkInfo(): BenchmarkInfo {
+        usageFailure?.let { throw it }
+        return BenchmarkInfo(
+            initTimeInSecond = 0.0,
+            timeToFirstTokenInSecond = 0.0,
+            lastPrefillTokenCount = counts.first,
+            lastDecodeTokenCount = counts.second,
+            lastPrefillTokensPerSecond = 0.0,
+            lastDecodeTokensPerSecond = 0.0
+        )
+    }
+
     override val isAlive: Boolean get() = !closed
 
     override fun sendMessageAsync(message: Message, callback: MessageCallback) {
@@ -36,13 +61,15 @@ class FakeConversation(
 
 class FakeEngine(
     private val chunks: List<String>,
-    private val failure: Throwable?
+    private val failure: Throwable?,
+    private val counts: Triple<Int, Int, Int> = Triple(7, 3, 10),
+    private val usageFailure: Throwable? = null
 ) : LlmEngine {
     val conversations = mutableListOf<FakeConversation>()
     var closed = false
 
     override fun createConversation(config: ConversationConfig): LlmConversation =
-        FakeConversation(chunks, failure).also { conversations.add(it) }
+        FakeConversation(chunks, failure, counts, usageFailure).also { conversations.add(it) }
 
     override fun close() {
         closed = true
@@ -52,17 +79,23 @@ class FakeEngine(
 class FakeEngineFactory(
     private val chunks: List<String> = listOf("Hel", "lo"),
     private val failure: Throwable? = null,
-    private val failOnGpu: Boolean = false
+    private val failOnGpu: Boolean = false,
+    private val counts: Triple<Int, Int, Int> = Triple(7, 3, 10),
+    private val usageFailure: Throwable? = null
 ) : (EngineConfig) -> LlmEngine {
     val configs = mutableListOf<EngineConfig>()
+    /** `ExperimentalFlags.enableBenchmark` as it was when each engine was created (the flag is read at creation). */
+    val benchmarkFlagAtCreation = mutableListOf<Boolean>()
     lateinit var engine: FakeEngine
 
     override fun invoke(config: EngineConfig): LlmEngine {
         configs.add(config)
+        @OptIn(ExperimentalApi::class)
+        benchmarkFlagAtCreation.add(ExperimentalFlags.enableBenchmark)
         if (failOnGpu && config.backend is Backend.GPU) {
             throw IllegalStateException("GPU unavailable")
         }
-        engine = FakeEngine(chunks, failure)
+        engine = FakeEngine(chunks, failure, counts, usageFailure)
         return engine
     }
 }

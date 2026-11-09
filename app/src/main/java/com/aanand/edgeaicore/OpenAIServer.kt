@@ -99,7 +99,7 @@ class OpenAIServer(
                                                 val chunk = ChatCompletionChunk(
                                                     id = "chatcmpl-${UUID.randomUUID()}",
                                                     created = System.currentTimeMillis() / 1000,
-                                                    model = request.model ?: "litertlm-model",
+                                                    model = request.model ?: DEFAULT_MODEL_ID,
                                                     choices = listOf(
                                                         ChunkChoice(
                                                             index = 0,
@@ -111,7 +111,17 @@ class OpenAIServer(
                                                 val json = GsonBuilder().create().toJson(chunk)
                                                 channel.trySend("data: $json\n\n")
                                             },
-                                            onComplete = {
+                                            onComplete = { _, usage ->
+                                                if (request.stream_options?.include_usage == true) {
+                                                    val usageChunk = ChatCompletionChunk(
+                                                        id = "chatcmpl-${UUID.randomUUID()}",
+                                                        created = System.currentTimeMillis() / 1000,
+                                                        model = request.model ?: DEFAULT_MODEL_ID,
+                                                        choices = emptyList(),
+                                                        usage = usage.toUsage()
+                                                    )
+                                                    channel.trySend("data: ${GsonBuilder().create().toJson(usageChunk)}\n\n")
+                                                }
                                                 channel.trySend("data: [DONE]\n\n")
                                                 channel.close()
                                                 activeRequests.decrementAndGet()
@@ -139,6 +149,7 @@ class OpenAIServer(
                             }
                         } else {
                             var finalResponse: String? = null
+                            var finalUsage: TokenUsage? = null
                             var errorOccurred: Throwable? = null
 
                             try {
@@ -147,7 +158,7 @@ class OpenAIServer(
                                     state = state,
                                     messages = request.messages,
                                     onToken = { /* No-op for non-streaming */ },
-                                    onComplete = { finalResponse = it },
+                                    onComplete = { text, usage -> finalResponse = text; finalUsage = usage },
                                     onErrorCallback = { errorOccurred = it }
                                 )
 
@@ -157,7 +168,9 @@ class OpenAIServer(
                                     return@post
                                 }
 
-                                if (finalResponse == null) {
+                                val text = finalResponse
+                                val usage = finalUsage
+                                if (text == null || usage == null) {
                                     call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Empty response from model"))
                                     return@post
                                 }
@@ -165,18 +178,18 @@ class OpenAIServer(
                                 val response = ChatCompletionResponse(
                                     id = "chatcmpl-${UUID.randomUUID()}",
                                     created = System.currentTimeMillis() / 1000,
-                                    model = request.model ?: "litertlm-model",
+                                    model = request.model ?: DEFAULT_MODEL_ID,
                                     choices = listOf(
                                         Choice(
                                             index = 0,
                                             message = ChatMessageResponse(
                                                 role = "assistant",
-                                                content = finalResponse!!
+                                                content = text
                                             ),
                                             finish_reason = "stop"
                                         )
                                     ),
-                                    usage = Usage(0, 0, 0)
+                                    usage = usage.toUsage()
                                 )
 
                                 call.respond(response)
@@ -203,7 +216,7 @@ class OpenAIServer(
                     val modelList = ModelListResponse(
                         data = listOf(
                             ModelInfo(
-                                id = "litertlm-model",
+                                id = DEFAULT_MODEL_ID,
                                 created = System.currentTimeMillis() / 1000
                             )
                         )
@@ -270,6 +283,9 @@ class OpenAIServer(
 
     companion object {
         private const val TAG = "OpenAIServer"
+
+        /** Model id echoed back when the request names none. */
+        private const val DEFAULT_MODEL_ID = "litertlm-model"
     }
 }
 
@@ -292,7 +308,8 @@ data class ChatCompletionChunk(
     val `object`: String = "chat.completion.chunk",
     val created: Long,
     val model: String,
-    val choices: List<ChunkChoice>
+    val choices: List<ChunkChoice>,
+    val usage: Usage? = null
 )
 
 data class ChunkChoice(

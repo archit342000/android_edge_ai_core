@@ -1,9 +1,11 @@
 package com.aanand.edgeaicore
 
+import com.google.ai.edge.litertlm.BenchmarkInfo
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 
@@ -21,6 +23,12 @@ interface LlmEngine : AutoCloseable {
 interface LlmConversation : AutoCloseable {
     val isAlive: Boolean
     fun sendMessageAsync(message: Message, callback: MessageCallback)
+
+    /** Tokens now in the KV cache (prefill plus decode). */
+    fun getTokenCount(): Int
+
+    /** Counts of the last generation; needs `ExperimentalFlags.enableBenchmark` before the engine is created. */
+    fun getBenchmarkInfo(): BenchmarkInfo
 }
 
 /** Production adapter over the LiteRT-LM [Engine]; forwards every call. */
@@ -37,6 +45,11 @@ class LiteRtConversation(private val conversation: Conversation) : LlmConversati
 
     override fun sendMessageAsync(message: Message, callback: MessageCallback) =
         conversation.sendMessageAsync(message, callback)
+
+    override fun getTokenCount(): Int = conversation.getTokenCount()
+
+    @OptIn(ExperimentalApi::class)
+    override fun getBenchmarkInfo(): BenchmarkInfo = conversation.getBenchmarkInfo()
 
     override fun close() = conversation.close()
 }

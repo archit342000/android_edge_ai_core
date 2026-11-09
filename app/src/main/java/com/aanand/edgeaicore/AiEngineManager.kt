@@ -7,6 +7,8 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ExperimentalApi
+import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.Message
 import android.util.Base64
 import com.google.ai.edge.litertlm.MessageCallback
@@ -68,6 +70,9 @@ class AiEngineManager(
                 audioBackend = Backend.CPU()
             )
 
+            // Needed for per-request token counts; read when the engine is created.
+            @OptIn(ExperimentalApi::class)
+            ExperimentalFlags.enableBenchmark = true
             Log.d(TAG, "Initializing Engine with config: $config")
             val newEngine = engineFactory(config)
             engine = newEngine
@@ -147,7 +152,7 @@ class AiEngineManager(
         state: ConversationState,
         messages: List<ChatMessage>,
         onToken: (String) -> Unit,
-        onComplete: (String) -> Unit,
+        onComplete: (String, TokenUsage) -> Unit,
         onErrorCallback: (Throwable) -> Unit
     ) = withContext(Dispatchers.IO) {
         if (messages.isEmpty()) {
@@ -239,6 +244,16 @@ class AiEngineManager(
                         }
 
                         override fun onDone() {
+                            // Read the counts first: a generation whose usage cannot be read is reported as an error, never as zeros.
+                            val usage = try {
+                                readUsage(conversation)
+                            } catch (t: Throwable) {
+                                Log.e(TAG, "Could not read token usage", t)
+                                // The engine holds a reply that the history will not, so do not reuse this conversation.
+                                closeAllConversations()
+                                if (cont.isActive) cont.resumeWithException(UsageUnavailableException(t))
+                                return
+                            }
                             Log.d(TAG, "Inference complete for ID=${state.conversationId}. Total Response Length: ${lastResponseText.length}")
                             
                             // 5. Update History with Response
@@ -247,7 +262,7 @@ class AiEngineManager(
                                     state.history.add(ChatMessage("assistant", com.google.gson.JsonPrimitive(lastResponseText)))
                                 }
                             }
-                            onComplete(lastResponseText)
+                            onComplete(lastResponseText, usage)
                             if (cont.isActive) cont.resume(Unit)
                         }
 
@@ -270,6 +285,12 @@ class AiEngineManager(
     // ===================================================================
     // Helper Methods
     // ===================================================================
+
+    /** Token counts of the generation that just finished, as the official LiteRT-LM server computes them. */
+    private fun readUsage(conversation: LlmConversation): TokenUsage {
+        val benchmark = conversation.getBenchmarkInfo()
+        return TokenUsage.from(benchmark.lastPrefillTokenCount, benchmark.lastDecodeTokenCount, conversation.getTokenCount())
+    }
 
     private fun toLiteRTMessage(chatMessage: ChatMessage): Message {
         val contents = mutableListOf<Content>()
