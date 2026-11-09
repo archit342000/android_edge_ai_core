@@ -34,7 +34,8 @@ client app ──HTTP :8080──> OpenAIServer
    1. extractToken(Authorization) -> TokenManager.isValidToken      (401 if invalid)
    2. call.receive<ChatCompletionRequest>()                          (400 on parse error)
    3. new transient ConversationState(ttlMs = 0, random UUID)
-   4. AiEngineManager.generateConversationResponseAsync(state, messages, onToken, onComplete, onError)
+   4. AiEngineManager.generateConversationResponseAsync(state, messages, onToken, onComplete(text, usage), onError)
+      (usage = prompt/completion/cached token counts read from the engine; if they cannot be read the request fails with "Token usage unavailable")
    5. stream=true  -> SSE chunks "data: {...}\n\n" ... "data: [DONE]"
       stream=false -> one ChatCompletionResponse (JSON)
 ```

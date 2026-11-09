@@ -15,7 +15,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 6. **No KV-cache reuse over REST.** Every request gets a new random `conversationId` and `ttlMs = 0`, so `AiEngineManager`'s reuse check
    (same id, one new message, same sampling parameters) never passes for REST clients. The README's "Smart Session Reuse", custom TTL and crash-recovery
    features belong to the conversation model that REST does not use.
-7. **`usage` is always zero.** Non-streaming responses send `Usage(0, 0, 0)`.
+7. *(Removed.)* `usage` now reports real token counts (`TokenUsage`). The number is kept because docs and tickets cite later entries.
 8. **`system` messages become user turns.** `AiEngineManager.toLiteRTMessage` maps only `assistant` to a model turn, and the preamble is fixed
    to "You are a helpful assistant." because REST requests set no `systemInstruction`.
 
@@ -35,7 +35,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 
 ## Code
 
-16. **Stale comment.** `AiEngineManager.kt:167` mentions `ConversationManager.saveConversation`, but `AiEngineManager` never calls it.
+16. **Stale comment.** a comment in `AiEngineManager.generateConversationResponseAsync` mentions `ConversationManager.saveConversation`, but `AiEngineManager` never calls it.
     Only `ConversationManager` calls its own `saveConversation`.
 17. **Two kinds of `ConversationState`.** `InferenceService.kt:142` builds its own state for the readiness ping, outside `ConversationManager`.
 18. **One active engine conversation.** `AiEngineManager` keeps a single `activeEngineConversation` behind `inferenceMutex`.
