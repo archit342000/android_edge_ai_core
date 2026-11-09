@@ -11,6 +11,7 @@ import com.google.ai.edge.litertlm.Message
 import android.util.Base64
 import com.google.ai.edge.litertlm.MessageCallback
 import com.aanand.edgeaicore.ConversationState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -27,16 +28,17 @@ class AiEngineManager(
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
     private val inferenceMutex = Mutex()
-    // Track active conversations/sessions to support multi-session and handle hardware resource limits
-    @Volatile private var activeEngineConversation: LlmConversation? = null
-    @Volatile private var activeConversationId: String? = null
-    private var activeConversationParams: Triple<Double, Double, Int>? = null
+    // Idle engine conversations (with their KV caches), kept so a request that extends the previous one prefills only its new message.
+    // Closed only while holding inferenceMutex.
+    private val conversationCache = ConversationCache<LlmConversation>(
+        maxEntries = MAX_CACHED_CONVERSATIONS,
+        idleTtlMs = CACHE_IDLE_TTL_MS,
+        close = ::closeQuietly
+    )
 
-    fun closeConversation(conversationId: String) {
-        if (activeConversationId == conversationId) {
-            Log.i(TAG, "Closing active conversation: $conversationId")
-            closeAllConversations()
-        }
+    /** Closes every cached conversation, waiting for any generation in progress (they hold the inference lock). */
+    suspend fun clearConversationCache() {
+        inferenceMutex.withLock { conversationCache.clear() }
     }
 
     suspend fun loadModel(modelPath: String, backendType: String = "GPU"): Unit = withContext(Dispatchers.IO) {
@@ -44,7 +46,13 @@ class AiEngineManager(
             return@withContext
         }
 
-        close()
+        // Replace the engine under the inference lock: a queued request then finds no engine ("Model not loaded"), never a closed one.
+        inferenceMutex.withLock {
+            conversationCache.clear()
+            engine?.close()
+            engine = null
+            currentModelPath = null
+        }
         Log.d(TAG, "Loading model from $modelPath with Backend=$backendType")
 
         val file = java.io.File(modelPath)
@@ -86,25 +94,8 @@ class AiEngineManager(
     }
 
 
-    fun closeAllConversations() {
-        try {
-            val currentConversation = activeEngineConversation
-            if(currentConversation != null) {
-                currentConversation.close()
-            }
-            else{
-                Log.d(TAG, "No active conversation to close")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error closing active conversation", e)
-        }
-        activeEngineConversation = null
-        activeConversationId = null
-        activeConversationParams = null
-    }
-
     /**
-     * Creates a new engine-level conversation, ensuring only one exists.
+     * Creates a new engine-level conversation. Call inside [inferenceMutex].
      */
     fun createEngineConversation(
         temperature: Double? = null,
@@ -115,9 +106,6 @@ class AiEngineManager(
     ): LlmConversation {
         val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
         
-        // Enforce single-session limit
-        closeAllConversations()
-
         if(preamble == null){
             Log.d(TAG, "No preamble provided, using default")
         }
@@ -131,17 +119,16 @@ class AiEngineManager(
                 temperature = temperature ?: 0.8
             )
         )
-        val conversation = currentEngine.createConversation(conversationConfig)
-        activeEngineConversation = conversation
-        return conversation
+        return currentEngine.createConversation(conversationConfig)
     }
 
 
 
 
     /**
-     * Generates a streaming response in a stateful conversation.
-     * Recreates the engine conversation from history on every request.
+     * Generates a streaming response. Reuses the cached engine conversation when the request extends the previous one
+     * (same settings, earlier messages unchanged), prefilling only the new message; otherwise builds a conversation from
+     * `messages` minus the last. A conversation that failed, was cancelled or produced no text is closed, not cached.
      */
     suspend fun generateConversationResponseAsync(
         state: ConversationState,
@@ -155,83 +142,56 @@ class AiEngineManager(
             return@withContext
         }
 
-        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
-        
         inferenceMutex.withLock {
+            // Read under the lock: loadModel replaces the engine under it too.
+            if (engine == null) throw IllegalStateException("Model not loaded")
+
+            // The conversation in use; closed in the finally block unless it goes back into the cache.
+            var conversation: LlmConversation? = null
             try {
                 Log.d(TAG, "Processing request for ConversationId=${state.conversationId}. Total messages=${messages.size}")
-                
-                // Sensitive Logging Removed
 
                 // 1. Update Persistent History
-                // Critical: Synchronize history modification to safely interact with ConversationManager.saveConversation
+                // The history is read by other threads, so modify it and copy it under the state's lock
                 val fullHistory = synchronized(state) {
                     state.history.addAll(messages)
                     // Return a copy for thread-safe iteration during context recreation
                     state.history.toMutableList()
                 }
 
-                val currentParams = Triple(state.temperature, state.topP, state.topK)
-                
-                // Check if we can reuse the active conversation
-                // Optimization: If the incoming request is for the *current* active conversation 
-                // AND it's a simple append (1 new message), we reuse the session (KV Cache).
-                // AND the sampling parameters haven't changed.
-                val isReuse = (activeConversationId == state.conversationId) && 
-                              (activeEngineConversation != null) && 
-                              (messages.size == 1) &&
-                              (activeConversationParams == currentParams)
-
-                val conversation: LlmConversation
-
-                if (isReuse) {
-                    Log.d(TAG, "Reusing active conversation for ID=${state.conversationId}")
-                    conversation = activeEngineConversation!!
+                // 2. Reuse the cached conversation when this request only extends it (same settings, and the history
+                // before the last message is exactly what the conversation already holds); otherwise build a new one.
+                val settings = CacheSettings(state.temperature, state.topP, state.topK, state.systemInstruction)
+                val context = fullHistory.dropLast(1)
+                val cached = conversationCache.take(settings, context)?.takeIf { it.isAlive }
+                if (cached != null) {
+                    Log.d(TAG, "Conversation cache hit, context size=${context.size}")
+                    conversation = cached
                 } else {
-                    // 2. Prepare Engine Context (Standard/Switch Flow)
-                    val lastMsg = fullHistory.last()
-                    // History excluding the new message(s) which will be sent now
-                    // We drop only the LAST message, because that one will be sent via sendMessageAsync
-                    // to trigger the response. Any intermediate messages (if messages.size > 1) 
-                    // must be part of the initial context.
-                    val initialMessages = fullHistory.dropLast(1)
-
-                    // 3. Recreate Conversation (Implicitly closes old one via createEngineConversation)
-                    Log.d(TAG, "Recreating conversation for ID=${state.conversationId}. History size: ${initialMessages.size}")
-                    
+                    Log.d(TAG, "Conversation cache miss, context size=${context.size}")
                     val systemPrompt = state.systemInstruction ?: "You are a helpful assistant."
-                    Log.d(TAG, "System Prompt configured (length=${systemPrompt.length})")
-                    
                     conversation = createEngineConversation(
                         temperature = state.temperature,
                         topP = state.topP,
                         topK = state.topK,
                         preamble = systemPrompt,
-                        initialMessages = initialMessages.map { toLiteRTMessage(it) }
+                        initialMessages = context.map { toLiteRTMessage(it) }
                     )
-                    activeConversationId = state.conversationId
-                    activeConversationParams = currentParams
                 }
+                val active: LlmConversation = conversation
 
-                // 4. Trigger Inference with the last message (Standard Flow)
+                // 3. Trigger Inference with the last message
                 val lastMsg = fullHistory.last()
                 Log.d(TAG, "Triggering inference with role=${lastMsg.role}")
 
                 var lastResponseText = ""
-                
+
                 suspendCancellableCoroutine<Unit> { cont ->
-                    cont.invokeOnCancellation {
-                        // Note: For stateful conversations, we don't necessarily want to close the KV cache
-                        // unless specifically requested, but we should at least stop the current inference.
-                        // SDK might not have a dedicated 'stopInference' on Conversation, but closing it
-                        // acts as a hard stop.
-                        conversation.close() 
-                    }
-                    conversation.sendMessageAsync(toLiteRTMessage(lastMsg), object : MessageCallback {
+                    active.sendMessageAsync(toLiteRTMessage(lastMsg), object : MessageCallback {
                         override fun onMessage(message: Message) {
                             val chunk = extractText(message.contents)
                             Log.v(TAG, "onMessage: Received chunk length=${chunk.length}")
-                            
+
                             if (chunk.isNotEmpty()) {
                                 lastResponseText += chunk
                                 onToken(chunk)
@@ -240,8 +200,8 @@ class AiEngineManager(
 
                         override fun onDone() {
                             Log.d(TAG, "Inference complete for ID=${state.conversationId}. Total Response Length: ${lastResponseText.length}")
-                            
-                            // 5. Update History with Response
+
+                            // 4. Update History with Response
                             synchronized(state) {
                                 if (lastResponseText.isNotEmpty()) {
                                     state.history.add(ChatMessage("assistant", com.google.gson.JsonPrimitive(lastResponseText)))
@@ -260,9 +220,24 @@ class AiEngineManager(
                     })
                 }
 
+                // 5. Keep the conversation for the next request when it holds exactly history + reply
+                if (lastResponseText.isNotEmpty()) {
+                    conversationCache.put(
+                        settings,
+                        fullHistory + ChatMessage("assistant", com.google.gson.JsonPrimitive(lastResponseText)),
+                        active
+                    )
+                    conversation = null // now owned by the cache
+                }
+            } catch (e: CancellationException) {
+                // The conversation is closed below; a cancelled call reports nothing through the callbacks.
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Error in generateConversationResponseAsync", e)
                 onErrorCallback(e)
+            } finally {
+                // An error, a cancel or an empty reply leaves the conversation's KV state unknown: never cache it.
+                conversation?.let { closeQuietly(it) }
             }
         }
     }
@@ -352,14 +327,29 @@ class AiEngineManager(
 
 
     fun close() {
-        closeAllConversations()
+        conversationCache.clear()
         engine?.close()
         engine = null
         currentModelPath = null
     }
 
+    /** Closes a conversation, logging instead of throwing (closing twice throws in LiteRT-LM). */
+    private fun closeQuietly(conversation: LlmConversation) {
+        try {
+            if (conversation.isAlive) conversation.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing conversation", e)
+        }
+    }
+
     companion object {
         private const val TAG = "AiEngineManager"
+
+        /** Idle conversations kept for reuse (a client plus the readiness ping or a second client). */
+        private const val MAX_CACHED_CONVERSATIONS = 2
+
+        /** A cached conversation unused for this long is closed, checked lazily on the next request. */
+        private const val CACHE_IDLE_TTL_MS = 10 * 60 * 1000L
     }
 }
 

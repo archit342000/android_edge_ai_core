@@ -2,7 +2,13 @@ package com.aanand.edgeaicore
 
 import com.google.ai.edge.litertlm.Backend
 import com.google.gson.JsonPrimitive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -176,7 +182,11 @@ class AiEngineManagerTest {
         )
 
         assertEquals(2, factory.engine.conversations.size)
+        // The first conversation stays cached (it holds a different history/settings) until it is evicted or cleared
+        assertFalse(factory.engine.conversations[0].closed)
+        manager.clearConversationCache()
         assertTrue(factory.engine.conversations[0].closed)
+        assertTrue(factory.engine.conversations[1].closed)
     }
 
     @Test
@@ -193,5 +203,157 @@ class AiEngineManagerTest {
         assertFalse(manager.isModelLoaded)
         assertTrue(factory.engine.closed)
         assertTrue(factory.engine.conversations[0].closed)
+    }
+
+    private fun userChat(text: String) = ChatMessage("user", JsonPrimitive(text))
+    private fun assistantChat(text: String) = ChatMessage("assistant", JsonPrimitive(text))
+
+    /** Sends [messages] as a fresh stateless request (a new conversation id, as the REST server does). */
+    private suspend fun AiEngineManager.request(messages: List<ChatMessage>, reply: (String) -> Unit = {}, error: (Throwable) -> Unit = {}) =
+        generateConversationResponseAsync(
+            ConversationState(conversationId = "req-${System.nanoTime()}", apiToken = "t", ttlMs = 0),
+            messages, onToken = {}, onComplete = reply, onErrorCallback = error
+        )
+
+    @Test
+    fun aRequestThatExtendsThePreviousTurnReusesItAndSendsOnlyTheNewMessage() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        manager.request(listOf(userChat("one")))
+        // The client sends the whole history back, with the reply unchanged ("Hello" is the fake's reply)
+        manager.request(listOf(userChat("one"), assistantChat("Hello"), userChat("two")))
+        manager.request(listOf(userChat("one"), assistantChat("Hello"), userChat("two"), assistantChat("Hello"), userChat("three")))
+        assertEquals(1, factory.engine.conversations.size)
+        assertEquals(3, factory.engine.conversations[0].sent)
+    }
+
+    @Test
+    fun aChangedEarlierMessageCreatesAFreshConversation() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        manager.request(listOf(userChat("one")))
+        manager.request(listOf(userChat("ONE (edited)"), assistantChat("Hello"), userChat("two")))
+        assertEquals(2, factory.engine.conversations.size)
+    }
+
+    @Test
+    fun aChangedReplyTextCreatesAFreshConversation() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        manager.request(listOf(userChat("one")))
+        manager.request(listOf(userChat("one"), assistantChat("Hello (trimmed by the client)"), userChat("two")))
+        assertEquals(2, factory.engine.conversations.size)
+    }
+
+    @Test
+    fun anErrorClosesTheConversationOnceAndDoesNotCacheIt() = runTest {
+        val factory = FakeEngineFactory(failure = IllegalStateException("boom"))
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val errors = mutableListOf<Throwable>()
+        manager.request(listOf(userChat("one")), error = { errors.add(it) })
+        assertEquals(1, errors.size)
+        assertTrue(factory.engine.conversations[0].closed)
+        // A retry with the same messages builds a new conversation: nothing was cached
+        manager.request(listOf(userChat("one")), error = { errors.add(it) })
+        assertEquals(2, factory.engine.conversations.size)
+    }
+
+    @Test
+    fun anEmptyReplyIsNotCached() = runTest {
+        val factory = FakeEngineFactory(chunks = emptyList())
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        manager.request(listOf(userChat("one")))
+        manager.request(listOf(userChat("one")))
+        assertEquals(2, factory.engine.conversations.size)
+        assertTrue(factory.engine.conversations.all { it.closed })
+    }
+
+    @Test
+    fun loadModelWithANewPathClosesTheCachedConversationsAndTheOldEngine() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val firstEngine = factory.engine
+        manager.request(listOf(userChat("one")))
+        manager.loadModel(File(tmp.root, "other.litertlm").also { it.writeText("x") }.absolutePath, "CPU")
+        assertTrue(firstEngine.closed)
+        assertTrue(firstEngine.conversations[0].closed)
+    }
+
+    @Test
+    fun cancellingMidGenerationClosesTheConversationOnceAndDoesNotCacheOrReport() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        var reported = 0
+        val job = launch(Dispatchers.Default) {
+            manager.request(listOf(userChat("one")), reply = { reported++ }, error = { reported++ })
+        }
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) { while (factory.engine.conversations.firstOrNull()?.sent != 1) delay(5) }
+        }
+        job.cancelAndJoin()
+        assertEquals(0, reported)
+        assertTrue(factory.engine.conversations[0].closed)
+        factory.engine.hangUntilCancelled = false
+        manager.request(listOf(userChat("one")))
+        assertEquals(2, factory.engine.conversations.size) // the cancelled one was not cached
+    }
+
+    @Test
+    fun clearConversationCacheClosesIdleConversations() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        manager.request(listOf(userChat("one")))
+        assertFalse(factory.engine.conversations[0].closed) // cached
+        manager.clearConversationCache()
+        assertTrue(factory.engine.conversations[0].closed)
+    }
+
+    @Test
+    fun changedTopPTopKOrSystemInstructionEachCreateAFreshConversation() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val history = listOf(userChat("one"))
+        val followUp = listOf(userChat("one"), assistantChat("Hello"), userChat("two"))
+        fun fresh(topP: Double = 0.95, topK: Int = 40, system: String? = null) =
+            ConversationState(conversationId = "x", apiToken = "t", ttlMs = 0, systemInstruction = system, topP = topP, topK = topK)
+        suspend fun send(state: ConversationState, messages: List<ChatMessage>) =
+            manager.generateConversationResponseAsync(state, messages, onToken = {}, onComplete = {}, onErrorCallback = {})
+        send(fresh(), history)
+        send(fresh(), followUp) // same settings: reuses
+        assertEquals(1, factory.engine.conversations.size)
+        send(fresh(), history)
+        send(fresh(topP = 0.5), followUp)
+        assertEquals(3, factory.engine.conversations.size) // 1 reused above, +1 for the second `history`, +1 for topP
+        send(fresh(), history)
+        send(fresh(topK = 10), followUp)
+        send(fresh(), history)
+        send(fresh(system = "Be brief."), followUp)
+        assertEquals(7, factory.engine.conversations.size)
+    }
+
+    @Test
+    fun clearConversationCacheWaitsForAGenerationInProgress() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val generation = launch(Dispatchers.Default) { manager.request(listOf(userChat("one"))) }
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) { while (factory.engine.conversations.firstOrNull()?.sent != 1) delay(5) }
+        }
+        val clear = launch(Dispatchers.Default) { manager.clearConversationCache() }
+        withContext(Dispatchers.Default) { delay(150) }
+        assertFalse(clear.isCompleted) // the generation holds the inference lock
+        generation.cancelAndJoin()
+        clear.join()
+        assertTrue(clear.isCompleted)
     }
 }

@@ -13,14 +13,17 @@ import com.google.ai.edge.litertlm.MessageCallback
 /** Fake conversation: replies with [chunks], or fails with [failure]. */
 class FakeConversation(
     private val chunks: List<String>,
-    private val failure: Throwable?
+    private val failure: Throwable?,
+    /** When true a message is never answered (the callback is not called), like a long generation. */
+    private val hang: Boolean = false
 ) : LlmConversation {
-    var closed = false
-    var sent = 0
+    @Volatile var closed = false
+    @Volatile var sent = 0
     override val isAlive: Boolean get() = !closed
 
     override fun sendMessageAsync(message: Message, callback: MessageCallback) {
         sent++
+        if (hang) return
         if (failure != null) {
             callback.onError(failure)
             return
@@ -38,11 +41,13 @@ class FakeEngine(
     private val chunks: List<String>,
     private val failure: Throwable?
 ) : LlmEngine {
-    val conversations = mutableListOf<FakeConversation>()
+    val conversations = java.util.concurrent.CopyOnWriteArrayList<FakeConversation>()
+    /** Conversations created while this is true never answer (see [FakeConversation]). */
+    @Volatile var hangUntilCancelled = false
     var closed = false
 
     override fun createConversation(config: ConversationConfig): LlmConversation =
-        FakeConversation(chunks, failure).also { conversations.add(it) }
+        FakeConversation(chunks, failure, hangUntilCancelled).also { conversations.add(it) }
 
     override fun close() {
         closed = true
@@ -52,7 +57,8 @@ class FakeEngine(
 class FakeEngineFactory(
     private val chunks: List<String> = listOf("Hel", "lo"),
     private val failure: Throwable? = null,
-    private val failOnGpu: Boolean = false
+    private val failOnGpu: Boolean = false,
+    private val hangUntilCancelled: Boolean = false
 ) : (EngineConfig) -> LlmEngine {
     val configs = mutableListOf<EngineConfig>()
     lateinit var engine: FakeEngine
@@ -62,7 +68,7 @@ class FakeEngineFactory(
         if (failOnGpu && config.backend is Backend.GPU) {
             throw IllegalStateException("GPU unavailable")
         }
-        engine = FakeEngine(chunks, failure)
+        engine = FakeEngine(chunks, failure).also { it.hangUntilCancelled = hangUntilCancelled }
         return engine
     }
 }

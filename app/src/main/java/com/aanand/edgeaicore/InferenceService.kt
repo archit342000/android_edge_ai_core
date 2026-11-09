@@ -37,7 +37,6 @@ class InferenceService : Service() {
         tokenManager = TokenManager.getInstance(this)
         conversationManager = ConversationManager(
             context = this,
-            onConversationRemoved = { id -> aiEngineManager.closeConversation(id) }
         )
         openAIServer = OpenAIServer(aiEngineManager, tokenManager::isValidToken)
         createNotificationChannel()
@@ -130,7 +129,6 @@ class InferenceService : Service() {
                     sendStatusBroadcast("Verifying model readiness...")
                     
                     var isReady = false
-                    var lastDummyId: String? = null
                     
                     for (i in 1..10) {
                         try {
@@ -141,7 +139,6 @@ class InferenceService : Service() {
                                  apiToken = "self_test",
                                  ttlMs = 60000
                              )
-                             lastDummyId = newDummyState.conversationId
                              val dummyMessage = listOf(ChatMessage(role = "user", content = com.google.gson.JsonPrimitive("Hello")))
 
                              aiEngineManager.generateConversationResponseAsync(
@@ -168,7 +165,7 @@ class InferenceService : Service() {
                     }
 
                     // Cleanup the last dummy session
-                    lastDummyId?.let { aiEngineManager.closeConversation(it) }
+                    aiEngineManager.clearConversationCache()
 
                     if (isReady) {
                         sendStatusBroadcast("Model loaded successfully ($finalBackend)")
