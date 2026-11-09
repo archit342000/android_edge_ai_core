@@ -12,9 +12,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
    For a non-streaming request the outer `catch` turns it into `400 Bad Request`, not `503`.
 4. **`/v1/health` and root `/health` duplicate the same handler.** Change both or neither.
 5. **The raw token is accepted without `Bearer `.** `extractToken` strips the prefix if present and otherwise uses the whole header value.
-6. **No KV-cache reuse over REST.** Every request gets a new random `conversationId` and `ttlMs = 0`, so `AiEngineManager`'s reuse check
-   (same id, one new message, same sampling parameters) never passes for REST clients. The README's "Smart Session Reuse", custom TTL and crash-recovery
-   features belong to the conversation model that REST does not use.
+6. *(Removed.)* REST requests now reuse the cached engine conversation when they extend the previous one (`ConversationCache`). The number is kept because docs and tickets cite later entries.
 7. **`usage` is always zero.** Non-streaming responses send `Usage(0, 0, 0)`.
 8. **`system` messages become user turns.** `AiEngineManager.toLiteRTMessage` maps only `assistant` to a model turn, and the preamble is fixed
    to "You are a helpful assistant." because REST requests set no `systemInstruction`.
@@ -35,11 +33,10 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 
 ## Code
 
-16. **Stale comment.** `AiEngineManager.kt:167` mentions `ConversationManager.saveConversation`, but `AiEngineManager` never calls it.
-    Only `ConversationManager` calls its own `saveConversation`.
+16. *(Removed.)* The stale comment in `AiEngineManager` was reworded when the reuse code was rewritten. The number is kept because docs and tickets cite later entries.
 17. **Two kinds of `ConversationState`.** `InferenceService.kt:142` builds its own state for the readiness ping, outside `ConversationManager`.
-18. **One active engine conversation.** `AiEngineManager` keeps a single `activeEngineConversation` behind `inferenceMutex`.
-    Requests are serialised, and switching conversations rebuilds the context.
+18. **Few cached engine conversations.** `AiEngineManager` keeps up to 2 idle conversations (`ConversationCache`, each with its own KV cache) behind `inferenceMutex`.
+    Requests are serialised; a third client's conversation evicts the least recently used one, so interleaving more than two clients rebuilds the context each time.
 
 ## Models and runtime
 

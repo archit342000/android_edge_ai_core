@@ -39,7 +39,9 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 Role `assistant` maps to a model turn; every other role, including `system`, maps to a user turn. The system prompt is fixed to
 "You are a helpful assistant." because REST requests carry no `systemInstruction`.
 
-Each request is independent: the server builds a transient conversation from `messages`, so send the full history every time.
+Each request is independent: send the full history every time. The server reuses its cached engine conversation when your `messages` extend the previous
+request exactly (same settings, the earlier messages and the assistant reply unchanged, as text), so only the new message is prefilled; otherwise it rebuilds
+the context from `messages`. The response never depends on whether the cache was used.
 
 ## Responses
 

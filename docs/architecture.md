@@ -20,7 +20,8 @@ All sources are in `app/src/main/java/com/aanand/edgeaicore/`.
 |-------|------|
 | `MainActivity` | The whole UI: Server, Backend Settings and Tokens tabs, model picker, diagnostics buttons (test inference, multi-turn, audio, vision, health, load), token backup and restore. Talks to the server over HTTP like any client. |
 | `InferenceService` | Foreground service (`dataSync`). Owns `AiEngineManager`, `TokenManager`, `ConversationManager` and `OpenAIServer`. Loads the model, runs a readiness ping, broadcasts status (`ACTION_STATUS_UPDATE`), and guards against crash loops during model load. |
-| `AiEngineManager` | Wraps an `LlmEngine` (the LiteRT-LM `Engine` in production). Loads a model on CPU, GPU or NPU, holds one active engine `Conversation`, serialises inference with a `Mutex`, and streams tokens through callbacks. |
+| `AiEngineManager` | Wraps an `LlmEngine` (the LiteRT-LM `Engine` in production). Loads a model on CPU, GPU or NPU, keeps a small cache of idle engine `Conversation`s (`ConversationCache`), serialises inference with a `Mutex`, and streams tokens through callbacks. |
+| `ConversationCache` | LRU cache (2 entries, 10 minute idle limit, checked lazily) of idle engine conversations keyed by their settings and the exact messages they hold. A request whose earlier messages match reuses the conversation and prefills only its new message. |
 | `LlmEngine` | `LlmEngine` and `LlmConversation` interfaces over the LiteRT-LM `Engine` and `Conversation`, plus the thin adapters and `createLiteRtEngine`. The seam that lets `AiEngineManager` be tested with a fake engine. |
 | `OpenAIServer` | Ktor `embeddedServer(Netty, port = 8080)` with the `/v1` routes and a root `/health`. Authenticates every request through an `isValidToken` function (`TokenManager.isValidToken`); `module()` installs JSON and the routes so route tests can host it. |
 | `OpenAIModels` | Gson data classes for requests, responses and `ErrorResponse`. The streaming chunk and model-list classes live at the bottom of `OpenAIServer.kt`. |
@@ -39,13 +40,15 @@ client app ──HTTP :8080──> OpenAIServer
       stream=false -> one ChatCompletionResponse (JSON)
 ```
 
-`OpenAIServer` does not use `ConversationManager`. Every REST request gets a fresh conversation id, so the engine
-rebuilds its context from the `messages` array each time (see `docs/pitfalls.md`).
+`OpenAIServer` does not use `ConversationManager`. The REST API stays stateless: a request carries the whole history. `AiEngineManager` keeps the engine
+conversation of a finished request in `ConversationCache`; when the next request has the same settings and its messages before the last one are exactly
+what that conversation holds (including the reply, matched as exact text), it reuses the conversation and prefills only the new message. Any other
+request builds a new conversation from `messages[:-1]`. A conversation that failed, was cancelled or produced no text is closed, never cached.
 
 ## Ownership and lifecycle
 
 - `MainActivity` starts `InferenceService` with `EXTRA_MODEL_PATH` and `EXTRA_BACKEND`. Stop sends `ACTION_STOP`, which clears the service prefs, deletes all conversations and stops the server.
-- `InferenceService.onCreate` builds `TokenManager`, `ConversationManager` (its removal callback closes the matching engine conversation) and `OpenAIServer`.
+- `InferenceService.onCreate` builds `TokenManager`, `ConversationManager` and `OpenAIServer`.
   `onStartCommand` starts the server, goes foreground, loads the model and returns `START_STICKY`.
   On a sticky restart it restores the model path from `inference_service_prefs`, and refuses to start if `crashed_during_init` is set.
 - `InferenceService` alone owns `ConversationManager` (create, `deleteAllConversations`, `shutdown`).
