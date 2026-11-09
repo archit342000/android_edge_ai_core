@@ -129,7 +129,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="66"
+            line="75"
             column="20"/>
     </issue>
 
@@ -140,7 +140,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="67"
+            line="76"
             column="20"/>
     </issue>
 
@@ -151,7 +151,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="68"
+            line="77"
             column="20"/>
     </issue>
 
@@ -162,7 +162,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="69"
+            line="78"
             column="20"/>
     </issue>
 
@@ -173,7 +173,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="87"
+            line="96"
             column="31"/>
     </issue>
 
@@ -184,7 +184,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="88"
+            line="97"
             column="31"/>
     </issue>
 
@@ -195,7 +195,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="75"
+            line="84"
             column="20"/>
     </issue>
 
@@ -206,7 +206,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="79"
+            line="88"
             column="20"/>
     </issue>
 
@@ -217,7 +217,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="80"
+            line="89"
             column="20"/>
     </issue>
 
@@ -228,7 +228,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="81"
+            line="90"
             column="20"/>
     </issue>
 
@@ -239,8 +239,19 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="82"
+            line="91"
             column="20"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.10.2 is available: 1.11.0"
+        errorLine1="    testImplementation(&quot;org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="94"
+            column="24"/>
     </issue>
 
     <issue
@@ -250,7 +261,7 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="86"
+            line="95"
             column="24"/>
     </issue>
 
