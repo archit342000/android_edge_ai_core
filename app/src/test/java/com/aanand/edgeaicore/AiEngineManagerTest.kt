@@ -194,4 +194,21 @@ class AiEngineManagerTest {
         assertTrue(factory.engine.closed)
         assertTrue(factory.engine.conversations[0].closed)
     }
+
+    @Test
+    fun cacheDirReachesTheEngineConfigAlsoOnTheCpuRetry() = runTest {
+        val factory = FakeEngineFactory(failOnGpu = true)
+        val manager = AiEngineManager(factory)
+        manager.loadModel(modelFile(), "GPU", cacheDir = "/cache/dir")
+        assertEquals(2, factory.configs.size)
+        assertEquals("/cache/dir", factory.configs[0].cacheDir)
+        assertEquals("/cache/dir", factory.configs[1].cacheDir)
+    }
+
+    @Test
+    fun cacheDirDefaultsToNull() = runTest {
+        val factory = FakeEngineFactory()
+        AiEngineManager(factory).loadModel(modelFile(), "CPU")
+        org.junit.Assert.assertNull(factory.configs[0].cacheDir)
+    }
 }

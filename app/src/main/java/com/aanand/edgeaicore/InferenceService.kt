@@ -119,7 +119,7 @@ class InferenceService : Service() {
                     sendStatusBroadcast("Initializing engine...")
                     
                     withTimeout(300000) { // 5 minutes timeout
-                        aiEngineManager.loadModel(modelPath, finalBackend)
+                        aiEngineManager.loadModel(modelPath, finalBackend, cacheDir.absolutePath)
                     }
 
                     // If we reached here, we didn't crash (Java-wise).

@@ -39,7 +39,7 @@ class AiEngineManager(
         }
     }
 
-    suspend fun loadModel(modelPath: String, backendType: String = "GPU"): Unit = withContext(Dispatchers.IO) {
+    suspend fun loadModel(modelPath: String, backendType: String = "GPU", cacheDir: String? = null): Unit = withContext(Dispatchers.IO) {
         if (currentModelPath == modelPath && engine != null) {
             return@withContext
         }
@@ -53,6 +53,7 @@ class AiEngineManager(
             throw java.io.FileNotFoundException("Model file not found: $modelPath")
         }
 
+        val initStartedAt = System.nanoTime()
         try {
             val backendEnum = when (backendType.uppercase()) {
                 "CPU" -> Backend.CPU()
@@ -65,7 +66,8 @@ class AiEngineManager(
                 modelPath = modelPath,
                 backend = backendEnum,
                 visionBackend = Backend.GPU(),
-                audioBackend = Backend.CPU()
+                audioBackend = Backend.CPU(),
+                cacheDir = cacheDir
             )
 
             Log.d(TAG, "Initializing Engine with config: $config")
@@ -73,12 +75,12 @@ class AiEngineManager(
             engine = newEngine
             currentModelPath = modelPath
 
-            Log.d(TAG, "Model loaded successfully with Backend=$backendType")
+            Log.i(TAG, "Engine initialized in ${(System.nanoTime() - initStartedAt) / 1_000_000} ms (backend=$backendType)")
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to load model with Backend=$backendType. Error: ${t.message}", t)
+            Log.e(TAG, "Failed to load model with Backend=$backendType after ${(System.nanoTime() - initStartedAt) / 1_000_000} ms. Error: ${t.message}", t)
             if (backendType.equals("GPU", ignoreCase = true)) {
                  Log.w(TAG, "Retrying with CPU backend...")
-                 loadModel(modelPath, "CPU")
+                 loadModel(modelPath, "CPU", cacheDir)
             } else {
                 if (t is Exception) throw t else throw Exception(t)
             }
