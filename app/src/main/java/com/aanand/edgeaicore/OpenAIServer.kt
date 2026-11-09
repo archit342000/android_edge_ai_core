@@ -2,6 +2,7 @@ package com.aanand.edgeaicore
 
 import android.util.Log
 import com.google.gson.GsonBuilder
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.ContentType
 import io.ktor.serialization.gson.gson
@@ -39,6 +40,11 @@ class OpenAIServer(
     private val onClientGone: (ApplicationCall, () -> Unit) -> DisposableHandle? = NettyDisconnect::watch,
     private val isValidToken: (String?) -> Boolean
 ) {
+    /** Chat requests held at once (one running, the rest waiting); more are refused at once. Tests shorten these. */
+    @Volatile internal var maxActiveRequests: Int = MAX_ACTIVE_CHAT_REQUESTS
+    @Volatile internal var queueWaitMs: Long = QUEUE_WAIT_MS
+    @Volatile internal var generationTimeoutMs: Long = GENERATION_TIMEOUT_MS
+
     private var server: NettyApplicationEngine? = null
     private val activeRequests = AtomicInteger(0)
 
@@ -78,8 +84,14 @@ class OpenAIServer(
                         return@post
                     }
 
-                    activeRequests.incrementAndGet()
+                    val held = activeRequests.incrementAndGet()
                     try {
+                        if (held > maxActiveRequests) {
+                            Log.w(TAG, "Refusing a chat request: $held requests held")
+                            call.response.headers.append(HttpHeaders.RetryAfter, RETRY_AFTER_SECONDS)
+                            call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(EngineBusyException.MESSAGE))
+                            return@post
+                        }
                         val request = receiveChatRequest(call)
                         // Media input needs an encoder; a model without one gets a fixed 400 instead of a native failure
                         val encoders = aiEngineManager.activeEncoders
@@ -156,6 +168,8 @@ class OpenAIServer(
                                                     state = state,
                                                     messages = turns,
                                                     chatOptions = chatOptions,
+                                                    queueWaitMs = queueWaitMs,
+                                                    generationTimeoutMs = generationTimeoutMs,
                                                     onReasoning = { sendDelta(ChunkDelta(reasoning_content = it)) },
                                                     onToolCalls = { calls ->
                                                         val mapped = OpenAIToolMapper.toOpenAiToolCalls(calls)
@@ -230,6 +244,8 @@ class OpenAIServer(
                                         onErrorCallback = { errorOccurred = it },
                                         options = options,
                                         chatOptions = chatOptions,
+                                        queueWaitMs = queueWaitMs,
+                                        generationTimeoutMs = generationTimeoutMs,
                                         onReasoning = { reasoning.append(it) },
                                         onToolCalls = { toolCalls.addAll(it) }
                                     )
@@ -249,6 +265,15 @@ class OpenAIServer(
                                 return@post
                             }
 
+                            if (errorOccurred is EngineBusyException) {
+                                call.response.headers.append(HttpHeaders.RetryAfter, RETRY_AFTER_SECONDS)
+                                call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(EngineBusyException.MESSAGE))
+                                return@post
+                            }
+                            if (errorOccurred is GenerationTimeoutException) {
+                                call.respond(HttpStatusCode.GatewayTimeout, ErrorResponse(GenerationTimeoutException.MESSAGE))
+                                return@post
+                            }
                             if (errorOccurred != null) {
                                 Log.e(TAG, "Inference failed", errorOccurred)
                                 call.respond(HttpStatusCode.InternalServerError, ErrorResponse(errorOccurred?.message ?: "Unknown error"))
@@ -407,6 +432,17 @@ class OpenAIServer(
 
         /** Model id echoed back when the request names none. */
         private const val DEFAULT_MODEL_ID = "litertlm-model"
+
+        /** One running chat request plus three waiting; the next is refused with 503. */
+        const val MAX_ACTIVE_CHAT_REQUESTS = 4
+
+        /** How long a request may wait for the engine before a 503. */
+        const val QUEUE_WAIT_MS = 120_000L
+
+        /** How long one generation may run before it is stopped with a 504. */
+        const val GENERATION_TIMEOUT_MS = 600_000L
+
+        private const val RETRY_AFTER_SECONDS = "5"
 
         /**
          * Copies [channel] to the client with [write]. If a write fails because the client disconnected, cancels the

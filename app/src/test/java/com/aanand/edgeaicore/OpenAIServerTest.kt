@@ -10,6 +10,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,8 +35,8 @@ class OpenAIServerTest {
 
     private fun server(manager: AiEngineManager) = OpenAIServer(manager) { it == validToken }
 
-    private fun withServer(manager: AiEngineManager, block: suspend ApplicationTestBuilder.() -> Unit) {
-        val server = server(manager)
+    private fun withServer(manager: AiEngineManager, configure: OpenAIServer.() -> Unit = {}, block: suspend ApplicationTestBuilder.() -> Unit) {
+        val server = server(manager).also(configure)
         testApplication {
             application { with(server) { module() } }
             block()
@@ -708,6 +709,63 @@ class OpenAIServerTest {
                 setBody("""{"stop":5,"messages":[{"role":"user","content":"count"}]}""")
             }
             assertEquals(HttpStatusCode.BadRequest, bad.status)
+            awaitLoadZero()
+        }
+    }
+
+    private fun hangingManager(): Pair<AiEngineManager, FakeEngineFactory> {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = newManager(factory)
+        runBlocking { manager.loadModel(tmp.newFile("m-hang-${System.nanoTime()}.litertlm").absolutePath, "CPU") }
+        return manager to factory
+    }
+
+    private suspend fun ApplicationTestBuilder.post(body: String) = client.post("/v1/chat/completions") {
+        header(HttpHeaders.Authorization, "Bearer $validToken")
+        header(HttpHeaders.ContentType, "application/json")
+        setBody(body)
+    }
+
+    @Test
+    fun requestsBeyondTheCapGetAnImmediate503WithRetryAfterAndHeldOnesTimeOutWith504() {
+        val (manager, _) = hangingManager()
+        withServer(manager, { maxActiveRequests = 2; queueWaitMs = 10_000; generationTimeoutMs = 1_000 }) {
+            kotlinx.coroutines.coroutineScope {
+                val a = this@coroutineScope.async { post(chatBody) }
+                val b = this@coroutineScope.async { post(chatBody) }
+                var load = ""
+                var tries = 0
+                while (!load.contains("\"load\":2") && tries++ < 200) {
+                    kotlinx.coroutines.delay(25)
+                    load = client.get("/v1/load") { header(HttpHeaders.Authorization, "Bearer $validToken") }.bodyAsText().replace(" ", "")
+                }
+                val refused = post(chatBody)
+                assertEquals(HttpStatusCode.ServiceUnavailable, refused.status)
+                assertEquals("5", refused.headers[HttpHeaders.RetryAfter])
+                assertTrue(refused.bodyAsText().contains("Server busy"))
+                assertEquals(HttpStatusCode.GatewayTimeout, a.await().status)
+                val last = b.await()
+                assertEquals(HttpStatusCode.GatewayTimeout, last.status)
+                assertTrue(last.bodyAsText().contains("Generation timed out"))
+            }
+            awaitLoadZero()
+        }
+    }
+
+    @Test
+    fun aRequestThatWaitsTooLongForTheEngineGets503AndAHungStreamGetsAnErrorEventWithoutDone() {
+        val (manager, factory) = hangingManager()
+        withServer(manager, { queueWaitMs = 300; generationTimeoutMs = 1_500 }) {
+            kotlinx.coroutines.coroutineScope {
+                val first = this@coroutineScope.async { post(streamBody).bodyAsText() }
+                while (factory.engine.conversations.firstOrNull()?.sent != 1) kotlinx.coroutines.delay(10)
+                val queued = post(chatBody)
+                assertEquals(HttpStatusCode.ServiceUnavailable, queued.status)
+                assertEquals("5", queued.headers[HttpHeaders.RetryAfter])
+                val text = first.await()
+                assertTrue(text, text.contains("Generation timed out"))
+                assertTrue(text, !text.contains("[DONE]"))
+            }
             awaitLoadZero()
         }
     }

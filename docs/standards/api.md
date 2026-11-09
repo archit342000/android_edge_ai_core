@@ -96,8 +96,7 @@ If the client disconnects mid-stream, or while a non-streaming answer is being g
 ## Unsupported or ignored
 
 Accepted but ignored (clients such as the OpenAI SDKs send them by default): `logit_bias`, `parallel_tool_calls` (the server returns every call the model emits).
-Not supported: `n` other than 1 (400), `tool_choice` naming a function (400: the engine cannot force a call), `regex` response formats, `reasoning_tokens` in `usage` (the engine gives no thinking count),
-request timeouts and queue limits (requests wait for the inference lock without a limit).
+Not supported: `n` other than 1 (400), `tool_choice` naming a function (400: the engine cannot force a call), `regex` response formats, `reasoning_tokens` in `usage` (the engine gives no thinking count), user-configurable limits.
 `json_schema` output may contain properties the schema does not list unless the schema sets `additionalProperties: false`.
 The context size set in the app is clamped to the model's maximum when the model reports a fixed one (the status line says so).
 
@@ -108,7 +107,8 @@ The context size set in the app is clamped to the model's maximum when the model
 | `400` | body cannot be read (malformed JSON, wrong types, missing `messages` or `role`, empty body, wrong content type): fixed message `Invalid request body`, never the input or an exception text; a field is out of range (see Chat request), an `image_url` part for a model without a vision encoder or an `audio_url` part for a model without an audio encoder (`Model does not support image input` / `... audio input`), the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
 | `401` | missing or invalid token |
 | `500` | the engine reported an error, returned no text (non-streaming), or its token usage could not be read (`Token usage unavailable`) |
-| `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`) |
+| `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`); or `Server busy` on chat (more than 4 requests held at once, refused at once, or a request waited more than 120 s for the engine), with `Retry-After: 5` |
+| `504` | `Generation timed out`: one generation ran for 10 minutes and was stopped (on a stream: a `data: {"error": ...}` event without `[DONE]`) |
 
 All error bodies are `ErrorResponse` (`{"error": "<message>"}`).
 

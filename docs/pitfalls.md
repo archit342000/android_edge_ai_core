@@ -35,7 +35,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 16. *(Removed.)* The stale comment in `AiEngineManager` was reworded when the reuse code was rewritten. The number is kept because docs and tickets cite later entries.
 17. **Two kinds of `ConversationState`.** `AiEngineManager.verifyReady` builds its own state for the readiness ping, outside `ConversationManager`.
 18. **Few cached engine conversations.** `AiEngineManager` keeps up to 2 idle conversations (`ConversationCache`, each with its own KV cache) behind `inferenceMutex`.
-    Requests are serialised; a third client's conversation evicts the least recently used one, so interleaving more than two clients rebuilds the context each time.
+    Requests are serialised (at most 4 are held, each waits at most 120 s for the engine, a generation is stopped after 10 min); a third client's conversation evicts the least recently used one, so interleaving more than two clients rebuilds the context each time.
 
 ## Models and runtime
 

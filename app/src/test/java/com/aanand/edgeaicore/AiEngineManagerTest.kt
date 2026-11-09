@@ -1194,4 +1194,68 @@ class AiEngineManagerTest {
         assertEquals("ends with ST" to false, done.single())
         assertEquals(0, factory.engine.conversations[0].cancelCount)
     }
+
+    @Test
+    fun aRequestThatWaitsTooLongForTheEngineIsRefusedAsBusyAndTheLockStaysWithTheFirst() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = newManager(factory)
+        manager.loadModel(modelFile2(), "CPU")
+        val first = launch(Dispatchers.Default) { manager.request(listOf(userChat("one"))) }
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) { while (factory.engine.conversations.firstOrNull()?.sent != 1) delay(5) }
+        }
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        withContext(Dispatchers.Default) {
+            manager.generateConversationResponseAsync(
+                ConversationState(conversationId = "q", apiToken = "t", ttlMs = 0), listOf(userChat("two")),
+                onToken = {}, onComplete = { _, _, _ -> fail("must not complete") }, onErrorCallback = { errors.add(it) },
+                queueWaitMs = 100
+            )
+        }
+        assertEquals(1, errors.size)
+        assertTrue(errors[0] is EngineBusyException)
+        assertEquals(1, factory.engine.conversations.size) // the refused request never reached the engine
+        first.cancelAndJoin()
+        // the lock was not released twice: the next request completes
+        factory.engine.hangUntilCancelled = false
+        var done = false
+        manager.generateConversationResponseAsync(
+            ConversationState(conversationId = "n", apiToken = "t", ttlMs = 0), listOf(userChat("three")),
+            onToken = {}, onComplete = { _, _, _ -> done = true }, onErrorCallback = { fail(it.message) }
+        )
+        assertTrue(done)
+    }
+
+    @Test
+    fun aGenerationThatRunsTooLongIsStoppedAndReportedAndTheLockIsFree() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = newManager(factory)
+        manager.loadModel(modelFile2(), "CPU")
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        withContext(Dispatchers.Default) {
+            manager.generateConversationResponseAsync(
+                ConversationState(conversationId = "t", apiToken = "t", ttlMs = 0), listOf(userChat("one")),
+                onToken = {}, onComplete = { _, _, _ -> fail("must not complete") }, onErrorCallback = { errors.add(it) },
+                generationTimeoutMs = 150
+            )
+        }
+        assertEquals(1, errors.size)
+        assertTrue(errors[0] is GenerationTimeoutException)
+        assertEquals(1, factory.engine.conversations[0].cancelCount)
+        assertTrue(factory.engine.conversations[0].closed)
+        factory.engine.hangUntilCancelled = false
+        var done = false
+        manager.generateConversationResponseAsync(
+            ConversationState(conversationId = "n", apiToken = "t", ttlMs = 0), listOf(userChat("two")),
+            onToken = {}, onComplete = { _, _, _ -> done = true }, onErrorCallback = { fail(it.message) }
+        )
+        assertTrue(done)
+    }
+
+    @Test
+    fun theReadinessPingHasNoLimits() = runTest {
+        val manager = newManager(FakeEngineFactory())
+        manager.loadModel(modelFile2(), "CPU")
+        assertEquals(null, manager.verifyReady(attempts = 1, retryDelayMs = 0))
+    }
 }
