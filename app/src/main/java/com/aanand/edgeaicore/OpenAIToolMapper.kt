@@ -28,6 +28,11 @@ object OpenAIToolMapper {
     /** Longest accepted tool-call argument string or tool result, in characters. */
     const val MAX_TOOL_TEXT_CHARS = 16_384
     private val gson = Gson()
+    // Thinking-token budgets per reasoning_effort; `xhigh` is unlimited (-1). Advisory: the model may not honour them.
+    private const val BUDGET_MINIMAL = 256
+    private const val BUDGET_LOW = 1024
+    private const val BUDGET_MEDIUM = 4096
+    private const val BUDGET_HIGH = 16384
     private val THINKING_EFFORTS = setOf("minimal", "low", "medium", "high", "xhigh")
 
     /** Validates and converts everything a request asks for, including its tool-related messages. */
@@ -163,10 +168,18 @@ object OpenAIToolMapper {
     }
 
     /** `none` turns thinking off, the other efforts turn it on without a budget, absent keeps the model's default. */
+    private fun thinkingBudget(effort: String): Int = when (effort) {
+        "minimal" -> BUDGET_MINIMAL
+        "low" -> BUDGET_LOW
+        "medium" -> BUDGET_MEDIUM
+        "high" -> BUDGET_HIGH
+        else -> -1
+    }
+
     fun thinkingConfig(effort: String?): ThinkingConfig? = when {
         effort == null -> null
         effort == "none" -> ThinkingConfig(enableThinking = false, thinkingTokenBudget = 0)
-        effort in THINKING_EFFORTS -> ThinkingConfig(enableThinking = true, thinkingTokenBudget = -1)
+        effort in THINKING_EFFORTS -> ThinkingConfig(enableThinking = true, thinkingTokenBudget = thinkingBudget(effort))
         else -> throw IllegalArgumentException("reasoning_effort must be none, minimal, low, medium, high or xhigh")
     }
 

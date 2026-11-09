@@ -88,4 +88,13 @@ class ModelInspectorTest {
         assertEquals(listOf(com.google.ai.edge.litertlm.BackendType.CPU, com.google.ai.edge.litertlm.BackendType.GPU), unconstrained.visionBackends)
         assertEquals(null, caps(true, false, listOf(com.google.ai.edge.litertlm.BackendType.NPU)).visionBackends)
     }
+
+    @Test
+    fun capabilitiesCarryToolsThinkingAndContextOnlyForAnLlm() {
+        val llm = ModelInspector { RawModelInfo(ModelKind.LLM, true, false, false, supportsTools = true, supportsThinking = true, maxContextTokens = 4096, dynamicContext = true) }.inspect("/p")
+        assertEquals(true, llm.supportsTools); assertEquals(true, llm.supportsThinking)
+        assertEquals(4096, llm.maxContextTokens); assertEquals(true, llm.dynamicContext)
+        val other = ModelInspector { RawModelInfo(ModelKind.EMBEDDING, true, false, false, supportsTools = true, supportsThinking = true) }.inspect("/p")
+        assertEquals(false, other.supportsTools); assertEquals(false, other.supportsThinking)
+    }
 }

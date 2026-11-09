@@ -107,10 +107,11 @@ class OpenAIToolMapperTest {
     fun reasoningEffortMapsToThinkingConfig() {
         assertNull(OpenAIToolMapper.thinkingConfig(null))
         assertEquals(false, OpenAIToolMapper.thinkingConfig("none")!!.enableThinking)
-        for (effort in listOf("minimal", "low", "medium", "high", "xhigh")) {
+        val budgets = mapOf("minimal" to 256, "low" to 1024, "medium" to 4096, "high" to 16384, "xhigh" to -1)
+        for ((effort, budget) in budgets) {
             val config = OpenAIToolMapper.thinkingConfig(effort)!!
             assertEquals(effort, true, config.enableThinking)
-            assertEquals(-1, config.thinkingTokenBudget)
+            assertEquals(effort, budget, config.thinkingTokenBudget)
         }
         assertTrue(invalid { OpenAIToolMapper.thinkingConfig("extreme") }.contains("reasoning_effort"))
     }

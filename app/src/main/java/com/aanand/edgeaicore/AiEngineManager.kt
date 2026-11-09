@@ -50,6 +50,10 @@ class AiEngineManager(
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
     private var currentMaxNumTokens: Int? = null
+
+    /** The context size the loaded engine was created with (the request clamped to the model's maximum); null = the model's default. */
+    @Volatile var effectiveMaxNumTokens: Int? = null
+        private set
     private var currentSpeculativeOption: SpeculativeDecodingOption? = null
 
     /** The encoders of the loaded model and the backends they run on (null = the model has no usable such encoder). */
@@ -124,6 +128,7 @@ class AiEngineManager(
         engine = null
         currentModelPath = null
         currentMaxNumTokens = null
+        effectiveMaxNumTokens = null
         currentSpeculativeOption = null
         activeSpeculativeMode = null
         activeEncoders = EncoderSummary()
@@ -407,13 +412,19 @@ class AiEngineManager(
                 else "Speculative decoding off (${if (capabilities.speculativeDecoding) "user setting" else "unsupported model"})"
             )
 
+            val contextLimit = capabilities.maxContextTokens
+            val effectiveTokens = if (maxNumTokens != null && contextLimit > 0 && !capabilities.dynamicContext && maxNumTokens > contextLimit) {
+                Log.w(TAG, "Context size $maxNumTokens is above the model's maximum $contextLimit, using $contextLimit")
+                contextLimit
+            } else maxNumTokens
+
             val config = EngineConfig(
                 modelPath = modelPath,
                 backend = backendEnum,
                 visionBackend = vision.backend?.let(::toEngineBackend),
                 audioBackend = audio.backend?.let(::toEngineBackend),
                 cacheDir = cacheDir,
-                maxNumTokens = maxNumTokens,
+                maxNumTokens = effectiveTokens,
                 speculativeDecodingConfig = speculativeMode?.let { SpeculativeDecodingConfig(it) }
             )
 
@@ -429,6 +440,7 @@ class AiEngineManager(
             engine = newEngine
             currentModelPath = modelPath
             currentMaxNumTokens = maxNumTokens
+            effectiveMaxNumTokens = effectiveTokens
             currentSpeculativeOption = speculativeDecoding
             activeSpeculativeMode = speculativeMode
             // Set together with the engine, so it is non-null exactly while a model is loaded.

@@ -83,4 +83,10 @@ class ChatRequestValidatorTest {
         assertEquals(3, request(maxTokens = 3).maxOutputTokens)
         assertNull(request().maxOutputTokens)
     }
+
+    @Test
+    fun onlyOneChoiceIsSupported() {
+        for (n in listOf(null, 1)) assertNull(ChatRequestValidator.validate(request().copy(n = n)))
+        for (n in listOf(0, 2, -1)) assertEquals("n must be 1", ChatRequestValidator.validate(request().copy(n = n)))
+    }
 }

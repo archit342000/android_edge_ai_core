@@ -11,6 +11,7 @@ object ChatRequestValidator {
         if (request.messages.isEmpty() || request.messages.size > MAX_MESSAGES) {
             return "messages must contain 1 to $MAX_MESSAGES items"
         }
+        request.n?.let { if (it != 1) return "n must be 1" }
         request.temperature?.let {
             if (!inRange(it, 0.0, MAX_TEMPERATURE)) return "temperature must be between 0 and $MAX_TEMPERATURE"
         }

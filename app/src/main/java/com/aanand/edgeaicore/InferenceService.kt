@@ -166,10 +166,12 @@ class InferenceService : Service() {
                     if (readinessError == null) {
                         val backendInUse = aiEngineManager.activeBackend ?: finalBackend
                         val mtp = aiEngineManager.activeSpeculativeMode?.let { ", MTP ${it.name.lowercase()}" } ?: ""
+                        val effective = aiEngineManager.effectiveMaxNumTokens
+                        val ctx = if (maxNumTokens != null && effective != null && effective != maxNumTokens) ", context clamped to $effective" else ""
                         val status = if (aiEngineManager.fellBackFromGpu) {
-                            "Model loaded successfully ($backendInUse, GPU unavailable$mtp; ${aiEngineManager.activeEncoders.describe()})"
+                            "Model loaded successfully ($backendInUse, GPU unavailable$mtp$ctx; ${aiEngineManager.activeEncoders.describe()})"
                         } else {
-                            "Model loaded successfully ($backendInUse$mtp; ${aiEngineManager.activeEncoders.describe()})"
+                            "Model loaded successfully ($backendInUse$mtp$ctx; ${aiEngineManager.activeEncoders.describe()})"
                         }
                         Log.i(TAG, status)
                         sendStatusBroadcast(status)

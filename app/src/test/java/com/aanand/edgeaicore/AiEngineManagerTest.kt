@@ -1085,4 +1085,29 @@ class AiEngineManagerTest {
         manager.close()
         assertEquals(false, manager.activeEncoders.supportsImages)
     }
+
+    @Test
+    fun aContextSizeAboveTheModelMaximumIsClamped() = runTest {
+        val path = modelFile()
+        val limited = FULL_LLM.copy(maxContextTokens = 4096)
+        val over = FakeEngineFactory()
+        val m1 = newManager(over) { limited }
+        m1.loadModel(path, "CPU", maxNumTokens = 10_000)
+        assertEquals(4096, over.configs[0].maxNumTokens)
+        assertEquals(4096, m1.effectiveMaxNumTokens)
+        val under = FakeEngineFactory()
+        newManager(under) { limited }.loadModel(path, "CPU", maxNumTokens = 2048)
+        assertEquals(2048, under.configs[0].maxNumTokens)
+        val unknown = FakeEngineFactory()
+        newManager(unknown) { FULL_LLM }.loadModel(path, "CPU", maxNumTokens = 10_000)
+        assertEquals(10_000, unknown.configs[0].maxNumTokens)
+        val dynamic = FakeEngineFactory()
+        newManager(dynamic) { limited.copy(dynamicContext = true) }.loadModel(path, "CPU", maxNumTokens = 10_000)
+        assertEquals(10_000, dynamic.configs[0].maxNumTokens)
+        val none = FakeEngineFactory()
+        val m5 = newManager(none) { limited }
+        m5.loadModel(path, "CPU")
+        assertNull(none.configs[0].maxNumTokens)
+        assertNull(m5.effectiveMaxNumTokens)
+    }
 }

@@ -160,7 +160,7 @@ class OpenAIServer(
                                                     },
                                                     onToken = { token -> sendDelta(ChunkDelta(content = token)) },
                                                     onComplete = { _, usage ->
-                                                        sendDelta(ChunkDelta(), if (streamedToolCalls.get() > 0) "tool_calls" else "stop")
+                                                        sendDelta(ChunkDelta(), FinishReason.of(streamedToolCalls.get() > 0, usage.completionTokens, request.maxOutputTokens))
                                                         if (request.stream_options?.include_usage == true) {
                                                             val usageChunk = ChatCompletionChunk(
                                                                 id = "chatcmpl-${UUID.randomUUID()}",
@@ -252,7 +252,7 @@ class OpenAIServer(
                                             tool_calls = toolCalls.takeIf { it.isNotEmpty() }?.let { calls -> OpenAIToolMapper.toOpenAiToolCalls(calls).map { it.copy(index = null) } }, // index is for streaming only
                                             reasoning_content = reasoning.toString().takeIf { it.isNotEmpty() }
                                         ),
-                                        finish_reason = if (toolCalls.isEmpty()) "stop" else "tool_calls"
+                                        finish_reason = FinishReason.of(toolCalls.isNotEmpty(), usage.completionTokens, request.maxOutputTokens)
                                     )
                                 ),
                                 usage = usage.toUsage()
