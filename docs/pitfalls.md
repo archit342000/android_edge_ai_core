@@ -46,8 +46,11 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 19. **Only multimodal models load.** `AiEngineManager.loadModel` always sets `visionBackend = GPU` and `audioBackend = CPU`, so a text-only model fails with
     `TF_LITE_VISION_ENCODER not found in the model`.
 20. **Vision is GPU-only.** Image input fails wherever GPU is unavailable (for example on the emulator: `Can not find OpenCL library`), even when the main backend is CPU.
-21. **An unsupported model kills the process.** LiteRT-LM aborts natively (SIGABRT) on a model it cannot parse (for example Gemma 4 with `0.9.0-alpha02`:
-    `Unknown model type: tf_lite_end_of_vision`; Gemma 4 E2B loads with `0.19.1`). The service's crash-loop guard then refuses the sticky restart until a new model path is sent.
+21. **An unsupported or corrupt model must not reach the engine.** `AiEngineManager.loadModel` first reads the file with `ModelInspector` (LiteRT-LM `ModelInfo`) and rejects what it cannot read,
+    what is not an LLM, or what has no text input with `UnsupportedModelException`; the service then shows "Error: Unsupported model file", clears the crash flag and the saved model path, and stays
+    up without a model (health 503). A random-bytes file and a truncated real model were both rejected this way on `0.19.1` (the process survived). Native aborts inside `Engine.initialize()`
+    for a file whose metadata reads fine are still possible (Gemma 4 aborted with `0.9.0-alpha02`: `Unknown model type: tf_lite_end_of_vision`; it loads with `0.19.1`). The crash-loop guard
+    stays for those: it refuses the sticky restart until a new model path is sent.
 22. **GPU "loads" before it fails.** With `BACKEND=GPU` and no OpenCL, "Model loaded successfully" is logged and the readiness ping fails afterwards.
 23. **The UI misses status updates.** `MainActivity` receives status broadcasts only while it is resumed, so a service started from adb or while the app is
     in the background leaves the UI showing "Idle".
