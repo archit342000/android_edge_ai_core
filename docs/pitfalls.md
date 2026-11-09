@@ -33,7 +33,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 ## Code
 
 16. *(Removed.)* The stale comment in `AiEngineManager` was reworded when the reuse code was rewritten. The number is kept because docs and tickets cite later entries.
-17. **Two kinds of `ConversationState`.** `InferenceService.kt:142` builds its own state for the readiness ping, outside `ConversationManager`.
+17. **Two kinds of `ConversationState`.** `AiEngineManager.verifyReady` builds its own state for the readiness ping, outside `ConversationManager`.
 18. **Few cached engine conversations.** `AiEngineManager` keeps up to 2 idle conversations (`ConversationCache`, each with its own KV cache) behind `inferenceMutex`.
     Requests are serialised; a third client's conversation evicts the least recently used one, so interleaving more than two clients rebuilds the context each time.
 
@@ -47,7 +47,9 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
     up without a model (health 503). A random-bytes file and a truncated real model were both rejected this way on `0.19.1` (the process survived). Native aborts inside `Engine.initialize()`
     for a file whose metadata reads fine are still possible (Gemma 4 aborted with `0.9.0-alpha02`: `Unknown model type: tf_lite_end_of_vision`; it loads with `0.19.1`). The crash-loop guard
     stays for those: it refuses the sticky restart until a new model path is sent.
-22. **GPU "loads" before it fails.** With `BACKEND=GPU` and no OpenCL, "Model loaded successfully" is logged and the readiness ping fails afterwards.
+22. **GPU "loads" before it fails.** With `BACKEND=GPU` and no OpenCL, `Engine.initialize()` succeeds and the first request fails (`Can not find OpenCL library`). The service now treats that as a GPU failure:
+    the readiness ping gets 2 attempts on GPU, then the engine is closed and reloaded on CPU, and the status says `Model loaded successfully (CPU, GPU unavailable)`; `/v1/health` reports the backend in use.
+    On the emulator the whole fallback took about 2 minutes (closing the failed GPU engine was the slow part). The saved backend stays GPU, so a restart tries GPU again. A GPU failure after the ping is not handled, and a native abort during the first GPU request is not covered by the crash-loop guard (the flag is cleared once the model has loaded).
 23. **The UI misses status updates.** `MainActivity` receives status broadcasts only while it is resumed, so a service started from adb or while the app is
     in the background leaves the UI showing "Idle".
 24. **First launch asks for battery-optimisation exemption.** The system dialog covers the UI until answered; `scripts/device.sh install` whitelists the app instead.

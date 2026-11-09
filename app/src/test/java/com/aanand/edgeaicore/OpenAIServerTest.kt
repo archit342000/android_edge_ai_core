@@ -71,8 +71,12 @@ class OpenAIServerTest {
             val auth = { b: io.ktor.client.request.HttpRequestBuilder -> b.header(HttpHeaders.Authorization, "Bearer $validToken") }
             val v1 = client.get("/v1/health", auth)
             assertEquals(HttpStatusCode.OK, v1.status)
-            assertTrue(v1.bodyAsText().contains("\"ok\""))
-            assertEquals(HttpStatusCode.OK, client.get("/health", auth).status)
+            val v1Body = v1.bodyAsText().replace(" ", "")
+            assertTrue(v1Body.contains("\"ok\""))
+            assertTrue(v1Body, v1Body.contains("\"backend\":\"CPU\""))
+            val root = client.get("/health", auth)
+            assertEquals(HttpStatusCode.OK, root.status)
+            assertTrue(root.bodyAsText().replace(" ", "").contains("\"backend\":\"CPU\""))
         }
     }
 

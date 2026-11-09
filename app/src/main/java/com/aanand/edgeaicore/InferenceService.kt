@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -16,7 +17,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicInteger
@@ -117,7 +117,7 @@ class InferenceService : Service() {
                     isModelLoading = true
 
                     // Mark as potentially crashing region
-                    prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, true).commit()
+                    markInitStarted(prefs)
 
                     Log.d(TAG, "Attempting to load model with backend: $finalBackend")
                     sendStatusBroadcast("Initializing engine...")
@@ -133,48 +133,30 @@ class InferenceService : Service() {
                     Log.d(TAG, "loadModel returned. Starting readiness verification...")
                     sendStatusBroadcast("Verifying model readiness...")
                     
-                    var isReady = false
-                    
-                    for (i in 1..10) {
-                        try {
-                             var responseText = ""
-                             // Create a new dummy session for each attempt
-                             val newDummyState = ConversationState(
-                                 conversationId = "ping_${System.currentTimeMillis()}",
-                                 apiToken = "self_test",
-                                 ttlMs = 60000
-                             )
-                             val dummyMessage = listOf(ChatMessage(role = "user", content = com.google.gson.JsonPrimitive("Hello")))
-
-                             aiEngineManager.generateConversationResponseAsync(
-                                 state = newDummyState,
-                                 messages = dummyMessage,
-                                 onToken = {},
-                                 onComplete = { text, _ -> responseText = text },
-                                 onErrorCallback = { throw it }
-                             )                       
-                             if (responseText.isNotEmpty()) {
-                                 Log.d(TAG, "Ping response (attempt $i): Success. Length: ${responseText.length}")
-                                 sendStatusBroadcast("Ping success ($i)")
-                                 isReady = true
-                                 break
-                             } else {
-                                 throw Exception("Empty response")
-                             }
-                        } catch (e: Exception) {
-                            val msg = "Ping failed ($i): ${e.message}"
-                            Log.d(TAG, msg)
-                            sendStatusBroadcast(msg)
-                            delay(2000)
-                        }
+                    // A GPU engine can load and still fail its first request (no OpenCL): give it fewer attempts,
+                    // then fall back to CPU instead of waiting out the full retry budget.
+                    var readinessError = verifyEngineReady()
+                    val fallbackBackend = if (readinessError != null) BackendFallbackPolicy.next(aiEngineManager.activeBackend ?: "") else null
+                    if (readinessError != null && fallbackBackend != null) {
+                        Log.w(TAG, "GPU readiness failed, falling back to CPU: ${readinessError.message}")
+                        sendStatusBroadcast("GPU unavailable, loading on CPU...")
+                        markInitStarted(prefs)
+                        withTimeout(300000) { aiEngineManager.fallBackToCpu(modelPath, cacheDir.absolutePath, maxNumTokens) }
+                        prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
+                        readinessError = verifyEngineReady()
                     }
 
-                    // Cleanup the last dummy session
-                    aiEngineManager.clearConversationCache()
-
-                    if (isReady) {
-                        sendStatusBroadcast("Model loaded successfully ($finalBackend)")
+                    if (readinessError == null) {
+                        val backendInUse = aiEngineManager.activeBackend ?: finalBackend
+                        val status = if (aiEngineManager.fellBackFromGpu) {
+                            "Model loaded successfully ($backendInUse, GPU unavailable)"
+                        } else {
+                            "Model loaded successfully ($backendInUse)"
+                        }
+                        Log.i(TAG, status)
+                        sendStatusBroadcast(status)
                     } else {
+                        Log.e(TAG, "Model verification failed", readinessError)
                         sendStatusBroadcast("Error: Model verification failed")
                     }
 
@@ -199,6 +181,29 @@ class InferenceService : Service() {
         }
 
         return START_STICKY
+    }
+
+    /**
+     * Sets the crash-loop guard before a native model load. `commit()` is deliberate: the flag must be on disk before
+     * the native code can abort the process, which `apply()` (asynchronous) would not guarantee.
+     */
+    private fun markInitStarted(prefs: SharedPreferences) {
+        prefs.edit(commit = true) { putBoolean(KEY_CRASHED_DURING_INIT, true) }
+    }
+
+    /** Runs the readiness ping on the loaded engine; fewer attempts on GPU, which may fall back to CPU. */
+    private suspend fun verifyEngineReady(): Throwable? {
+        val attempts = if (aiEngineManager.activeBackend == BackendFallbackPolicy.GPU) GPU_PING_ATTEMPTS else PING_ATTEMPTS
+        return aiEngineManager.verifyReady(attempts) { attempt, error ->
+            if (error == null) {
+                Log.d(TAG, "Ping response (attempt $attempt): Success")
+                sendStatusBroadcast("Ping success ($attempt)")
+            } else {
+                val msg = "Ping failed ($attempt): ${error.message}"
+                Log.d(TAG, msg)
+                sendStatusBroadcast(msg)
+            }
+        }
     }
 
     private fun sendStatusBroadcast(status: String) {
@@ -260,6 +265,8 @@ class InferenceService : Service() {
         const val EXTRA_STATUS = "STATUS"
         const val ACTION_TOKEN_REQUEST = "com.aanand.edgeaicore.TOKEN_REQUEST"
         const val EXTRA_PACKAGE_NAME = "PACKAGE_NAME"
+        private const val PING_ATTEMPTS = 10
+        private const val GPU_PING_ATTEMPTS = 2
         private const val KEY_CRASHED_DURING_INIT = "crashed_during_init"
         private const val KEY_SAVED_MODEL_PATH = "saved_model_path"
         private const val STATUS_UNSUPPORTED_MODEL = "Error: Unsupported model file"

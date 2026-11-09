@@ -92,4 +92,10 @@ class OpenAIModelsTest {
         assertEquals(42, request.seed)
         assertEquals(9, request.maxOutputTokens)
     }
+
+    @Test
+    fun healthResponseSerialisesTheBackend() {
+        val json = Gson().toJson(HealthResponse("ok", "CPU"))
+        assertEquals("""{"status":"ok","backend":"CPU"}""", json)
+    }
 }
