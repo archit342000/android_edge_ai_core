@@ -77,6 +77,16 @@ class OpenAIServer(
                     activeRequests.incrementAndGet()
                     try {
                         val request = call.receive<ChatCompletionRequest>()
+                        val validationError = ChatRequestValidator.validate(request)
+                        if (validationError != null) {
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse(validationError))
+                            return@post
+                        }
+                        val options = GenerationOptions(
+                            maxOutputTokens = request.maxOutputTokens,
+                            presencePenalty = request.presence_penalty?.toFloat(),
+                            frequencyPenalty = request.frequency_penalty?.toFloat()
+                        )
                         val conversationId = UUID.randomUUID().toString()
 
                         // System messages become the system instruction; the rest are the conversation turns.
@@ -94,7 +104,8 @@ class OpenAIServer(
                             systemInstruction = systemInstruction,
                             temperature = request.temperature ?: 0.8,
                             topP = request.top_p ?: 0.95,
-                            topK = request.top_k ?: 40
+                            topK = request.top_k ?: 40,
+                            seed = request.seed ?: 0
                         )
 
                         if (request.stream == true) {
@@ -148,7 +159,8 @@ class OpenAIServer(
                                                             channel.trySend("data: $errorJson\n\n")
                                                         }
                                                         channel.close()
-                                                    }
+                                                    },
+                                                    options = options
                                                 )
                                             } catch (e: CancellationException) {
                                                 throw e
@@ -182,7 +194,8 @@ class OpenAIServer(
                                 messages = turns,
                                 onToken = { /* No-op for non-streaming */ },
                                 onComplete = { text, usage -> finalResponse = text; finalUsage = usage },
-                                onErrorCallback = { errorOccurred = it }
+                                onErrorCallback = { errorOccurred = it },
+                                options = options
                             )
 
                             if (errorOccurred != null) {

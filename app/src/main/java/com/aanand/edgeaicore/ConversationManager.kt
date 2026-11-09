@@ -26,7 +26,8 @@ data class ConversationState(
     val createdAt: Long = System.currentTimeMillis(),
     var temperature: Double = 0.8,
     var topP: Double = 0.95,
-    var topK: Int = 40
+    var topK: Int = 40,
+    var seed: Int = 0
 ) {
     fun isExpired(): Boolean {
         // Check if the conversation has exceeded its TTL since the last access

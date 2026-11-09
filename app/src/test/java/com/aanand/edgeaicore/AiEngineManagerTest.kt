@@ -703,4 +703,67 @@ class AiEngineManagerTest {
         assertEquals(2, factory.engine.conversations.size)
         assertEquals("New rules.", factory.engine.conversationConfigs[1].systemInstructionText())
     }
+
+    @Test
+    fun maxNumTokensReachesTheEngineConfigAlsoOnTheCpuRetry() = runTest {
+        val factory = FakeEngineFactory(failOnGpu = true)
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "GPU", maxNumTokens = 1024)
+        assertEquals(2, factory.configs.size)
+        assertEquals(1024, factory.configs[0].maxNumTokens)
+        assertEquals(1024, factory.configs[1].maxNumTokens)
+    }
+
+    @Test
+    fun maxNumTokensDefaultsToNullAndIsNotSetUnlessGiven() = runTest {
+        val factory = FakeEngineFactory()
+        newManager(factory).loadModel(modelFile(), "CPU")
+        assertNull(factory.configs[0].maxNumTokens)
+    }
+
+    @Test
+    fun aChangedContextSizeReloadsTheSameModelButTheSameOneDoesNot() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        val path = modelFile()
+        manager.loadModel(path, "CPU", maxNumTokens = 1024)
+        manager.loadModel(path, "CPU", maxNumTokens = 1024)
+        assertEquals(1, factory.configs.size)
+        manager.loadModel(path, "CPU", maxNumTokens = 2048)
+        assertEquals(2, factory.configs.size)
+        assertEquals(2048, factory.configs[1].maxNumTokens)
+    }
+
+    @Test
+    fun perRequestOptionsReachTheConversation() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val options = GenerationOptions(maxOutputTokens = 5, presencePenalty = 0.5f, frequencyPenalty = -1f)
+        manager.generateConversationResponseAsync(
+            state(), listOf(userMessage("hi")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }, options = options
+        )
+        assertEquals(options, factory.engine.conversations[0].lastOptions)
+    }
+
+    @Test
+    fun aChangedSeedRebuildsTheConversation() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val first = state()
+        manager.generateConversationResponseAsync(first, listOf(userMessage("a")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {})
+        manager.generateConversationResponseAsync(first, listOf(userMessage("b")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {})
+        assertEquals(1, factory.engine.conversations.size) // same id, same settings: reused
+        first.seed = 7
+        manager.generateConversationResponseAsync(first, listOf(userMessage("c")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {})
+        assertEquals(2, factory.engine.conversations.size)
+    }
+
+    @Test
+    fun noOptionsMeansEngineDefaults() {
+        val options = GenerationOptions()
+        assertNull(options.repetitionPenaltyConfig())
+        assertEquals(0.5f, GenerationOptions(presencePenalty = 0.5f).repetitionPenaltyConfig()!!.presencePenalty)
+    }
 }

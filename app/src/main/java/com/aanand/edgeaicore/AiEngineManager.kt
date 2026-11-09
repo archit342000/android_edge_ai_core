@@ -40,6 +40,7 @@ class AiEngineManager(
     private var engine: LlmEngine? = null
     val isModelLoaded: Boolean get() = engine != null
     private var currentModelPath: String? = null
+    private var currentMaxNumTokens: Int? = null
     private val inferenceMutex = Mutex()
     // Idle engine conversations (with their KV caches), kept so a request that extends the previous one prefills only its new message.
     // Closed only while holding inferenceMutex.
@@ -54,8 +55,9 @@ class AiEngineManager(
         inferenceMutex.withLock { conversationCache.clear() }
     }
 
-    suspend fun loadModel(modelPath: String, backendType: String = "GPU", cacheDir: String? = null): Unit = withContext(Dispatchers.IO) {
-        if (currentModelPath == modelPath && engine != null) {
+    /** @param maxNumTokens the KV-cache size (input plus output tokens); null keeps the model's default */
+    suspend fun loadModel(modelPath: String, backendType: String = "GPU", cacheDir: String? = null, maxNumTokens: Int? = null): Unit = withContext(Dispatchers.IO) {
+        if (currentModelPath == modelPath && currentMaxNumTokens == maxNumTokens && engine != null) {
             return@withContext
         }
 
@@ -65,6 +67,7 @@ class AiEngineManager(
             engine?.close()
             engine = null
             currentModelPath = null
+            currentMaxNumTokens = null
             modelCapabilities = null
         }
         Log.d(TAG, "Loading model from $modelPath with Backend=$backendType")
@@ -79,7 +82,7 @@ class AiEngineManager(
         val capabilities = modelInspector(modelPath)
         ModelInspector.validate(capabilities)
 
-        loadEngine(modelPath, backendType, capabilities, cacheDir)
+        loadEngine(modelPath, backendType, capabilities, cacheDir, maxNumTokens)
     }
 
     /**
@@ -89,6 +92,7 @@ class AiEngineManager(
         temperature: Double? = null,
         topP: Double? = null,
         topK: Int? = null,
+        seed: Int? = null,
         systemInstruction: String? = null,
         initialMessages: List<Message> = emptyList()
     ): LlmConversation {
@@ -102,7 +106,8 @@ class AiEngineManager(
             samplerConfig = SamplerConfig(
                 topK = topK ?: 40,
                 topP = topP ?: 0.95,
-                temperature = temperature ?: 0.8
+                temperature = temperature ?: 0.8,
+                seed = seed ?: 0
             )
         )
         return currentEngine.createConversation(conversationConfig)
@@ -121,7 +126,8 @@ class AiEngineManager(
         messages: List<ChatMessage>,
         onToken: (String) -> Unit,
         onComplete: (String, TokenUsage) -> Unit,
-        onErrorCallback: (Throwable) -> Unit
+        onErrorCallback: (Throwable) -> Unit,
+        options: GenerationOptions = GenerationOptions()
     ) = withContext(Dispatchers.IO) {
         if (messages.isEmpty()) {
             onErrorCallback(IllegalArgumentException("No messages provided"))
@@ -157,7 +163,7 @@ class AiEngineManager(
 
                 // 2. Reuse the cached conversation when this request only extends it (same settings, and the history
                 // before the last message is exactly what the conversation already holds); otherwise build a new one.
-                val settings = CacheSettings(state.temperature, state.topP, state.topK, state.systemInstruction)
+                val settings = CacheSettings(state.temperature, state.topP, state.topK, state.systemInstruction, state.seed)
                 val context = fullHistory.dropLast(1)
                 val cached = conversationCache.take(settings, context)?.takeIf { it.isAlive }
                 if (cached != null) {
@@ -169,6 +175,7 @@ class AiEngineManager(
                         temperature = state.temperature,
                         topP = state.topP,
                         topK = state.topK,
+                        seed = state.seed,
                         systemInstruction = state.systemInstruction,
                         initialMessages = context.map { toLiteRTMessage(it) }
                     )
@@ -248,7 +255,7 @@ class AiEngineManager(
                             // The outer try-catch will handle calling onErrorCallback
                             if (cont.isActive) cont.resumeWithException(error)
                         }
-                    })
+                    }, options)
                     // Cancelled between the check above and the send: the handler's cancelProcess() found nothing to
                     // stop, so stop the decoding that has just started.
                     if (cont.isCancelled) stopNative()
@@ -285,7 +292,7 @@ class AiEngineManager(
         }
     }
 
-    private fun loadEngine(modelPath: String, backendType: String, capabilities: ModelCapabilities, cacheDir: String?) {
+    private fun loadEngine(modelPath: String, backendType: String, capabilities: ModelCapabilities, cacheDir: String?, maxNumTokens: Int?) {
         val initStartedAt = System.nanoTime()
         try {
             val backendEnum = when (backendType.uppercase()) {
@@ -300,7 +307,8 @@ class AiEngineManager(
                 backend = backendEnum,
                 visionBackend = Backend.GPU(),
                 audioBackend = Backend.CPU(),
-                cacheDir = cacheDir
+                cacheDir = cacheDir,
+                maxNumTokens = maxNumTokens
             )
 
             // Needed for per-request token counts; read when the engine is created.
@@ -310,6 +318,7 @@ class AiEngineManager(
             val newEngine = engineFactory(config)
             engine = newEngine
             currentModelPath = modelPath
+            currentMaxNumTokens = maxNumTokens
             // Set together with the engine, so it is non-null exactly while a model is loaded.
             modelCapabilities = capabilities
 
@@ -318,7 +327,7 @@ class AiEngineManager(
             Log.e(TAG, "Failed to load model with Backend=$backendType after ${(System.nanoTime() - initStartedAt) / 1_000_000} ms. Error: ${t.message}", t)
             if (backendType.equals("GPU", ignoreCase = true)) {
                  Log.w(TAG, "Retrying with CPU backend...")
-                 loadEngine(modelPath, "CPU", capabilities, cacheDir)
+                 loadEngine(modelPath, "CPU", capabilities, cacheDir, maxNumTokens)
             } else {
                 if (t is Exception) throw t else throw Exception(t)
             }
@@ -421,6 +430,7 @@ class AiEngineManager(
         engine?.close()
         engine = null
         currentModelPath = null
+        currentMaxNumTokens = null
         modelCapabilities = null
     }
 

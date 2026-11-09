@@ -48,7 +48,11 @@ class FakeConversation(
     }
     override val isAlive: Boolean get() = !closed
 
-    override fun sendMessageAsync(message: Message, callback: MessageCallback) {
+    /** The per-request options of the last message sent. */
+    @Volatile var lastOptions: GenerationOptions? = null
+
+    override fun sendMessageAsync(message: Message, callback: MessageCallback, options: GenerationOptions) {
+        lastOptions = options
         if (hangUntilCancelled) {
             pending = callback
             sent++
@@ -92,10 +96,13 @@ class FakeEngine(
     val conversations = java.util.concurrent.CopyOnWriteArrayList<FakeConversation>()
     /** The config of every conversation created, in order. */
     val conversationConfigs = java.util.concurrent.CopyOnWriteArrayList<ConversationConfig>()
+    /** The sampler seed of every conversation created, in order. */
+    val conversationSeeds = java.util.concurrent.CopyOnWriteArrayList<Int>()
     var closed = false
 
     override fun createConversation(config: ConversationConfig): LlmConversation {
         conversationConfigs.add(config)
+        conversationSeeds.add(config.samplerConfig?.seed ?: 0)
         onCreateConversation?.invoke()
         return FakeConversation(chunks, failure, hangUntilCancelled, onSendMessage, counts, usageFailure).also { conversations.add(it) }
     }

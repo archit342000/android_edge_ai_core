@@ -9,8 +9,16 @@ data class ChatCompletionRequest(
     val top_p: Double? = null,
     val top_k: Int? = null,
     val stream: Boolean? = false,
-    val stream_options: StreamOptions? = null
-)
+    val stream_options: StreamOptions? = null,
+    val max_tokens: Int? = null,
+    val max_completion_tokens: Int? = null,
+    val presence_penalty: Double? = null,
+    val frequency_penalty: Double? = null,
+    val seed: Int? = null
+) {
+    /** The output cap: `max_completion_tokens` (OpenAI's newer name) wins over `max_tokens`. */
+    val maxOutputTokens: Int? get() = max_completion_tokens ?: max_tokens
+}
 
 /** The `stream_options` request field; only `include_usage` is supported. */
 data class StreamOptions(

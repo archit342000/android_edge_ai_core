@@ -33,7 +33,17 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 | `top_p` | number | `0.95` |
 | `top_k` | integer | `40` |
 | `stream` | boolean | `false` |
+| `max_tokens` | integer >= 1, caps the reply length in tokens | model default |
+| `max_completion_tokens` | integer >= 1; the newer name, wins over `max_tokens` | model default |
+| `presence_penalty` | number, -2 to 2 | none |
+| `frequency_penalty` | number, -2 to 2 | none |
+| `seed` | integer; the same seed with the same request gives the same reply (best effort, per backend) | `0` |
 | `stream_options` | `{"include_usage": boolean}`; with `stream: true`, `include_usage: true` adds a final usage chunk | none |
+
+Ranges are checked before generation: `messages` has 1 to 256 items, `temperature` is 0 to 2, `top_p` is above 0 and at most 1, `top_k` is at least 1, the
+penalties are -2 to 2 and the token limits at least 1. Anything outside gives `400 {"error": "<field> must be ..."}` (a fixed message naming the field, never the value).
+The context size (KV cache, input plus output tokens) is not a request field: it is set in the app (Backend Settings, "Context size (tokens)", empty = model default)
+and applied when the server starts.
 
 `content` is a string or an array of parts: `{"type": "text", "text": ...}`, `{"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}`,
 `{"type": "audio_url", "audio_url": {"url": "data:audio/...;base64,..."}}`. Only base64 data URLs are read.
@@ -70,7 +80,7 @@ If the client disconnects mid-stream, the server cancels the generation (`cancel
 
 | Status | When |
 |--------|------|
-| `400` | body does not parse, the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
+| `400` | body does not parse, a field is out of range (see Chat request), the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
 | `401` | missing or invalid token |
 | `500` | the engine reported an error, returned no text (non-streaming), or its token usage could not be read (`Token usage unavailable`) |
 | `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`) |

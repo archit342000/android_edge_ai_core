@@ -364,4 +364,43 @@ class OpenAIServerTest {
         }
         awaitLoadZero()
     }
+
+    @Test
+    fun everyInvalidFieldGivesItsFixed400AndTheLoadCounterReturnsToZero() = withServer(loadedManager()) {
+        val cases = mapOf(
+            """{"messages":[{"role":"user","content":"hi"}],"temperature":5}""" to "temperature must be between 0 and 2.0",
+            """{"messages":[{"role":"user","content":"hi"}],"max_tokens":0}""" to "max_tokens must be at least 1",
+            """{"messages":[{"role":"user","content":"hi"}],"top_p":0}""" to "top_p must be greater than 0 and at most 1",
+            """{"messages":[{"role":"user","content":"hi"}],"presence_penalty":3}""" to "presence_penalty must be between -2.0 and 2.0",
+            """{"stream":true,"messages":[{"role":"user","content":"hi"}],"top_k":0}""" to "top_k must be at least 1"
+        )
+        for ((body, message) in cases) {
+            val response = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody(body)
+            }
+            assertEquals(body, HttpStatusCode.BadRequest, response.status)
+            assertTrue(response.bodyAsText(), response.bodyAsText().contains(message))
+        }
+        awaitLoadZero()
+    }
+
+    @Test
+    fun validLimitsReachTheEngine() {
+        val factory = FakeEngineFactory(chunks = listOf("ok"))
+        val manager = newManager(factory)
+        runBlocking { manager.loadModel(tmp.newFile("m-lim.litertlm").absolutePath, "CPU") }
+        withServer(manager) {
+            val response = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody("""{"messages":[{"role":"user","content":"hi"}],"max_tokens":5,"max_completion_tokens":9,"presence_penalty":0.5,"frequency_penalty":-1,"seed":42}""")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+        }
+        val conversation = factory.engine.conversations.last()
+        assertEquals(GenerationOptions(maxOutputTokens = 9, presencePenalty = 0.5f, frequencyPenalty = -1f), conversation.lastOptions)
+        assertEquals(42, factory.engine.conversationSeeds.last())
+    }
 }

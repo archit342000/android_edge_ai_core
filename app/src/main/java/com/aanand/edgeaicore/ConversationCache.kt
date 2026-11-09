@@ -5,7 +5,8 @@ data class CacheSettings(
     val temperature: Double,
     val topP: Double,
     val topK: Int,
-    val systemInstruction: String?
+    val systemInstruction: String?,
+    val seed: Int = 0
 )
 
 /** A cached conversation is identified by its settings and the exact messages it already holds. */

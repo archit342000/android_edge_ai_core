@@ -78,4 +78,18 @@ class OpenAIModelsTest {
         assertTrue(last.contains("\"choices\":[]"))
         assertTrue(last.contains("\"usage\""))
     }
+
+    @Test
+    fun requestParsesTheGenerationLimitFields() {
+        val request = Gson().fromJson(
+            """{"messages":[{"role":"user","content":"hi"}],"max_tokens":5,"max_completion_tokens":9,"presence_penalty":0.5,"frequency_penalty":-1,"seed":42}""",
+            ChatCompletionRequest::class.java
+        )
+        assertEquals(5, request.max_tokens)
+        assertEquals(9, request.max_completion_tokens)
+        assertEquals(0.5, request.presence_penalty!!, 0.0)
+        assertEquals(-1.0, request.frequency_penalty!!, 0.0)
+        assertEquals(42, request.seed)
+        assertEquals(9, request.maxOutputTokens)
+    }
 }
