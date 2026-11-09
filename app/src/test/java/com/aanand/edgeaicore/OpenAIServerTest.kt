@@ -224,7 +224,7 @@ class OpenAIServerTest {
 
         kotlinx.coroutines.coroutineScope {
             val job = launch(kotlinx.coroutines.Dispatchers.Default) {
-                manager.generateConversationResponseAsync(state, listOf(message), { channel.trySend(it) }, { _, _ -> }, {})
+                manager.generateConversationResponseAsync(state, listOf(message), { channel.trySend(it) }, { _, _, _ -> }, {})
             }
             kotlinx.coroutines.withTimeout(5_000) {
                 while (factory.engine.conversations.firstOrNull()?.sent != 1) kotlinx.coroutines.delay(5)
@@ -242,7 +242,7 @@ class OpenAIServerTest {
         var response = ""
         manager.generateConversationResponseAsync(
             ConversationState(conversationId = "c2", apiToken = "t", ttlMs = 0),
-            listOf(message), {}, { text, _ -> response = text }, { org.junit.Assert.fail("unexpected ${it.message}") }
+            listOf(message), {}, { text, _, _ -> response = text }, { org.junit.Assert.fail("unexpected ${it.message}") }
         )
         assertEquals("Hello", response)
     }
@@ -680,6 +680,34 @@ class OpenAIServerTest {
                     setBody(body)
                 }.bodyAsText()
             }
+            awaitLoadZero()
+        }
+    }
+
+    @Test
+    fun aStopSequenceEndsTheOutputOnBothPathsWithFinishReasonStop() {
+        val factory = FakeEngineFactory(chunks = listOf("one ", "two ", "three"))
+        val manager = newManager(factory)
+        runBlocking { manager.loadModel(tmp.newFile("m-stop.litertlm").absolutePath, "CPU") }
+        withServer(manager) {
+            for (stream in listOf(false, true)) {
+                val text = client.post("/v1/chat/completions") {
+                    header(HttpHeaders.Authorization, "Bearer $validToken")
+                    header(HttpHeaders.ContentType, "application/json")
+                    setBody("""{"stream":$stream,"stop":["two"],"messages":[{"role":"user","content":"count"}]}""")
+                }.bodyAsText()
+                assertTrue(text, !text.contains("two") && !text.contains("three"))
+                assertTrue(text, text.contains("one"))
+                assertTrue(text, text.replace(" ", "").contains("\"finish_reason\":\"stop\""))
+                if (stream) assertTrue(text, text.trimEnd().endsWith("data: [DONE]"))
+            }
+            awaitLoadZero()
+            val bad = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody("""{"stop":5,"messages":[{"role":"user","content":"count"}]}""")
+            }
+            assertEquals(HttpStatusCode.BadRequest, bad.status)
             awaitLoadZero()
         }
     }

@@ -187,7 +187,7 @@ class AiEngineManager(
         state: ConversationState,
         messages: List<ChatMessage>,
         onToken: (String) -> Unit,
-        onComplete: (String, TokenUsage) -> Unit,
+        onComplete: (String, TokenUsage, Boolean) -> Unit,
         onErrorCallback: (Throwable) -> Unit,
         options: GenerationOptions = GenerationOptions(),
         chatOptions: ChatOptions = ChatOptions(),
@@ -260,6 +260,9 @@ class AiEngineManager(
 
                 var lastResponseText = ""
                 var loggedChannels = false
+                val stopMatcher = chatOptions.stopSequences.takeIf { it.isNotEmpty() }?.let { StopSequenceMatcher(it) }
+                // Set when a stop sequence matched: later output is dropped and the reply ends as a normal completion.
+                var stoppedBySequence = false
 
                 // cancelProcess() throws on a closed conversation, so skip it then. A close can still race in
                 // between, and an exception here would escape the cancellation handler, so log it instead.
@@ -284,7 +287,7 @@ class AiEngineManager(
                     }
                     active.sendMessageAsync(toLiteRTMessage(lastMsg, toolNames), object : MessageCallback {
                         override fun onMessage(message: Message) {
-                            if (!cont.isActive) return // cancelled: drop late tokens
+                            if (!cont.isActive || stoppedBySequence) return // cancelled or stopped: drop late tokens
                             val chunk = extractText(message.contents)
                             Log.v(TAG, "onMessage: Received chunk length=${chunk.length}")
 
@@ -299,15 +302,37 @@ class AiEngineManager(
                             if (message.toolCalls.isNotEmpty()) onToolCalls(message.toolCalls)
 
                             if (chunk.isNotEmpty()) {
-                                lastResponseText += chunk
-                                onToken(chunk)
+                                if (stopMatcher == null) {
+                                    lastResponseText += chunk
+                                    onToken(chunk)
+                                } else {
+                                    val result = stopMatcher.feed(chunk)
+                                    if (result.emit.isNotEmpty()) {
+                                        lastResponseText += result.emit
+                                        onToken(result.emit)
+                                    }
+                                    if (result.matched) {
+                                        stoppedBySequence = true
+                                        Log.d(TAG, "Stop sequence matched, stopping generation")
+                                        stopNative()
+                                    }
+                                }
                             }
                         }
 
-                        override fun onDone() {
+                        /** Reports the finished reply once, as a normal completion (also after a stop sequence ended the native generation). */
+                        private fun complete(stopped: Boolean) {
                             currentGeneration.finish()
                             // A cancelled request reports the cancel once, not a completion.
                             if (!cont.isActive || !outcomeReported.compareAndSet(false, true)) return
+                            if (stopMatcher != null && !stopped) {
+                                // The stream ended: text held back as a possible stop sequence was not one
+                                val rest = stopMatcher.flush()
+                                if (rest.isNotEmpty()) {
+                                    lastResponseText += rest
+                                    onToken(rest)
+                                }
+                            }
                             // Read the counts first: a generation whose usage cannot be read is reported as an error, never as zeros.
                             val usage = try {
                                 readUsage(active)
@@ -325,11 +350,15 @@ class AiEngineManager(
                                     state.history.add(ChatMessage("assistant", com.google.gson.JsonPrimitive(lastResponseText)))
                                 }
                             }
-                            onComplete(lastResponseText, usage)
+                            onComplete(lastResponseText, usage, stopped)
                             if (cont.isActive) cont.resume(Unit)
                         }
 
+                        override fun onDone() = complete(stoppedBySequence)
+
                         override fun onError(error: Throwable) {
+                            // Stopping on a sequence ends the native generation with a cancel: that is a normal completion.
+                            if (stoppedBySequence) return complete(true)
                             currentGeneration.finish()
                             // A cancelled request reports the cancel once, from the catch below.
                             if (!cont.isActive) return
@@ -345,7 +374,8 @@ class AiEngineManager(
                 }
 
                 // 5. Keep the conversation for the next request when it holds exactly history + reply
-                if (lastResponseText.isNotEmpty()) {
+                // A stop sequence leaves tokens past the match in the KV state: never cache that conversation.
+                if (lastResponseText.isNotEmpty() && !stoppedBySequence) {
                     conversationCache.put(
                         settings,
                         fullHistory + ChatMessage("assistant", com.google.gson.JsonPrimitive(lastResponseText)),
@@ -485,7 +515,7 @@ class AiEngineManager(
                         state = pingState,
                         messages = listOf(ChatMessage(role = "user", content = com.google.gson.JsonPrimitive("Hello"))),
                         onToken = {},
-                        onComplete = { text, _ -> response = text },
+                        onComplete = { text, _, _ -> response = text },
                         onErrorCallback = { error = it }
                     )
                 } catch (e: CancellationException) {

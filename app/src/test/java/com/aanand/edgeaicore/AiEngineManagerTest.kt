@@ -100,7 +100,7 @@ class AiEngineManagerTest {
         manager.generateConversationResponseAsync(
             state, listOf(userMessage("hi")),
             onToken = { tokens.add(it) },
-            onComplete = { text, _ -> completed.add(text) },
+            onComplete = { text, _, _ -> completed.add(text) },
             onErrorCallback = { errors.add(it) }
         )
 
@@ -121,7 +121,7 @@ class AiEngineManagerTest {
         manager.generateConversationResponseAsync(
             state(), listOf(userMessage("hi")),
             onToken = {},
-            onComplete = { _, _ -> completes++ },
+            onComplete = { _, _, _ -> completes++ },
             onErrorCallback = { errors.add(it) }
         )
 
@@ -136,7 +136,7 @@ class AiEngineManagerTest {
         try {
             manager.generateConversationResponseAsync(
                 state(), listOf(userMessage("hi")),
-                onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
+                onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {}
             )
             fail("expected IllegalStateException")
         } catch (e: IllegalStateException) {
@@ -151,7 +151,7 @@ class AiEngineManagerTest {
         val errors = mutableListOf<Throwable>()
         manager.generateConversationResponseAsync(
             state(), emptyList(),
-            onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { errors.add(it) }
+            onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { errors.add(it) }
         )
         assertEquals(1, errors.size)
         assertTrue(errors[0] is IllegalArgumentException)
@@ -167,7 +167,7 @@ class AiEngineManagerTest {
         repeat(2) { i ->
             manager.generateConversationResponseAsync(
                 state, listOf(userMessage("m$i")),
-                onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
+                onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {}
             )
         }
 
@@ -183,11 +183,11 @@ class AiEngineManagerTest {
         val state = state()
 
         manager.generateConversationResponseAsync(
-            state, listOf(userMessage("a")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
+            state, listOf(userMessage("a")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {}
         )
         state.temperature = 0.1
         manager.generateConversationResponseAsync(
-            state, listOf(userMessage("b")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
+            state, listOf(userMessage("b")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {}
         )
 
         assertEquals(2, factory.engine.conversations.size)
@@ -204,7 +204,7 @@ class AiEngineManagerTest {
         val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         manager.generateConversationResponseAsync(
-            state(), listOf(userMessage("a")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
+            state(), listOf(userMessage("a")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {}
         )
 
         manager.close()
@@ -225,7 +225,7 @@ class AiEngineManagerTest {
         chatOptions: ChatOptions = ChatOptions()
     ) = generateConversationResponseAsync(
         ConversationState(conversationId = "req-${System.nanoTime()}", apiToken = "t", ttlMs = 0),
-        messages, onToken = {}, onComplete = { text, _ -> reply(text) }, onErrorCallback = error, chatOptions = chatOptions
+        messages, onToken = {}, onComplete = { text, _, _ -> reply(text) }, onErrorCallback = error, chatOptions = chatOptions
     )
 
     @Test
@@ -341,7 +341,7 @@ class AiEngineManagerTest {
         fun fresh(topP: Double = 0.95, topK: Int = 40, system: String? = null) =
             ConversationState(conversationId = "x", apiToken = "t", ttlMs = 0, systemInstruction = system, topP = topP, topK = topK)
         suspend fun send(state: ConversationState, messages: List<ChatMessage>) =
-            manager.generateConversationResponseAsync(state, messages, onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {})
+            manager.generateConversationResponseAsync(state, messages, onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {})
         send(fresh(), history)
         send(fresh(), followUp) // same settings: reuses
         assertEquals(1, factory.engine.conversations.size)
@@ -404,7 +404,7 @@ class AiEngineManagerTest {
                 state = chatState("c1"),
                 messages = listOf(userChat("hi")),
                 onToken = {},
-                onComplete = { _, _ -> completed++ },
+                onComplete = { _, _, _ -> completed++ },
                 onErrorCallback = { errors.add(it) }
             )
         }
@@ -427,7 +427,7 @@ class AiEngineManagerTest {
             state = chatState("c2"),
             messages = listOf(userChat("again")),
             onToken = {},
-            onComplete = { text, _ -> response = text },
+            onComplete = { text, _, _ -> response = text },
             onErrorCallback = { fail("unexpected error ${it.message}") }
         )
         assertEquals("Hello", response)
@@ -442,7 +442,7 @@ class AiEngineManagerTest {
         val job = launch(Dispatchers.Default) {
             manager.generateConversationResponseAsync(
                 state = chatState(), messages = listOf(userChat("hi")),
-                onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
+                onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {}
             )
         }
         withContext(Dispatchers.Default) {
@@ -461,7 +461,7 @@ class AiEngineManagerTest {
         val first = launch(Dispatchers.Default) {
             manager.generateConversationResponseAsync(
                 state = chatState("c1"), messages = listOf(userChat("hi")),
-                onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
+                onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {}
             )
         }
         withContext(Dispatchers.Default) {
@@ -471,7 +471,7 @@ class AiEngineManagerTest {
         val queued = launch(Dispatchers.Default) {
             manager.generateConversationResponseAsync(
                 state = chatState("c2"), messages = listOf(userChat("queued")),
-                onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { errors.add(it) }
+                onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { errors.add(it) }
             )
         }
         withContext(Dispatchers.Default) { delay(100) } // let the second request reach the lock
@@ -494,7 +494,7 @@ class AiEngineManagerTest {
         job = launch(Dispatchers.Default) {
             manager.generateConversationResponseAsync(
                 state = chatState("c1"), messages = listOf(userChat("hi")),
-                onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { errors.add(it) }
+                onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { errors.add(it) }
             )
         }
         job.join()
@@ -508,7 +508,7 @@ class AiEngineManagerTest {
         var response = ""
         manager.generateConversationResponseAsync(
             state = chatState("c2"), messages = listOf(userChat("again")),
-            onToken = {}, onComplete = { text, _ -> response = text }, onErrorCallback = { fail("unexpected ${it.message}") }
+            onToken = {}, onComplete = { text, _, _ -> response = text }, onErrorCallback = { fail("unexpected ${it.message}") }
         )
         assertEquals("Hello", response)
     }
@@ -523,7 +523,7 @@ class AiEngineManagerTest {
         job = launch(Dispatchers.Default) {
             manager.generateConversationResponseAsync(
                 state = chatState("c1"), messages = listOf(userChat("hi")),
-                onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
+                onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {}
             )
         }
         job.join()
@@ -534,7 +534,7 @@ class AiEngineManagerTest {
         var response = ""
         manager.generateConversationResponseAsync(
             state = chatState("c2"), messages = listOf(userChat("again")),
-            onToken = {}, onComplete = { text, _ -> response = text }, onErrorCallback = { fail("unexpected ${it.message}") }
+            onToken = {}, onComplete = { text, _, _ -> response = text }, onErrorCallback = { fail("unexpected ${it.message}") }
         )
         assertEquals("Hello", response)
     }
@@ -546,7 +546,7 @@ class AiEngineManagerTest {
         manager.loadModel(modelFile(), "CPU")
         var usage: TokenUsage? = null
         manager.generateConversationResponseAsync(
-            state(), listOf(userMessage("hi")), onToken = {}, onComplete = { _, u -> usage = u },
+            state(), listOf(userMessage("hi")), onToken = {}, onComplete = { _, u, _ -> usage = u },
             onErrorCallback = { fail("unexpected ${it.message}") }
         )
         assertEquals(TokenUsage(promptTokens = 9, completionTokens = 3, cachedTokens = 2), usage)
@@ -561,7 +561,7 @@ class AiEngineManagerTest {
         var completes = 0
         val errors = mutableListOf<Throwable>()
         manager.generateConversationResponseAsync(
-            s, listOf(userMessage("hi")), onToken = {}, onComplete = { _, _ -> completes++ }, onErrorCallback = { errors.add(it) }
+            s, listOf(userMessage("hi")), onToken = {}, onComplete = { _, _, _ -> completes++ }, onErrorCallback = { errors.add(it) }
         )
         assertEquals(0, completes)
         assertEquals(1, errors.size)
@@ -571,7 +571,7 @@ class AiEngineManagerTest {
 
         // The same conversation id is rebuilt, not reused.
         manager.generateConversationResponseAsync(
-            s, listOf(userMessage("again")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {}
+            s, listOf(userMessage("again")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {}
         )
         assertEquals(2, factory.engine.conversations.size)
     }
@@ -675,7 +675,7 @@ class AiEngineManagerTest {
         val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         manager.generateConversationResponseAsync(
-            state(), listOf(userMessage("hi")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+            state(), listOf(userMessage("hi")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { fail(it.message) }
         )
         assertNull(factory.engine.conversationConfigs[0].systemInstructionText())
     }
@@ -687,7 +687,7 @@ class AiEngineManagerTest {
         manager.loadModel(modelFile(), "CPU")
         val s = state().copy(systemInstruction = "Always answer in French.")
         manager.generateConversationResponseAsync(
-            s, listOf(userMessage("hi")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+            s, listOf(userMessage("hi")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { fail(it.message) }
         )
         assertEquals("Always answer in French.", factory.engine.conversationConfigs[0].systemInstructionText())
     }
@@ -699,16 +699,16 @@ class AiEngineManagerTest {
         manager.loadModel(modelFile(), "CPU")
         val first = state()
         manager.generateConversationResponseAsync(
-            first, listOf(userMessage("hi")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+            first, listOf(userMessage("hi")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { fail(it.message) }
         )
         // Same conversation id, one new message, same sampling: reused, unless the system instruction changed.
         manager.generateConversationResponseAsync(
-            first, listOf(userMessage("again")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+            first, listOf(userMessage("again")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { fail(it.message) }
         )
         assertEquals(1, factory.engine.conversations.size)
         val changed = first.copy(systemInstruction = "New rules.")
         manager.generateConversationResponseAsync(
-            changed, listOf(userMessage("third")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }
+            changed, listOf(userMessage("third")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { fail(it.message) }
         )
         assertEquals(2, factory.engine.conversations.size)
         assertEquals("New rules.", factory.engine.conversationConfigs[1].systemInstructionText())
@@ -751,7 +751,7 @@ class AiEngineManagerTest {
         manager.loadModel(modelFile(), "CPU")
         val options = GenerationOptions(maxOutputTokens = 5, presencePenalty = 0.5f, frequencyPenalty = -1f)
         manager.generateConversationResponseAsync(
-            state(), listOf(userMessage("hi")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) }, options = options
+            state(), listOf(userMessage("hi")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { fail(it.message) }, options = options
         )
         assertEquals(options, factory.engine.conversations[0].lastOptions)
     }
@@ -762,11 +762,11 @@ class AiEngineManagerTest {
         val manager = newManager(factory)
         manager.loadModel(modelFile(), "CPU")
         val first = state()
-        manager.generateConversationResponseAsync(first, listOf(userMessage("a")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {})
-        manager.generateConversationResponseAsync(first, listOf(userMessage("b")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {})
+        manager.generateConversationResponseAsync(first, listOf(userMessage("a")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {})
+        manager.generateConversationResponseAsync(first, listOf(userMessage("b")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {})
         assertEquals(1, factory.engine.conversations.size) // same id, same settings: reused
         first.seed = 7
-        manager.generateConversationResponseAsync(first, listOf(userMessage("c")), onToken = {}, onComplete = { _, _ -> }, onErrorCallback = {})
+        manager.generateConversationResponseAsync(first, listOf(userMessage("c")), onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = {})
         assertEquals(2, factory.engine.conversations.size)
     }
 
@@ -907,7 +907,7 @@ class AiEngineManagerTest {
         val reasoning = StringBuilder()
         manager.generateConversationResponseAsync(
             ConversationState(conversationId = "x", apiToken = "t", ttlMs = 0), listOf(userChat("hi")),
-            onToken = {}, onComplete = { _, _ -> }, onErrorCallback = { fail(it.message) },
+            onToken = {}, onComplete = { _, _, _ -> }, onErrorCallback = { fail(it.message) },
             onReasoning = { reasoning.append(it) }, onToolCalls = { calls.addAll(it) }
         )
         assertEquals("get_weather", calls.single().name)
@@ -1155,4 +1155,43 @@ class AiEngineManagerTest {
     }
 
     private fun modelFile2() = tmp.newFile("second-${System.nanoTime()}.litertlm").absolutePath
+
+    private suspend fun AiEngineManager.stopRequest(stop: List<String>, messages: List<ChatMessage> = listOf(userChat("one")), tokens: MutableList<String> = mutableListOf(), done: MutableList<Pair<String, Boolean>> = mutableListOf()) =
+        generateConversationResponseAsync(
+            ConversationState(conversationId = "stop-${System.nanoTime()}", apiToken = "t", ttlMs = 0), messages,
+            onToken = { tokens.add(it) }, onComplete = { text, _, stopped -> done.add(text to stopped) }, onErrorCallback = { fail("unexpected ${it.message}") },
+            chatOptions = ChatOptions(stopSequences = stop)
+        )
+
+    @Test
+    fun aStopSequenceEndsTheReplyBeforeItAndDoesNotCacheTheConversation() = runTest {
+        for (errorEnding in listOf(false, true)) {
+            val factory = FakeEngineFactory(chunks = listOf("Hel", "lo", " wor", "ld"))
+            val manager = newManager(factory)
+            manager.loadModel(modelFile2(), "CPU")
+            factory.engine.endWithErrorOnCancel = errorEnding
+            val tokens = mutableListOf<String>(); val done = mutableListOf<Pair<String, Boolean>>()
+            manager.stopRequest(listOf("lo w"), tokens = tokens, done = done)
+            assertEquals(errorEnding.toString(), 1, done.size)
+            assertEquals("Hel" to true, done.single())
+            assertEquals("Hel", tokens.joinToString(""))
+            assertEquals(1, factory.engine.conversations[0].cancelCount)
+            assertTrue(factory.engine.conversations[0].closed) // not cached
+            // the next request runs and rebuilds (no cache hit)
+            manager.stopRequest(emptyList(), messages = listOf(userChat("one"), assistantChat("Hel"), userChat("two")))
+            assertEquals(2, factory.engine.conversations.size)
+        }
+    }
+
+    @Test
+    fun aReplyEndingInAHeldBackPrefixKeepsItsTail() = runTest {
+        val factory = FakeEngineFactory(chunks = listOf("ends with ST"))
+        val manager = newManager(factory)
+        manager.loadModel(modelFile2(), "CPU")
+        val tokens = mutableListOf<String>(); val done = mutableListOf<Pair<String, Boolean>>()
+        manager.stopRequest(listOf("STOP"), tokens = tokens, done = done)
+        assertEquals("ends with ST", tokens.joinToString(""))
+        assertEquals("ends with ST" to false, done.single())
+        assertEquals(0, factory.engine.conversations[0].cancelCount)
+    }
 }

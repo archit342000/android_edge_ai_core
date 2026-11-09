@@ -146,4 +146,10 @@ class OpenAIModelsTest {
         assertEquals("stop", FinishReason.of(false, 4, 5))
         assertEquals("stop", FinishReason.of(false, 500, null))
     }
+
+    @Test
+    fun aStoppedReplyHasFinishReasonStop() {
+        assertEquals("stop", FinishReason.of(false, 5, 5, stoppedBySequence = true))
+        assertEquals("tool_calls", FinishReason.of(true, 5, 5, stoppedBySequence = true))
+    }
 }

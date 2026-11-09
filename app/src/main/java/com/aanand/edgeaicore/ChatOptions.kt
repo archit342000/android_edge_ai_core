@@ -12,7 +12,9 @@ data class ChatOptions(
     val tools: List<ToolProvider> = emptyList(),
     val toolsKey: String? = null,
     val thinking: ThinkingConfig? = null,
-    val responseFormat: ResponseFormat? = null
+    val responseFormat: ResponseFormat? = null,
+    /** Text that ends the answer when generated; empty = none. Not part of the conversation-reuse settings. */
+    val stopSequences: List<String> = emptyList()
 ) {
     val responseFormatEnabled: Boolean get() = responseFormat != null
 }

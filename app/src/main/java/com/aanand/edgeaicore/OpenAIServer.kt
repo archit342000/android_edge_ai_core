@@ -163,8 +163,8 @@ class OpenAIServer(
                                                         sendDelta(ChunkDelta(tool_calls = mapped))
                                                     },
                                                     onToken = { token -> sendDelta(ChunkDelta(content = token)) },
-                                                    onComplete = { _, usage ->
-                                                        sendDelta(ChunkDelta(), FinishReason.of(streamedToolCalls.get() > 0, usage.completionTokens, request.maxOutputTokens))
+                                                    onComplete = { _, usage, stopped ->
+                                                        sendDelta(ChunkDelta(), FinishReason.of(streamedToolCalls.get() > 0, usage.completionTokens, request.maxOutputTokens, stopped))
                                                         if (request.stream_options?.include_usage == true) {
                                                             val usageChunk = ChatCompletionChunk(
                                                                 id = "chatcmpl-${UUID.randomUUID()}",
@@ -213,6 +213,7 @@ class OpenAIServer(
                         } else {
                             var finalResponse: String? = null
                             var finalUsage: TokenUsage? = null
+                            var finalStopped = false
                             var errorOccurred: Throwable? = null
                             val reasoning = StringBuilder()
                             val toolCalls = mutableListOf<com.google.ai.edge.litertlm.ToolCall>()
@@ -225,7 +226,7 @@ class OpenAIServer(
                                         state = state,
                                         messages = turns,
                                         onToken = { /* No-op for non-streaming */ },
-                                        onComplete = { text, usage -> finalResponse = text; finalUsage = usage },
+                                        onComplete = { text, usage, stopped -> finalResponse = text; finalUsage = usage; finalStopped = stopped },
                                         onErrorCallback = { errorOccurred = it },
                                         options = options,
                                         chatOptions = chatOptions,
@@ -274,7 +275,7 @@ class OpenAIServer(
                                             tool_calls = toolCalls.takeIf { it.isNotEmpty() }?.let { calls -> OpenAIToolMapper.toOpenAiToolCalls(calls).map { it.copy(index = null) } }, // index is for streaming only
                                             reasoning_content = reasoning.toString().takeIf { it.isNotEmpty() }
                                         ),
-                                        finish_reason = FinishReason.of(toolCalls.isNotEmpty(), usage.completionTokens, request.maxOutputTokens)
+                                        finish_reason = FinishReason.of(toolCalls.isNotEmpty(), usage.completionTokens, request.maxOutputTokens, finalStopped)
                                     )
                                 ),
                                 usage = usage.toUsage()

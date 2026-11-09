@@ -47,7 +47,8 @@ object OpenAIToolMapper {
             tools = tools,
             toolsKey = if (tools.isEmpty()) null else gson.toJson(request.tools),
             thinking = thinkingConfig(request.reasoning_effort),
-            responseFormat = responseFormat
+            responseFormat = responseFormat,
+            stopSequences = ChatRequestValidator.stopSequences(request.stop) ?: emptyList()
         )
     }
 
