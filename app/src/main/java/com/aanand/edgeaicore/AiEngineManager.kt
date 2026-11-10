@@ -107,8 +107,10 @@ class AiEngineManager(
         }
 
         // Inspect before the native engine is created: an unsupported file must not reach Engine.initialize().
+        val inspectStartedAt = System.nanoTime()
         val capabilities = modelInspector(modelPath)
         ModelInspector.validate(capabilities)
+        Log.d(TAG, "Model inspected in ${(System.nanoTime() - inspectStartedAt) / 1_000_000} ms")
 
         loadEngine(modelPath, backendType, capabilities, cacheDir, maxNumTokens, speculativeDecoding, visionOption, audioOption)
     }
@@ -116,7 +118,9 @@ class AiEngineManager(
     /** Closes the cached conversations and the engine and forgets the loaded model. Call inside [inferenceMutex]. */
     private fun releaseEngine() {
         conversationCache.clear()
+        val closeStartedAt = System.nanoTime()
         engine?.close()
+        Log.d(TAG, "Engine closed in ${(System.nanoTime() - closeStartedAt) / 1_000_000} ms")
         engine = null
         currentModelPath = null
         currentMaxNumTokens = null
@@ -498,9 +502,16 @@ class AiEngineManager(
         audioOption: EncoderBackendOption = EncoderBackendOption.AUTO
     ) {
         require(activeBackend == BackendFallbackPolicy.GPU) { "Only a GPU engine falls back to CPU" }
+        val startedAt = System.nanoTime()
+        fun elapsedMs() = (System.nanoTime() - startedAt) / 1_000_000
         // Under the inference lock, so no request is using the GPU engine while it is closed.
-        inferenceMutex.withLock { releaseEngine() }
+        inferenceMutex.withLock {
+            Log.d(TAG, "Fallback: lock acquired after ${elapsedMs()} ms")
+            releaseEngine()
+            Log.d(TAG, "Fallback: GPU engine released after ${elapsedMs()} ms")
+        }
         loadModel(modelPath, BackendFallbackPolicy.CPU, cacheDir, maxNumTokens, speculativeDecoding, visionOption, audioOption)
+        Log.d(TAG, "Fallback: CPU engine loaded after ${elapsedMs()} ms")
         fellBackFromGpu = true
     }
 

@@ -144,10 +144,8 @@ class InferenceService : Service() {
                         aiEngineManager.loadModel(modelPath, finalBackend, cacheDir.absolutePath, maxNumTokens, speculativeOption, visionOption, audioOption)
                     }
 
-                    // If we reached here, we didn't crash (Java-wise).
-                    // Update flag to false implies success or handled exception
-                    prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
-
+                    // The crash flag stays set through the readiness check: a GPU engine can load and still abort natively
+                    // on its first request, and a sticky restart must not retry it. It is cleared after the final check.
                     Log.d(TAG, "loadModel returned. Starting readiness verification...")
                     sendStatusBroadcast("Verifying model readiness...")
                     
@@ -160,9 +158,10 @@ class InferenceService : Service() {
                         sendStatusBroadcast("GPU unavailable, loading on CPU...")
                         markInitStarted(prefs)
                         withTimeout(300000) { aiEngineManager.fallBackToCpu(modelPath, cacheDir.absolutePath, maxNumTokens, speculativeOption, visionOption, audioOption) }
-                        prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
                         readinessError = verifyEngineReady()
                     }
+                    // Whatever the check found, the process survived the load and the first requests.
+                    prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
 
                     if (readinessError == null) {
                         val backendInUse = aiEngineManager.activeBackend ?: finalBackend
