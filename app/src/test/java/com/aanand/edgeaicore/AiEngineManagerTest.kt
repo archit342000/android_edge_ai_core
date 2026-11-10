@@ -926,6 +926,7 @@ class AiEngineManagerTest {
         val conversation = factory.engine.conversations[0]
         assertEquals(true, conversation.lastResponseFormat != null)
         assertEquals(true, conversation.lastThinking!!.enableThinking)
+        assertEquals(16384, conversation.lastThinking!!.thinkingTokenBudget)
         assertEquals(true, factory.engine.conversationConfigs[0].enableResponseFormat)
     }
 
@@ -1253,9 +1254,56 @@ class AiEngineManagerTest {
     }
 
     @Test
-    fun theReadinessPingHasNoLimits() = runTest {
+    fun theReadinessPingSucceedsWithoutLimits() = runTest {
         val manager = newManager(FakeEngineFactory())
         manager.loadModel(modelFile2(), "CPU")
         assertEquals(null, manager.verifyReady(attempts = 1, retryDelayMs = 0))
+    }
+
+    @Test
+    fun aFileRejectedByValidationKeepsTheRunningModel() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory) { path ->
+            if (path.endsWith("embedding.litertlm")) ModelCapabilities(ModelKind.EMBEDDING, supportsText = false, supportsVision = false, supportsAudio = false) else FULL_LLM
+        }
+        manager.loadModel(modelFile2(), "CPU")
+        val first = factory.engine
+        val other = File(tmp.root, "embedding.litertlm").also { it.writeText("x") }.absolutePath
+        try {
+            manager.loadModel(other, "CPU")
+            fail("expected UnsupportedModelException")
+        } catch (e: UnsupportedModelException) {
+            assertTrue(manager.isModelLoaded)
+            assertFalse(first.closed)
+            assertEquals(1, factory.configs.size) // no second engine was created
+            assertEquals(FULL_LLM, manager.modelCapabilities)
+        }
+    }
+
+    @Test
+    fun aDifferentBackendOrEncoderRequestReloadsTheSameModelButAnIdenticalOneDoesNot() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory)
+        val path = modelFile2()
+        manager.loadModel(path, "CPU")
+        manager.loadModel(path, "CPU")
+        assertEquals(1, factory.configs.size)
+        manager.loadModel(path, "GPU")
+        assertEquals(2, factory.configs.size)
+        manager.loadModel(path, "GPU", visionOption = EncoderBackendOption.CPU)
+        assertEquals(3, factory.configs.size)
+        manager.loadModel(path, "GPU", visionOption = EncoderBackendOption.CPU, audioOption = EncoderBackendOption.GPU)
+        assertEquals(4, factory.configs.size)
+    }
+
+    @Test
+    fun aReplyWithToolCallsIsNotCached() = runTest {
+        val factory = FakeEngineFactory(chunks = listOf("calling"), toolCalls = listOf(com.google.ai.edge.litertlm.ToolCall("f", emptyMap())))
+        val manager = newManager(factory)
+        manager.loadModel(modelFile2(), "CPU")
+        manager.request(listOf(userChat("one")))
+        assertTrue(factory.engine.conversations[0].closed)
+        manager.request(listOf(userChat("one"), assistantChat("calling"), userChat("two")))
+        assertEquals(2, factory.engine.conversations.size) // no cache hit
     }
 }

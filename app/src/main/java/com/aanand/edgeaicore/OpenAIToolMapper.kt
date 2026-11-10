@@ -168,7 +168,6 @@ object OpenAIToolMapper {
         }
     }
 
-    /** `none` turns thinking off, the other efforts turn it on without a budget, absent keeps the model's default. */
     private fun thinkingBudget(effort: String): Int = when (effort) {
         "minimal" -> BUDGET_MINIMAL
         "low" -> BUDGET_LOW
@@ -177,6 +176,10 @@ object OpenAIToolMapper {
         else -> -1
     }
 
+    /**
+     * `none` turns thinking off; the other efforts turn it on with a thinking-token budget (minimal 256, low 1024,
+     * medium 4096, high 16384, xhigh unlimited); absent keeps the model's default.
+     */
     fun thinkingConfig(effort: String?): ThinkingConfig? = when {
         effort == null -> null
         effort == "none" -> ThinkingConfig(enableThinking = false, thinkingTokenBudget = 0)

@@ -233,7 +233,7 @@ class OpenAIServer(
                             val toolCalls = mutableListOf<com.google.ai.edge.litertlm.ToolCall>()
 
                             // The generation is a child job so a client disconnect can cancel it (and with it native decoding).
-                            var clientGone = false
+                            val clientGone = java.util.concurrent.atomic.AtomicBoolean(false)
                             coroutineScope {
                                 val generation = launch(Dispatchers.IO) {
                                     aiEngineManager.generateConversationResponseAsync(
@@ -251,7 +251,7 @@ class OpenAIServer(
                                     )
                                 }
                                 val watcher = onClientGone(call) {
-                                    clientGone = true
+                                    clientGone.set(true)
                                     generation.cancel()
                                 }
                                 try {
@@ -260,7 +260,7 @@ class OpenAIServer(
                                     watcher?.dispose()
                                 }
                             }
-                            if (clientGone) {
+                            if (clientGone.get()) {
                                 Log.i(TAG, "Generation cancelled (client disconnected)")
                                 return@post
                             }

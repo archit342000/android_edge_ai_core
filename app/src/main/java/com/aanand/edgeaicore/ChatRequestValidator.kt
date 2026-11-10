@@ -44,7 +44,7 @@ object ChatRequestValidator {
             stop.isJsonArray -> stop.asJsonArray.toList()
             else -> return null
         }
-        if (values.isEmpty() || values.size > MAX_STOP_SEQUENCES) return null
+        if (values.size > MAX_STOP_SEQUENCES) return null
         val result = values.map { element ->
             if (!element.isJsonPrimitive || !element.asJsonPrimitive.isString) return null
             element.asString.also { if (it.isEmpty() || it.length > MAX_STOP_LENGTH) return null }

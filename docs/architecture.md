@@ -26,6 +26,8 @@ All sources are in `app/src/main/java/com/aanand/edgeaicore/`.
 | `OpenAIToolMapper` | Pure conversion between the OpenAI wire types and LiteRT-LM: tools (never run on the device), tool calls and tool results, `response_format`, `reasoning_effort`. Invalid input becomes a fixed-message `IllegalArgumentException`, which `OpenAIServer` returns as a 400. |
 | `SpeculativeDecodingOption` | The user's speculative decoding (MTP) setting (Off, On, Adaptive; default Adaptive) and its mapping to the LiteRT-LM mode; `AiEngineManager.loadModel` configures it only for models whose `ModelCapabilities.speculativeDecoding` is true (they ship a drafter). |
 | `EncoderBackendSelector` | Pure choice of the vision and audio encoder backends from what the model supports, the main backend and the user's Auto/CPU/GPU option (`EncoderBackendOption`); `AiEngineManager.activeEncoders` records the result, and `OpenAIServer` rejects image or audio input for a model without that encoder. |
+| `StopSequenceMatcher` | Pure matcher for the `stop` field: finds the earliest stop sequence in streamed answer text and holds back text that could still become one. |
+| `NettyDisconnect` | Tells a non-streaming route when the client's connection closes (a Netty `closeFuture` listener), so the generation can be cancelled. |
 | `LlmEngine` | `LlmEngine` and `LlmConversation` interfaces over the LiteRT-LM `Engine` and `Conversation`, plus the thin adapters and `createLiteRtEngine`. The seam that lets `AiEngineManager` be tested with a fake engine. |
 | `OpenAIServer` | Ktor `embeddedServer(Netty, port = 8080)` with the `/v1` routes and a root `/health`. Authenticates every request through an `isValidToken` function (`TokenManager.isValidToken`); `module()` installs JSON and the routes so route tests can host it. |
 | `OpenAIModels` | Gson data classes for requests, responses and `ErrorResponse`. The streaming chunk and model-list classes live at the bottom of `OpenAIServer.kt`. |
@@ -40,7 +42,8 @@ client app ──HTTP :8080──> OpenAIServer
    2. call.receive<ChatCompletionRequest>()                          (400 on parse error)
    3. SystemPromptSplitter: system/developer messages -> the system instruction (400 if no other message is left);
       new transient ConversationState(ttlMs = 0, random UUID, systemInstruction)
-   3a. more than 4 held requests -> 503 Server busy; 4. AiEngineManager.generateConversationResponseAsync(state, messages, onToken, onComplete(text, usage, stopped), onError)
+   3a. more than 4 held requests -> 503 Server busy
+   4. AiEngineManager.generateConversationResponseAsync(state, messages, onToken, onComplete(text, usage, stopped), onError)
       (waits at most 120 s for the engine lock -> 503; a generation over 10 min is stopped -> 504)
       (usage = prompt/completion/cached token counts read from the engine; if they cannot be read the request fails with "Token usage unavailable")
    5. stream=true  -> SSE chunks "data: {...}\n\n" ... "data: [DONE]"
@@ -51,14 +54,14 @@ client app ──HTTP :8080──> OpenAIServer
 `OpenAIServer` does not use `ConversationManager`. The REST API stays stateless: a request carries the whole history. `AiEngineManager` keeps the engine
 conversation of a finished request in `ConversationCache`; when the next request has the same settings and its messages before the last one are exactly
 what that conversation holds (including the reply, matched as exact text), it reuses the conversation and prefills only the new message. Any other
-request builds a new conversation from `messages[:-1]`. A conversation that failed, was cancelled or produced no text is closed, never cached.
+request builds a new conversation from `messages[:-1]`. A conversation that failed, was cancelled, produced no text, ended on a stop sequence or made tool calls is closed, never cached.
 
 ## Ownership and lifecycle
 
 - `MainActivity` starts `InferenceService` with `EXTRA_MODEL_PATH` and `EXTRA_BACKEND`. Stop sends `ACTION_STOP`, which clears the service prefs, deletes all conversations and stops the server.
 - `InferenceService.onCreate` builds `TokenManager`, `ConversationManager` and `OpenAIServer`.
   `onStartCommand` starts the server, goes foreground, loads the model and returns `START_STICKY`.
-  On a sticky restart it restores the model path from `inference_service_prefs`, and refuses to start if `crashed_during_init` is set (the flag spans the model load and the readiness check, including a GPU to CPU fallback). A model rejected as unsupported clears the saved path (pitfall 21).
+  On a sticky restart it restores the model path from `inference_service_prefs`, and refuses to start if `crashed_during_init` is set (the flag spans the model load and the readiness check, including a GPU to CPU fallback). A model rejected as unsupported clears the saved path only when no model was running; otherwise the running model's settings are kept (pitfall 21).
 - `InferenceService` alone owns `ConversationManager` (create, `deleteAllConversations`, `shutdown`).
 - `onDestroy` cancels coroutines, shuts down conversations, stops the server (which cancels running generations) and then closes the engine under the inference lock (`AiEngineManager.closeWhenIdle`, waits at most 2 s). Tokens survive restarts.
 

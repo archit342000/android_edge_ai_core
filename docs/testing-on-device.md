@@ -100,7 +100,7 @@ Install with `adb install -r <apk>` (USB or wireless debugging), or copy the APK
 
 ## Verified behaviour
 
-Checked on 2026-11-10 on the merged engine branches: the emulator (`claude_edgeaicore_api34`, Gemma 4 E2B and Gemma 3n on CPU) and a Pixel 9 Pro XL (Tensor G4, debug build, Gemma 4 E2B). Process kills use `run-as <package> kill -9`, which triggers the sticky restart.
+Checked on 2026-11-10 on the engine upgrade branches (the stacked PRs from the integration branch up to this one): the emulator (`claude_edgeaicore_api34`, Gemma 4 E2B and Gemma 3n on CPU) and a Pixel 9 Pro XL (Tensor G4, debug build, Gemma 4 E2B). Process kills use `run-as <package> kill -9`, which triggers the sticky restart.
 
 | Check | Emulator | Phone |
 |-------|----------|-------|

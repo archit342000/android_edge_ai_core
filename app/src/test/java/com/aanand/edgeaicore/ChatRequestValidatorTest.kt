@@ -94,8 +94,8 @@ class ChatRequestValidatorTest {
     fun stopMustBeAStringOrUpToFourBoundedStrings() {
         val gson = com.google.gson.Gson()
         fun stop(json: String) = ChatRequestValidator.validate(request().copy(stop = gson.fromJson(json, com.google.gson.JsonElement::class.java)))
-        for (ok in listOf("\"END\"", "[\"a\"]", "[\"a\",\"b\",\"c\",\"d\"]", "null")) assertNull(ok, stop(ok))
+        for (ok in listOf("\"END\"", "[\"a\"]", "[]", "\"${"x".repeat(64)}\"", "[\"a\",\"b\",\"c\",\"d\"]", "null")) assertNull(ok, stop(ok))
         val message = "stop must be a string or up to 4 strings of 1 to 64 characters"
-        for (bad in listOf("\"\"", "[]", "[\"a\",\"b\",\"c\",\"d\",\"e\"]", "\"${"x".repeat(65)}\"", "5", "[1]", "{}", "[\"\"]")) assertEquals(bad, message, stop(bad))
+        for (bad in listOf("\"\"", "[\"a\",\"b\",\"c\",\"d\",\"e\"]", "\"${"x".repeat(65)}\"", "5", "[1]", "{}", "[\"\"]")) assertEquals(bad, message, stop(bad))
     }
 }

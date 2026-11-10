@@ -42,7 +42,7 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 | `tool_choice` | `"auto"` (offer the tools) or `"none"` (answer in text); anything else is a 400 | `"auto"` |
 | `response_format` | `{type: "text"}`, `{type: "json_object"}` or `{type: "json_schema", json_schema: {name, schema}}` (schema object up to 16 KB); constrained decoding | none |
 | `reasoning_effort` | `none` turns thinking off; `minimal`, `low`, `medium`, `high`, `xhigh` turn it on with a thinking-token budget of 256, 1024, 4096, 16384 or unlimited (advisory: Gemma 4 E2B on CPU produced the same amount of thinking for `low` and `xhigh`) | the model's default |
-| `stop` | a string, or a list of 1 to 4 strings, each 1 to 64 characters; the answer ends before the first match and never contains it (`finish_reason: "stop"`). Applies to the answer text only, not to reasoning or tool calls. `usage` may count a few tokens past the match. Anything else is a 400 | none |
+| `stop` | a string, or a list of 1 to 4 strings, each 1 to 64 characters (UTF-16 units); an empty list means none; the answer ends before the first match and never contains it (`finish_reason: "stop"`). Applies to the answer text only, not to reasoning or tool calls. `usage` may count a few tokens past the match. Anything else is a 400 | none |
 | `n` | must be `1` (or absent); anything else is a 400 | `1` |
 | `stream_options` | `{"include_usage": boolean}`; with `stream: true`, `include_usage: true` adds a final usage chunk | none |
 
@@ -71,7 +71,7 @@ the context from `messages`. The response never depends on whether the cache was
 ## Responses
 
 Non-streaming: `ChatCompletionResponse` with `id` `chatcmpl-<uuid>`, `object` `chat.completion`, `created` (seconds), one `choices[0]`
-with `message.role = "assistant"` and `finish_reason = "stop"` (`"length"` when the reply reached `max_tokens`/`max_completion_tokens`; `"tool_calls"` when the model called a tool, then `content` is omitted when empty and
+with `message.role = "assistant"` and `finish_reason = "stop"` (`"length"` when the number of generated tokens reached `max_tokens`/`max_completion_tokens`, which also marks a reply that ended naturally on exactly the cap; `"tool_calls"` when the model called a tool, then `content` is omitted when empty and
 `message.tool_calls` is set), `message.reasoning_content` when thinking produced text (separate from `content`), and `usage`: `prompt_tokens`, `completion_tokens`, `total_tokens`
 and `prompt_tokens_details.cached_tokens` (prompt tokens already in the conversation's KV cache; they are included in `prompt_tokens`).
 The counts come from the engine (LiteRT-LM benchmark info), not from re-tokenising text. If the engine cannot report them the response is `500 {"error": "Token usage unavailable"}`.
@@ -84,7 +84,7 @@ data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":...,"model
 data: [DONE]
 ```
 
-Streams end with a chunk with an empty `delta` and `finish_reason` `"stop"` (or `"tool_calls"`) before the optional usage chunk and `[DONE]`. Thinking text arrives as `delta.reasoning_content`
+Streams end with a chunk with an empty `delta` and `finish_reason` `"stop"` (`"length"` or `"tool_calls"` as for non-streaming replies) before the optional usage chunk and `[DONE]`. Thinking text arrives as `delta.reasoning_content`
 chunks, and tool calls as one `delta.tool_calls` chunk (each with `index`, `id`, `function`).
 
 With `stream_options.include_usage: true` the last event before `[DONE]` is a chunk with `"choices": []` and the `usage` object; without it no
@@ -107,7 +107,7 @@ The context size set in the app is clamped to the model's maximum when the model
 | `400` | body cannot be read (malformed JSON, wrong types, missing `messages` or `role`, empty body, wrong content type): fixed message `Invalid request body`, never the input or an exception text; a field is out of range (see Chat request), an `image_url` part for a model without a vision encoder or an `audio_url` part for a model without an audio encoder (`Model does not support image input` / `... audio input`), the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
 | `401` | missing or invalid token |
 | `500` | the engine reported an error, returned no text (non-streaming), or its token usage could not be read (`Token usage unavailable`) |
-| `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`); or `Server busy` on chat (more than 4 requests held at once, refused at once, or a request waited more than 120 s for the engine), with `Retry-After: 5` |
+| `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`); or `Server busy` on chat (more than 4 requests held at once, refused at once, or a request waited more than 120 s for the engine), with `Retry-After: 5`; on a stream only the refused-at-once case is a real 503, a queue-wait timeout arrives as a `data: {"error": "Server busy"}` event without `[DONE]` (the 200 had already started) |
 | `504` | `Generation timed out`: one generation ran for 10 minutes and was stopped (on a stream: a `data: {"error": ...}` event without `[DONE]`) |
 
 All error bodies are `ErrorResponse` (`{"error": "<message>"}`).
