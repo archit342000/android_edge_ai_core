@@ -85,15 +85,25 @@ class FakeConversation(
             return
         }
         thinking?.let { callback.onMessage(Message.model(Contents.of(emptyList<Content>()), emptyList(), mapOf("thought" to it))) }
-        chunks.forEach { callback.onMessage(Message.model(Contents.of(Content.Text(it)))) }
-        if (toolCalls.isNotEmpty()) callback.onMessage(Message.model(Contents.of(emptyList<Content>()), toolCalls))
-        callback.onDone()
+        for (chunk in chunks) {
+            if (stopEmitting) break
+            callback.onMessage(Message.model(Contents.of(Content.Text(chunk))))
+        }
+        if (toolCalls.isNotEmpty() && !stopEmitting) callback.onMessage(Message.model(Contents.of(emptyList<Content>()), toolCalls))
+        // A cancel during the reply ends it with a cancellation error (like the native engine) or, in the other mode, normally.
+        if (stopEmitting && endWithErrorOnCancel) callback.onError(kotlinx.coroutines.CancellationException("cancelled")) else callback.onDone()
     }
 
     var cancelCount = 0
 
+    /** True after [cancelProcess] interrupted a reply that was being emitted; no more chunks follow. */
+    @Volatile var stopEmitting = false
+    /** When true a cancel during the reply ends it with an error, otherwise with a normal done. */
+    @Volatile var endWithErrorOnCancel = false
+
     override fun cancelProcess() {
         cancelCount++
+        if (pending == null) stopEmitting = true
         pending?.onError(kotlinx.coroutines.CancellationException("cancelled"))
         pending = null
     }
@@ -117,6 +127,8 @@ class FakeEngine(
     @Volatile var onCreateConversation: (() -> Unit)? = null
     /** Passed to conversations created from now on (see [FakeConversation]). */
     @Volatile var onSendMessage: (() -> Unit)? = null
+    /** Passed to conversations created from now on: how a cancel during their reply ends it. */
+    @Volatile var endWithErrorOnCancel = false
     val conversations = java.util.concurrent.CopyOnWriteArrayList<FakeConversation>()
     /** The config of every conversation created, in order. */
     val conversationConfigs = java.util.concurrent.CopyOnWriteArrayList<ConversationConfig>()
@@ -128,7 +140,7 @@ class FakeEngine(
         conversationConfigs.add(config)
         conversationSeeds.add(config.samplerConfig?.seed ?: 0)
         onCreateConversation?.invoke()
-        return FakeConversation(chunks, failure, hangUntilCancelled, onSendMessage, counts, usageFailure, toolCalls, thinking).also { conversations.add(it) }
+        return FakeConversation(chunks, failure, hangUntilCancelled, onSendMessage, counts, usageFailure, toolCalls, thinking).also { it.endWithErrorOnCancel = endWithErrorOnCancel; conversations.add(it) }
     }
 
     override fun close() {

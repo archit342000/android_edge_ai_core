@@ -42,6 +42,7 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 | `tool_choice` | `"auto"` (offer the tools) or `"none"` (answer in text); anything else is a 400 | `"auto"` |
 | `response_format` | `{type: "text"}`, `{type: "json_object"}` or `{type: "json_schema", json_schema: {name, schema}}` (schema object up to 16 KB); constrained decoding | none |
 | `reasoning_effort` | `none` turns thinking off; `minimal`, `low`, `medium`, `high`, `xhigh` turn it on with a thinking-token budget of 256, 1024, 4096, 16384 or unlimited (advisory: Gemma 4 E2B on CPU produced the same amount of thinking for `low` and `xhigh`) | the model's default |
+| `stop` | a string, or a list of 1 to 4 strings, each 1 to 64 characters; the answer ends before the first match and never contains it (`finish_reason: "stop"`). Applies to the answer text only, not to reasoning or tool calls. `usage` may count a few tokens past the match. Anything else is a 400 | none |
 | `n` | must be `1` (or absent); anything else is a 400 | `1` |
 | `stream_options` | `{"include_usage": boolean}`; with `stream: true`, `include_usage: true` adds a final usage chunk | none |
 
@@ -94,7 +95,7 @@ If the client disconnects mid-stream, or while a non-streaming answer is being g
 
 ## Unsupported or ignored
 
-Accepted but ignored (clients such as the OpenAI SDKs send them by default): `stop` (no stop sequences), `logit_bias`, `parallel_tool_calls` (the server returns every call the model emits).
+Accepted but ignored (clients such as the OpenAI SDKs send them by default): `logit_bias`, `parallel_tool_calls` (the server returns every call the model emits).
 Not supported: `n` other than 1 (400), `tool_choice` naming a function (400: the engine cannot force a call), `regex` response formats, `reasoning_tokens` in `usage` (the engine gives no thinking count),
 request timeouts and queue limits (requests wait for the inference lock without a limit).
 `json_schema` output may contain properties the schema does not list unless the schema sets `additionalProperties: false`.
