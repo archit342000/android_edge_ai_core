@@ -54,9 +54,9 @@ boot about 30 s, build and install a few seconds, model copy about 70 s for 3.6 
 | Backend | Emulator | Phone |
 |---------|----------|-------|
 | CPU | works | works |
-| GPU | no OpenCL: the service falls back to CPU (`Model loaded successfully (CPU, GPU unavailable)`, health `backend: CPU`, about 2 min) | test on the phone |
-| NPU | fails unless the model is built for the device's NPU | test on the phone |
-| Vision input | runs on the encoder backend the model lists (Auto follows the main backend; see the model table) | test GPU on the phone |
+| GPU | no OpenCL: the service falls back to CPU (`Model loaded successfully (CPU, GPU unavailable)`, health `backend: CPU`, 12 to 27 s) | works (Pixel 9 Pro XL, Gemma 4 E2B: engine ready in 12 to 49 s, no fallback, vision on GPU, audio on CPU) |
+| NPU | fails unless the model is built for the device's NPU | Gemma 4 E2B (not NPU-built) fails with a handled "Failed to initialize"; the process survives and `crashed_during_init` stays false. No NPU-built model was available, so NPU success and NPU-only encoders are untested |
+| Vision input | runs on the encoder backend the model lists (Auto follows the main backend; see the model table) | GPU vision answered (a red image gave "Red") |
 
 Models: text-only and multimodal `.litertlm` models load (encoders only when the model has them, see `docs/pitfalls.md`). Known results with LiteRT-LM `0.19.1` (CPU, emulator):
 
@@ -79,7 +79,7 @@ Speculative decoding (MTP, `SPEC=OFF|ON|ADAPTIVE scripts/device.sh start`; the a
 | On | 33.0 | 1.62 GB |
 | Adaptive | 32.2 | 1.63 GB |
 
-Phone GPU/CPU numbers are not measured yet.
+MTP decode speed on the phone was waived by the owner and is not measured.
 
 `litert-community` Gemma 3 and 3n repositories on Hugging Face are gated (licence acceptance and login); Gemma 4 and Qwen are not.
 
@@ -97,3 +97,20 @@ uninstall the release first, which deletes its tokens and models.
 | Release | see `docs/release.md` (Android Studio or CLI signing) | `app/release/` or `app/build/outputs/apk/release/` | yes, if signed with the release key |
 
 Install with `adb install -r <apk>` (USB or wireless debugging), or copy the APK to the phone and open it.
+
+## Verified behaviour
+
+Checked on 2026-11-10 on the merged engine branches: the emulator (`claude_edgeaicore_api34`, Gemma 4 E2B and Gemma 3n on CPU) and a Pixel 9 Pro XL (Tensor G4, debug build, Gemma 4 E2B). Process kills use `run-as <package> kill -9`, which triggers the sticky restart.
+
+| Check | Emulator | Phone |
+|-------|----------|-------|
+| Context size, MTP and encoder settings survive a process kill | restored (MTP off, vision CPU, context passed) | restored (`maxNumTokens=2048`, MTP off, vision CPU) |
+| Sticky restart after a rejected model while a model runs | previous model restored, flag false, health ok | same |
+| Cached tokens on a reused conversation | `cached_tokens` 320 then 339 (usage run) | 17 on turn 2 (GPU) |
+| `enableBenchmark` latency cost | no measurable overhead (measured earlier) | not repeated |
+| Non-streaming client disconnect | generation stopped in 46 to 88 ms, load 0 | stopped in 81 ms, load 0 |
+| Client drops during a long prefill (5 times) | no cancel logged, load 0, next request 200 (the drop is noticed only at the first token write, pitfall 27) | same; the cancel wait expiry (2 s) was never reached |
+| Memory, 2 cached conversations, MTP adaptive | 1.8 GB PSS (CPU) | 3.67 GB PSS (2.6 GB graphics), GPU |
+| GPU to CPU fallback | triggered, 12 to 27 s | not reachable: the phone GPU works |
+| Gemma 3n image request with vision on GPU, main CPU | answered; the log shows only the XNNPACK (CPU) delegate and no OpenCL error | not run |
+| NPU | not applicable | fails cleanly with a non-NPU model (see the backend table) |
