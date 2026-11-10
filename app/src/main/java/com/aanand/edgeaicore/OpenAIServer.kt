@@ -13,6 +13,7 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.header
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondTextWriter
@@ -76,7 +77,7 @@ class OpenAIServer(
 
                     activeRequests.incrementAndGet()
                     try {
-                        val request = call.receive<ChatCompletionRequest>()
+                        val request = receiveChatRequest(call)
                         // Media input needs an encoder; a model without one gets a fixed 400 instead of a native failure
                         val encoders = aiEngineManager.activeEncoders
                         val unsupportedInput = when {
@@ -263,6 +264,10 @@ class OpenAIServer(
 
                     } catch (e: CancellationException) {
                         throw e
+                    } catch (e: InvalidRequestBodyException) {
+                        // Never the exception message: it can name internal classes or echo the input.
+                        Log.w(TAG, "Rejected request body: ${e.causeClass}")
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse(INVALID_BODY_MESSAGE))
                     } catch (e: Exception) {
                         Log.e(TAG, "Error processing request", e)
                         call.respond(HttpStatusCode.BadRequest, ErrorResponse("Bad Request: ${e.message}"))
@@ -347,8 +352,36 @@ class OpenAIServer(
         }
     }
 
+    /** The request body could not be read as a chat request; carries only the class name of the cause. */
+    private class InvalidRequestBodyException(val causeClass: String) : Exception(INVALID_BODY_MESSAGE)
+
+    /**
+     * Reads the chat request. Anything that goes wrong (malformed JSON, wrong types, an empty body, a wrong content
+     * type) or a missing required field (Gson leaves a non-null Kotlin property null) becomes [InvalidRequestBodyException].
+     */
+    private suspend fun receiveChatRequest(call: ApplicationCall): ChatCompletionRequest {
+        try {
+            val request = call.receive<ChatCompletionRequest>()
+            // Gson can leave these null although the types say otherwise
+            val messages: List<ChatMessage?>? = request.messages
+            if (messages == null || messages.any { it == null || (it.role as String?) == null }) {
+                throw InvalidRequestBodyException("MissingField")
+            }
+            return request
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: InvalidRequestBodyException) {
+            throw e
+        } catch (e: Exception) {
+            throw InvalidRequestBodyException(e.javaClass.simpleName)
+        }
+    }
+
     companion object {
         private const val TAG = "OpenAIServer"
+
+        /** The only text a client sees when the request body cannot be read. */
+        const val INVALID_BODY_MESSAGE = "Invalid request body"
 
         /** Model id echoed back when the request names none. */
         private const val DEFAULT_MODEL_ID = "litertlm-model"

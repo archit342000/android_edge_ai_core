@@ -564,4 +564,42 @@ class OpenAIServerTest {
         assertTrue(response.bodyAsText().contains("n must be 1"))
         awaitLoadZero()
     }
+
+    @Test
+    fun anyUnreadableBodyGivesTheFixed400AndTheLoadCounterReturnsToZero() = withServer(loadedManager()) {
+        val user = """{"role":"user","content":"hi"}"""
+        val bodies = listOf(
+            "not json", "{", "", """{"seed":1.5,"messages":[$user]}""", """{"max_tokens":"abc","messages":[$user]}""",
+            """{"max_tokens":99999999999,"messages":[$user]}""", """{"stream":true}""", """{}""", """{"messages":[null]}""",
+            """{"stream":true,"messages":[null]}""", """{"messages":[{"content":"no role"}]}""", """{"stream":true,"messages":"nope"}"""
+        )
+        for (body in bodies) {
+            val response = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody(body)
+            }
+            assertEquals(body, HttpStatusCode.BadRequest, response.status)
+            assertEquals(body, """{"error":"Invalid request body"}""", response.bodyAsText().replace(" ", "").replace("\n", "").replace("Invalidrequestbody", "Invalid request body"))
+        }
+        val plain = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "text/plain")
+            setBody("""{"messages":[$user]}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, plain.status)
+        assertTrue(plain.bodyAsText().contains("Invalid request body"))
+        awaitLoadZero()
+    }
+
+    @Test
+    fun anAssistantTurnWithToolCallsAndNoContentIsStillAccepted() = withServer(loadedManager()) {
+        val body = """{"messages":[{"role":"user","content":"weather?"},{"role":"assistant","tool_calls":[{"id":"call_1","function":{"name":"f","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_1","content":"sunny"}]}"""
+        val response = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(body)
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+    }
 }
