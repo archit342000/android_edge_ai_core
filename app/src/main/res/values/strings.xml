@@ -16,6 +16,19 @@
     <string name="backend_cpu">CPU</string>
     <string name="backend_gpu">GPU</string>
     <string name="backend_npu">NPU</string>
+    <string name="context_size_title">Context size (tokens)</string>
+    <string name="context_size_hint">Empty = model default</string>
+    <string name="context_size_help">Memory used for the conversation (input plus output tokens). Smaller values use less memory; applied the next time the server starts.</string>
+    <string name="context_size_invalid">Enter a whole number greater than 0, or leave empty</string>
+    <string name="speculative_title">Speculative decoding (MTP)</string>
+    <string name="speculative_help">Faster generation for models that include a drafter (for example Gemma 4). Adaptive uses it only while it is faster. Applied the next time the server starts.</string>
+    <string name="speculative_off">Off</string>
+    <string name="speculative_on">On</string>
+    <string name="speculative_adaptive">Adaptive (recommended)</string>
+    <string name="encoder_vision_title">Vision encoder</string>
+    <string name="encoder_audio_title">Audio encoder</string>
+    <string name="encoder_help">Backend for the image or audio part of multimodal models. Auto follows the backend above. Models without that encoder ignore it. Applied the next time the server starts.</string>
+    <string name="encoder_auto">Auto</string>
     <string name="logs_label">Logs:</string>
     <string name="notification_channel_id">inference_channel</string>
     <string name="notification_channel_name">Inference Service</string>

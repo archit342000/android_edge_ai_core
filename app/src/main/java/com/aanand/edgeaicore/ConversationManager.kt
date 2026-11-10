@@ -26,7 +26,8 @@ data class ConversationState(
     val createdAt: Long = System.currentTimeMillis(),
     var temperature: Double = 0.8,
     var topP: Double = 0.95,
-    var topK: Int = 40
+    var topK: Int = 40,
+    var seed: Int = 0
 ) {
     fun isExpired(): Boolean {
         // Check if the conversation has exceeded its TTL since the last access
@@ -44,8 +45,7 @@ data class ConversationState(
 class ConversationManager(
     private val context: Context? = null,
     private val defaultTtlMs: Long = DEFAULT_TTL_MS,
-    private val cleanupIntervalMs: Long = CLEANUP_INTERVAL_MS,
-    private val onConversationRemoved: ((String) -> Unit)? = null
+    private val cleanupIntervalMs: Long = CLEANUP_INTERVAL_MS
 ) {
     private val conversations = ConcurrentHashMap<String, ConversationState>()
     private var cleanupJob: Job? = null
@@ -177,7 +177,6 @@ class ConversationManager(
     private fun removeConversation(conversationId: String): Boolean {
         val state = conversations.remove(conversationId)
         if (state != null) {
-            onConversationRemoved?.invoke(conversationId)
             deletePersistentConversation(conversationId)
             Log.i(TAG, "Removed conversation: ${conversationId.take(8)}...")
             return true
@@ -201,13 +200,8 @@ class ConversationManager(
     fun deleteAllConversations() {
         Log.i(TAG, "Executing full conversation wipe (Manual Shutdown)")
         
-        // 1. Clear memory and notify engine
-        conversations.keys.toList().forEach { id ->
-            val state = conversations.remove(id)
-            if (state != null) {
-                onConversationRemoved?.invoke(id)
-            }
-        }
+        // 1. Clear memory
+        conversations.clear()
         
         // 2. Synchronously wipe disk storage
         storageDir?.listFiles()?.forEach { file ->

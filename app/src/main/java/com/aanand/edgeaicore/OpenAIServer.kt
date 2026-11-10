@@ -20,10 +20,14 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
+import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -73,122 +77,197 @@ class OpenAIServer(
                     activeRequests.incrementAndGet()
                     try {
                         val request = call.receive<ChatCompletionRequest>()
+                        // Media input needs an encoder; a model without one gets a fixed 400 instead of a native failure
+                        val encoders = aiEngineManager.activeEncoders
+                        val unsupportedInput = when {
+                            aiEngineManager.isModelLoaded && MessageParts.hasImage(request.messages) && !encoders.supportsImages -> "Model does not support image input"
+                            aiEngineManager.isModelLoaded && MessageParts.hasAudio(request.messages) && !encoders.supportsAudio -> "Model does not support audio input"
+                            else -> null
+                        }
+                        if (unsupportedInput != null) {
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse(unsupportedInput))
+                            return@post
+                        }
+                        val validationError = ChatRequestValidator.validate(request)
+                        if (validationError != null) {
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse(validationError))
+                            return@post
+                        }
+                        // Tools, response format, reasoning effort and tool messages: invalid input is a fixed 400
+                        val chatOptions = try {
+                            OpenAIToolMapper.prepare(request)
+                        } catch (e: IllegalArgumentException) {
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse(e.message ?: "Invalid request"))
+                            return@post
+                        }
+                        val options = GenerationOptions(
+                            maxOutputTokens = request.maxOutputTokens,
+                            presencePenalty = request.presence_penalty?.toFloat(),
+                            frequencyPenalty = request.frequency_penalty?.toFloat()
+                        )
                         val conversationId = UUID.randomUUID().toString()
+
+                        // System messages become the system instruction; the rest are the conversation turns.
+                        val (systemInstruction, turns) = SystemPromptSplitter.split(request.messages)
+                        if (turns.isEmpty()) {
+                            call.respond(HttpStatusCode.BadRequest, ErrorResponse("messages must include a non-system message"))
+                            return@post
+                        }
 
                         // Create transient state for this request
                         val state = ConversationState(
                             conversationId = conversationId,
                             apiToken = token!!,
                             ttlMs = 0, // Transient
+                            systemInstruction = systemInstruction,
                             temperature = request.temperature ?: 0.8,
                             topP = request.top_p ?: 0.95,
-                            topK = request.top_k ?: 40
+                            topK = request.top_k ?: 40,
+                            seed = request.seed ?: 0
                         )
 
                         if (request.stream == true) {
-                            call.respondTextWriter(contentType = ContentType.Text.EventStream) {
-                                val channel = Channel<String>(Channel.UNLIMITED)
+                            try {
+                                call.respondTextWriter(contentType = ContentType.Text.EventStream) {
+                                    val channel = Channel<String>(Channel.UNLIMITED)
+                                    // Updated from the engine's callback thread, read when the reply completes
+                                    val streamedToolCalls = java.util.concurrent.atomic.AtomicInteger()
+                                    val gson = GsonBuilder().create()
+                                    fun sendDelta(delta: ChunkDelta, finishReason: String? = null) {
+                                        val chunk = ChatCompletionChunk(
+                                            id = "chatcmpl-${UUID.randomUUID()}",
+                                            created = System.currentTimeMillis() / 1000,
+                                            model = request.model ?: DEFAULT_MODEL_ID,
+                                            choices = listOf(ChunkChoice(index = 0, delta = delta, finish_reason = finishReason))
+                                        )
+                                        channel.trySend("data: ${gson.toJson(chunk)}\n\n")
+                                    }
 
-                                // Launch inference in a separate coroutine
-                                CoroutineScope(Dispatchers.IO).launch {
-                                    try {
-                                        aiEngineManager.generateConversationResponseAsync(
-                                            state = state,
-                                            messages = request.messages,
-                                            onToken = { token ->
-                                                val chunk = ChatCompletionChunk(
-                                                    id = "chatcmpl-${UUID.randomUUID()}",
-                                                    created = System.currentTimeMillis() / 1000,
-                                                    model = request.model ?: "litertlm-model",
-                                                    choices = listOf(
-                                                        ChunkChoice(
-                                                            index = 0,
-                                                            delta = ChunkDelta(content = token),
-                                                            finish_reason = null
-                                                        )
-                                                    )
+                                    // The generation job is a child of this call: a failed write cancels it, which
+                                    // cancels native decoding (AiEngineManager) and frees the inference lock.
+                                    coroutineScope {
+                                        val job = launch(Dispatchers.IO) {
+                                            try {
+                                                aiEngineManager.generateConversationResponseAsync(
+                                                    state = state,
+                                                    messages = turns,
+                                                    chatOptions = chatOptions,
+                                                    onReasoning = { sendDelta(ChunkDelta(reasoning_content = it)) },
+                                                    onToolCalls = { calls ->
+                                                        val mapped = OpenAIToolMapper.toOpenAiToolCalls(calls)
+                                                            .map { it.copy(index = streamedToolCalls.getAndIncrement()) }
+                                                        sendDelta(ChunkDelta(tool_calls = mapped))
+                                                    },
+                                                    onToken = { token -> sendDelta(ChunkDelta(content = token)) },
+                                                    onComplete = { _, usage ->
+                                                        sendDelta(ChunkDelta(), if (streamedToolCalls.get() > 0) "tool_calls" else "stop")
+                                                        if (request.stream_options?.include_usage == true) {
+                                                            val usageChunk = ChatCompletionChunk(
+                                                                id = "chatcmpl-${UUID.randomUUID()}",
+                                                                created = System.currentTimeMillis() / 1000,
+                                                                model = request.model ?: DEFAULT_MODEL_ID,
+                                                                choices = emptyList(),
+                                                                usage = usage.toUsage()
+                                                            )
+                                                            channel.trySend("data: ${GsonBuilder().create().toJson(usageChunk)}\n\n")
+                                                        }
+                                                        channel.trySend("data: [DONE]\n\n")
+                                                        channel.close()
+                                                    },
+                                                    onErrorCallback = { error ->
+                                                        // A cancel is a client disconnect, not an error to send.
+                                                        if (error !is CancellationException) {
+                                                            Log.e(TAG, "Streaming error", error)
+                                                            val errorJson = GsonBuilder().create().toJson(ErrorResponse(error.message ?: "Unknown error"))
+                                                            channel.trySend("data: $errorJson\n\n")
+                                                        }
+                                                        channel.close()
+                                                    },
+                                                    options = options
                                                 )
-                                                val json = GsonBuilder().create().toJson(chunk)
-                                                channel.trySend("data: $json\n\n")
-                                            },
-                                            onComplete = {
-                                                channel.trySend("data: [DONE]\n\n")
-                                                channel.close()
-                                                activeRequests.decrementAndGet()
-                                            },
-                                            onErrorCallback = { error ->
-                                                Log.e(TAG, "Streaming error", error)
-                                                val errorJson = GsonBuilder().create().toJson(ErrorResponse(error.message ?: "Unknown error"))
+                                            } catch (e: CancellationException) {
+                                                throw e
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "Streaming launch error", e)
+                                                val errorJson = GsonBuilder().create().toJson(ErrorResponse(e.message ?: "Unknown error"))
                                                 channel.trySend("data: $errorJson\n\n")
                                                 channel.close()
-                                                activeRequests.decrementAndGet()
                                             }
-                                        )
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Streaming launch error", e)
-                                        channel.close()
-                                        activeRequests.decrementAndGet()
+                                        }
+
+                                        // Write to the response stream
+                                        OpenAIServer.forwardChunks(channel, job) { msg ->
+                                            write(msg)
+                                            flush()
+                                        }
                                     }
                                 }
-
-                                // Write to the response stream
-                                for (msg in channel) {
-                                    write(msg)
-                                    flush()
-                                }
+                            } catch (e: IOException) {
+                                // The connection failed; a failed write is already handled (and logged) by forwardChunks.
+                                Log.d(TAG, "Streaming response closed after an I/O error")
                             }
                         } else {
                             var finalResponse: String? = null
+                            var finalUsage: TokenUsage? = null
                             var errorOccurred: Throwable? = null
+                            val reasoning = StringBuilder()
+                            val toolCalls = mutableListOf<com.google.ai.edge.litertlm.ToolCall>()
 
-                            try {
-                                // Call the engine
-                                aiEngineManager.generateConversationResponseAsync(
-                                    state = state,
-                                    messages = request.messages,
-                                    onToken = { /* No-op for non-streaming */ },
-                                    onComplete = { finalResponse = it },
-                                    onErrorCallback = { errorOccurred = it }
-                                )
+                            // Call the engine
+                            aiEngineManager.generateConversationResponseAsync(
+                                state = state,
+                                messages = turns,
+                                onToken = { /* No-op for non-streaming */ },
+                                onComplete = { text, usage -> finalResponse = text; finalUsage = usage },
+                                onErrorCallback = { errorOccurred = it },
+                                options = options,
+                                chatOptions = chatOptions,
+                                onReasoning = { reasoning.append(it) },
+                                onToolCalls = { toolCalls.addAll(it) }
+                            )
 
-                                if (errorOccurred != null) {
-                                    Log.e(TAG, "Inference failed", errorOccurred)
-                                    call.respond(HttpStatusCode.InternalServerError, ErrorResponse(errorOccurred?.message ?: "Unknown error"))
-                                    return@post
-                                }
-
-                                if (finalResponse == null) {
-                                    call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Empty response from model"))
-                                    return@post
-                                }
-
-                                val response = ChatCompletionResponse(
-                                    id = "chatcmpl-${UUID.randomUUID()}",
-                                    created = System.currentTimeMillis() / 1000,
-                                    model = request.model ?: "litertlm-model",
-                                    choices = listOf(
-                                        Choice(
-                                            index = 0,
-                                            message = ChatMessageResponse(
-                                                role = "assistant",
-                                                content = finalResponse!!
-                                            ),
-                                            finish_reason = "stop"
-                                        )
-                                    ),
-                                    usage = Usage(0, 0, 0)
-                                )
-
-                                call.respond(response)
-                            } finally {
-                                activeRequests.decrementAndGet()
+                            if (errorOccurred != null) {
+                                Log.e(TAG, "Inference failed", errorOccurred)
+                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse(errorOccurred?.message ?: "Unknown error"))
+                                return@post
                             }
+
+                            val text = finalResponse
+                            val usage = finalUsage
+                            if (text == null || usage == null) {
+                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Empty response from model"))
+                                return@post
+                            }
+
+                            val response = ChatCompletionResponse(
+                                id = "chatcmpl-${UUID.randomUUID()}",
+                                created = System.currentTimeMillis() / 1000,
+                                model = request.model ?: DEFAULT_MODEL_ID,
+                                choices = listOf(
+                                    Choice(
+                                        index = 0,
+                                        message = ChatMessageResponse(
+                                            role = "assistant",
+                                            content = text.takeIf { toolCalls.isEmpty() || it.isNotBlank() },
+                                            tool_calls = toolCalls.takeIf { it.isNotEmpty() }?.let { calls -> OpenAIToolMapper.toOpenAiToolCalls(calls).map { it.copy(index = null) } }, // index is for streaming only
+                                            reasoning_content = reasoning.toString().takeIf { it.isNotEmpty() }
+                                        ),
+                                        finish_reason = if (toolCalls.isEmpty()) "stop" else "tool_calls"
+                                    )
+                                ),
+                                usage = usage.toUsage()
+                            )
+
+                            call.respond(response)
                         }
 
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Log.e(TAG, "Error processing request", e)
                         call.respond(HttpStatusCode.BadRequest, ErrorResponse("Bad Request: ${e.message}"))
-                        if (activeRequests.get() > 0) activeRequests.decrementAndGet() // Safety decrement if not streaming
+                    } finally {
+                        activeRequests.decrementAndGet()
                     }
                 }
 
@@ -203,7 +282,7 @@ class OpenAIServer(
                     val modelList = ModelListResponse(
                         data = listOf(
                             ModelInfo(
-                                id = "litertlm-model",
+                                id = DEFAULT_MODEL_ID,
                                 created = System.currentTimeMillis() / 1000
                             )
                         )
@@ -220,7 +299,7 @@ class OpenAIServer(
                     }
 
                     if (aiEngineManager.isModelLoaded) {
-                        call.respond(mapOf("status" to "ok"))
+                        call.respond(HealthResponse("ok", aiEngineManager.activeBackend))
                     } else {
                         call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
                     }
@@ -251,7 +330,7 @@ class OpenAIServer(
                      return@get
                  }
                  if (aiEngineManager.isModelLoaded) {
-                     call.respond(mapOf("status" to "ok"))
+                     call.respond(HealthResponse("ok", aiEngineManager.activeBackend))
                  } else {
                      call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
                  }
@@ -270,6 +349,27 @@ class OpenAIServer(
 
     companion object {
         private const val TAG = "OpenAIServer"
+
+        /** Model id echoed back when the request names none. */
+        private const val DEFAULT_MODEL_ID = "litertlm-model"
+
+        /**
+         * Copies [channel] to the client with [write]. If a write fails because the client disconnected, cancels the
+         * generation [job] (which cancels native decoding) and, for a cancellation-style failure, rethrows it.
+         */
+        internal suspend fun forwardChunks(channel: ReceiveChannel<String>, job: Job, write: (String) -> Unit) {
+            try {
+                for (msg in channel) write(msg)
+            } catch (e: IOException) {
+                Log.i(TAG, "Generation cancelled (client disconnected)")
+                job.cancel()
+            } catch (e: CancellationException) {
+                // Ktor reports a write to an already closed channel this way too.
+                Log.i(TAG, "Generation cancelled (client disconnected)")
+                job.cancel()
+                throw e
+            }
+        }
     }
 }
 
@@ -292,7 +392,8 @@ data class ChatCompletionChunk(
     val `object`: String = "chat.completion.chunk",
     val created: Long,
     val model: String,
-    val choices: List<ChunkChoice>
+    val choices: List<ChunkChoice>,
+    val usage: Usage? = null
 )
 
 data class ChunkChoice(
@@ -303,5 +404,7 @@ data class ChunkChoice(
 
 data class ChunkDelta(
     val content: String? = null,
-    val role: String? = null
+    val role: String? = null,
+    val reasoning_content: String? = null,
+    val tool_calls: List<ToolCallDto>? = null
 )

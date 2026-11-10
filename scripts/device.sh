@@ -10,6 +10,7 @@
 #   MODEL         .litertlm on the host        (default ~/.cache/edgeaicore-test-models/gemma-4-E2B-it.litertlm)
 #   HOST_PORT     host port forwarded to 8080  (default 18080)
 #   STATE_DIR     token and emulator log       (default ~/.cache/edgeaicore-device)
+#   SPEC          speculative decoding for `start`: OFF, ON or ADAPTIVE (default: ADAPTIVE, the service's default; this script does not read the app's radio setting)
 set -euo pipefail
 
 SDK=${ANDROID_HOME:-$HOME/Android/Sdk}
@@ -21,7 +22,7 @@ HOST_PORT=${HOST_PORT:-18080}
 STATE_DIR=${STATE_DIR:-$HOME/.cache/edgeaicore-device}
 PKG=com.aanand.edgeaicore
 APK=app/build/outputs/apk/debug/app-debug.apk
-LOG_TAGS="InferenceService:* AiEngineManager:* OpenAIServer:* TokenManager:* ConversationManager:* MainActivity:* AndroidRuntime:E"
+LOG_TAGS="InferenceService:* AiEngineManager:* ModelInspector:* OpenAIServer:* TokenManager:* ConversationManager:* MainActivity:* AndroidRuntime:E"
 
 adb() { "$SDK/platform-tools/adb" -s "$SERIAL" "$@"; }
 die() { echo "device.sh: $*" >&2; exit 1; }
@@ -81,14 +82,19 @@ cmd_model() {
 }
 
 cmd_start() {
+  case "${SPEC:-}" in ""|[Oo][Ff][Ff]|[Oo][Nn]|[Aa][Dd][Aa][Pp][Tt][Ii][Vv][Ee]) ;; *) die "SPEC must be OFF, ON or ADAPTIVE";; esac
   local backend=${1:-CPU} name; name=$(basename "$MODEL")
   adb logcat -c
   adb shell am start-foreground-service -n "$PKG/.InferenceService" \
-    --es MODEL_PATH "/data/user/0/$PKG/files/$name" --es BACKEND "$backend" >/dev/null
+    --es MODEL_PATH "/data/user/0/$PKG/files/$name" --es BACKEND "$backend" ${SPEC:+--es SPECULATIVE_DECODING "$SPEC"} >/dev/null
   local s=$SECONDS line
   while :; do
-    line=$(adb logcat -d -s InferenceService:* | grep -E "Ping response.*Success|Ping failed|Failed to|Error|crash loop" | tail -n 1 || true)
-    case "$line" in *Success*) echo "ready on $backend in $((SECONDS - s)) s"; return;; ?*) die "start failed: ${line#*: }";; esac
+    # Ready when the service logs "Model loaded successfully (<backend in use>)"; "Ping failed" lines are retries, not errors.
+    line=$(adb logcat -d -s InferenceService:* | grep -E "Model loaded successfully|Model verification failed|Failed to initialize|crash loop" | tail -n 1 || true)
+    case "$line" in
+      *"Model loaded successfully"*) echo "ready in $((SECONDS - s)) s (requested $backend): ${line#*: }"; return;;
+      ?*) die "start failed: ${line#*: }";;
+    esac
     [ $((SECONDS - s)) -lt 300 ] || die "model not ready after 300 s"
     sleep 3
   done
@@ -138,7 +144,7 @@ Commands:
   build                 ./gradlew assembleDebug
   install [APK]         install the debug APK and grant runtime permissions
   model [FILE]          copy a model into the app's files dir and seed its saved model path
-  start [BACKEND]       start InferenceService with the model; waits for the readiness ping
+  start [BACKEND]       start InferenceService with the model; waits for 'Model loaded successfully' in logcat
   stop-service          send ACTION_STOP to InferenceService
   token                 generate an API token through the UI and save it (never printed)
   forward               adb forward HOST_PORT -> device 8080

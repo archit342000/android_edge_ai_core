@@ -13,10 +13,12 @@ import android.util.Log
 import android.view.View
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.EditText
 import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.edit
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.gson.Gson
@@ -27,6 +29,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import java.io.File
+import java.util.Locale
 import java.io.FileOutputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -55,6 +58,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var switchEnableServer: MaterialSwitch
     private lateinit var tvStatus: TextView
     private lateinit var rgBackend: RadioGroup
+    private lateinit var rgSpeculative: RadioGroup
+    private lateinit var rgVisionBackend: RadioGroup
+    private lateinit var rgAudioBackend: RadioGroup
+    private lateinit var etContextSize: EditText
     private lateinit var btnTestInference: MaterialButton
     private lateinit var btnTestVision: MaterialButton
     private lateinit var btnTestAudio: MaterialButton
@@ -154,6 +161,10 @@ class MainActivity : AppCompatActivity() {
         switchEnableServer = findViewById(R.id.switch_enable_server)
         tvStatus = findViewById(R.id.tv_status)
         rgBackend = findViewById(R.id.rg_backend)
+        rgSpeculative = findViewById(R.id.rg_speculative)
+        rgVisionBackend = findViewById(R.id.rg_vision_backend)
+        rgAudioBackend = findViewById(R.id.rg_audio_backend)
+        etContextSize = findViewById(R.id.et_context_size)
         btnTestInference = findViewById(R.id.btn_test_inference)
         btnTestVision = findViewById(R.id.btn_test_vision)
         btnTestAudio = findViewById(R.id.btn_test_audio)
@@ -233,6 +244,17 @@ class MainActivity : AppCompatActivity() {
 
         // Restore saved model path
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        rgSpeculative.check(
+            when (SpeculativeDecodingOption.fromStored(prefs.getString(KEY_SPECULATIVE, null))) {
+                SpeculativeDecodingOption.OFF -> R.id.rb_spec_off
+                SpeculativeDecodingOption.ON -> R.id.rb_spec_on
+                SpeculativeDecodingOption.ADAPTIVE -> R.id.rb_spec_adaptive
+            }
+        )
+        rgVisionBackend.check(encoderRadioId(EncoderBackendOption.fromStored(prefs.getString(KEY_VISION_BACKEND, null)), R.id.rb_vision_auto, R.id.rb_vision_cpu, R.id.rb_vision_gpu))
+        rgAudioBackend.check(encoderRadioId(EncoderBackendOption.fromStored(prefs.getString(KEY_AUDIO_BACKEND, null)), R.id.rb_audio_auto, R.id.rb_audio_cpu, R.id.rb_audio_gpu))
+        val savedContextSize = prefs.getInt(KEY_CONTEXT_SIZE, 0)
+        if (savedContextSize > 0) etContextSize.setText(String.format(Locale.ROOT, "%d", savedContextSize)) // lint SetTextI18n: no bare number text
         val savedPath = prefs.getString(KEY_MODEL_PATH, null)
         if (savedPath != null) {
             val file = File(savedPath)
@@ -845,6 +867,18 @@ class MainActivity : AppCompatActivity() {
         return result
     }
 
+    private fun encoderRadioId(option: EncoderBackendOption, autoId: Int, cpuId: Int, gpuId: Int) = when (option) {
+        EncoderBackendOption.AUTO -> autoId
+        EncoderBackendOption.CPU -> cpuId
+        EncoderBackendOption.GPU -> gpuId
+    }
+
+    private fun encoderOption(checkedId: Int, cpuId: Int, gpuId: Int) = when (checkedId) {
+        cpuId -> EncoderBackendOption.CPU
+        gpuId -> EncoderBackendOption.GPU
+        else -> EncoderBackendOption.AUTO
+    }
+
     private fun startInferenceService() {
         val selectedBackend = when(rgBackend.checkedRadioButtonId) {
             R.id.rb_cpu -> "CPU"
@@ -853,9 +887,36 @@ class MainActivity : AppCompatActivity() {
             else -> "GPU"
         }
 
+        // Empty means the model's default; anything else must be a positive whole number.
+        val contextText = etContextSize.text.toString().trim()
+        val contextSize = if (contextText.isEmpty()) 0 else contextText.toIntOrNull() ?: -1
+        if (contextSize < 0 || (contextText.isNotEmpty() && contextSize == 0)) {
+            etContextSize.error = getString(R.string.context_size_invalid)
+            switchEnableServer.isChecked = false
+            switchEnableServer.isEnabled = true
+            return
+        }
+        val speculative = when (rgSpeculative.checkedRadioButtonId) {
+            R.id.rb_spec_off -> SpeculativeDecodingOption.OFF
+            R.id.rb_spec_on -> SpeculativeDecodingOption.ON
+            else -> SpeculativeDecodingOption.ADAPTIVE
+        }
+        val vision = encoderOption(rgVisionBackend.checkedRadioButtonId, R.id.rb_vision_cpu, R.id.rb_vision_gpu)
+        val audio = encoderOption(rgAudioBackend.checkedRadioButtonId, R.id.rb_audio_cpu, R.id.rb_audio_gpu)
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
+            putInt(KEY_CONTEXT_SIZE, contextSize)
+            putString(KEY_SPECULATIVE, speculative.name)
+            putString(KEY_VISION_BACKEND, vision.name)
+            putString(KEY_AUDIO_BACKEND, audio.name)
+        }
+
         val intent = Intent(this, InferenceService::class.java).apply {
             putExtra(InferenceService.EXTRA_MODEL_PATH, selectedModelPath)
             putExtra(InferenceService.EXTRA_BACKEND, selectedBackend)
+            putExtra(InferenceService.EXTRA_MAX_NUM_TOKENS, contextSize)
+            putExtra(InferenceService.EXTRA_SPECULATIVE_DECODING, speculative.name)
+            putExtra(InferenceService.EXTRA_VISION_BACKEND, vision.name)
+            putExtra(InferenceService.EXTRA_AUDIO_BACKEND, audio.name)
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -1088,5 +1149,9 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "MainActivity"
         private const val PREFS_NAME = "litertlm_prefs"
         private const val KEY_MODEL_PATH = "model_path"
+        private const val KEY_CONTEXT_SIZE = "context_size"
+        private const val KEY_SPECULATIVE = "speculative_decoding"
+        private const val KEY_VISION_BACKEND = "vision_backend"
+        private const val KEY_AUDIO_BACKEND = "audio_backend"
     }
 }

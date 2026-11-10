@@ -12,12 +12,9 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
    For a non-streaming request the outer `catch` turns it into `400 Bad Request`, not `503`.
 4. **`/v1/health` and root `/health` duplicate the same handler.** Change both or neither.
 5. **The raw token is accepted without `Bearer `.** `extractToken` strips the prefix if present and otherwise uses the whole header value.
-6. **No KV-cache reuse over REST.** Every request gets a new random `conversationId` and `ttlMs = 0`, so `AiEngineManager`'s reuse check
-   (same id, one new message, same sampling parameters) never passes for REST clients. The README's "Smart Session Reuse", custom TTL and crash-recovery
-   features belong to the conversation model that REST does not use.
-7. **`usage` is always zero.** Non-streaming responses send `Usage(0, 0, 0)`.
-8. **`system` messages become user turns.** `AiEngineManager.toLiteRTMessage` maps only `assistant` to a model turn, and the preamble is fixed
-   to "You are a helpful assistant." because REST requests set no `systemInstruction`.
+6. *(Removed.)* REST requests now reuse the cached engine conversation when they extend the previous one (`ConversationCache`). The number is kept because docs and tickets cite later entries.
+7. *(Removed.)* `usage` now reports real token counts (`TokenUsage`). The number is kept because docs and tickets cite later entries.
+8. *(Removed.)* `system` messages are now the system instruction and there is no built-in prompt (`SystemPromptSplitter`). The number is kept because docs and tickets cite later entries.
 
 ## Security and logging
 
@@ -35,20 +32,25 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 
 ## Code
 
-16. **Stale comment.** `AiEngineManager.kt:167` mentions `ConversationManager.saveConversation`, but `AiEngineManager` never calls it.
-    Only `ConversationManager` calls its own `saveConversation`.
-17. **Two kinds of `ConversationState`.** `InferenceService.kt:142` builds its own state for the readiness ping, outside `ConversationManager`.
-18. **One active engine conversation.** `AiEngineManager` keeps a single `activeEngineConversation` behind `inferenceMutex`.
-    Requests are serialised, and switching conversations rebuilds the context.
+16. *(Removed.)* The stale comment in `AiEngineManager` was reworded when the reuse code was rewritten. The number is kept because docs and tickets cite later entries.
+17. **Two kinds of `ConversationState`.** `AiEngineManager.verifyReady` builds its own state for the readiness ping, outside `ConversationManager`.
+18. **Few cached engine conversations.** `AiEngineManager` keeps up to 2 idle conversations (`ConversationCache`, each with its own KV cache) behind `inferenceMutex`.
+    Requests are serialised; a third client's conversation evicts the least recently used one, so interleaving more than two clients rebuilds the context each time.
 
 ## Models and runtime
 
-19. **Only multimodal models load.** `AiEngineManager.loadModel` always sets `visionBackend = GPU` and `audioBackend = CPU`, so a text-only model fails with
-    `TF_LITE_VISION_ENCODER not found in the model`.
-20. **Vision is GPU-only.** Image input fails wherever GPU is unavailable (for example on the emulator: `Can not find OpenCL library`), even when the main backend is CPU.
-21. **An unsupported model kills the process.** LiteRT-LM aborts natively (SIGABRT) on a model it cannot parse (for example Gemma 4 with `0.9.0-alpha02`:
-    `Unknown model type: tf_lite_end_of_vision`; Gemma 4 E2B loads with `0.19.1`). The service's crash-loop guard then refuses the sticky restart until a new model path is sent.
-22. **GPU "loads" before it fails.** With `BACKEND=GPU` and no OpenCL, "Model loaded successfully" is logged and the readiness ping fails afterwards.
+19. *(Removed.)* Text-only models load: the vision and audio encoders are created only when the model has them (`ModelCapabilities`), and image or audio input to a model without that encoder is a fixed 400. The number is kept because docs and tickets cite later entries.
+20. **Encoder backend support varies by model.** Each encoder runs on a backend the model lists for it (Backend Settings: Auto follows the main backend, or force CPU or GPU; an unsupported choice is ignored and the status says so).
+    On the emulator (2026-11-09) Gemma 4's vision and audio encoders ran on CPU and answered; Gemma 3n lists only GPU for vision, and its image request still answered there (not explained: the main backend on GPU still fails at the first request, pitfall 22).
+    NPU-only encoders are treated as absent. Phone GPU vision is untested.
+21. **An unsupported or corrupt model must not reach the engine.** `AiEngineManager.loadModel` first reads the file with `ModelInspector` (LiteRT-LM `ModelInfo`) and rejects what it cannot read,
+    what is not an LLM, or what has no text input with `UnsupportedModelException`; the service then shows "Error: Unsupported model file", clears the crash flag and the saved model path, and stays
+    up without a model (health 503). A random-bytes file and a truncated real model were both rejected this way on `0.19.1` (the process survived). Native aborts inside `Engine.initialize()`
+    for a file whose metadata reads fine are still possible (Gemma 4 aborted with `0.9.0-alpha02`: `Unknown model type: tf_lite_end_of_vision`; it loads with `0.19.1`). The crash-loop guard
+    stays for those: it refuses the sticky restart until a new model path is sent.
+22. **GPU "loads" before it fails.** With `BACKEND=GPU` and no OpenCL, `Engine.initialize()` succeeds and the first request fails (`Can not find OpenCL library`). The service now treats that as a GPU failure:
+    the readiness ping gets 2 attempts on GPU, then the engine is closed and reloaded on CPU, and the status says `Model loaded successfully (CPU, GPU unavailable)`; `/v1/health` reports the backend in use.
+    On the emulator the whole fallback took about 2 minutes (closing the failed GPU engine was the slow part). The saved backend stays GPU, so a restart tries GPU again. A GPU failure after the ping is not handled, and a native abort during the first GPU request is not covered by the crash-loop guard (the flag is cleared once the model has loaded).
 23. **The UI misses status updates.** `MainActivity` receives status broadcasts only while it is resumed, so a service started from adb or while the app is
     in the background leaves the UI showing "Idle".
 24. **First launch asks for battery-optimisation exemption.** The system dialog covers the UI until answered; `scripts/device.sh install` whitelists the app instead.
@@ -57,3 +59,6 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
     `EventLoopKt.processNextEventInCurrentThread()`, which kotlinx-coroutines 1.11.0 removed. LiteRT-LM 0.19.1 asks for 1.11.0, so `app/build.gradle.kts` forces 1.10.2;
     without the pin such requests fail with `NoSuchMethodError`, reported as HTTP 400 "Failed to convert request body". Route tests do not show it (the Ktor test host
     reads bodies in memory); `CoroutinesPinTest` only guards the pin, so check large bodies on a device after touching Ktor, coroutines or LiteRT-LM versions. Remove the pin when Ktor is upgraded.
+27. **A dropped stream is noticed only when a token write fails.** `OpenAIServer` cancels the generation (`cancelProcess()`) from the failed write, so a client that leaves during prompt
+    processing is noticed at the first token. After a cancel `AiEngineManager` waits up to `CANCEL_WAIT_MS` (2 s) for the native terminal callback while holding `inferenceMutex`; if it
+    never arrives it logs a warning, closes the conversation and releases the lock anyway, so native decoding could then overlap the next request. It was not seen on a device (about 50 ms).

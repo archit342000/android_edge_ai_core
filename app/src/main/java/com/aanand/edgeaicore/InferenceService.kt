@@ -6,16 +6,17 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicInteger
@@ -37,7 +38,6 @@ class InferenceService : Service() {
         tokenManager = TokenManager.getInstance(this)
         conversationManager = ConversationManager(
             context = this,
-            onConversationRemoved = { id -> aiEngineManager.closeConversation(id) }
         )
         openAIServer = OpenAIServer(aiEngineManager, tokenManager::isValidToken)
         createNotificationChannel()
@@ -67,25 +67,38 @@ class InferenceService : Service() {
         val prefs = getSharedPreferences("inference_service_prefs", Context.MODE_PRIVATE)
         var modelPath = intent?.getStringExtra(EXTRA_MODEL_PATH)
         var backend = intent?.getStringExtra(EXTRA_BACKEND)
+        // 0 or absent means the model's default context size
+        var speculativeValue = intent?.getStringExtra(EXTRA_SPECULATIVE_DECODING)
+        var visionValue = intent?.getStringExtra(EXTRA_VISION_BACKEND)
+        var audioValue = intent?.getStringExtra(EXTRA_AUDIO_BACKEND)
+        var maxNumTokens = intent?.getIntExtra(EXTRA_MAX_NUM_TOKENS, 0)?.takeIf { it > 0 }
 
         if (modelPath != null) {
             // Save to prefs for sticky restarts
             prefs.edit()
-                .putString("saved_model_path", modelPath)
+                .putString(KEY_SAVED_MODEL_PATH, modelPath)
                 .putString("saved_backend", backend ?: "GPU")
-                .putBoolean("crashed_during_init", false) // Reset on new manual start
+                .putInt(KEY_SAVED_MAX_NUM_TOKENS, maxNumTokens ?: 0)
+                .putString(KEY_SAVED_SPECULATIVE, speculativeValue)
+                .putString(KEY_SAVED_VISION_BACKEND, visionValue)
+                .putString(KEY_SAVED_AUDIO_BACKEND, audioValue)
+                .putBoolean(KEY_CRASHED_DURING_INIT, false) // Reset on new manual start
                 .apply()
         } else {
             // Restore from prefs if this is a sticky restart
-            if (prefs.getBoolean("crashed_during_init", false)) {
+            if (prefs.getBoolean(KEY_CRASHED_DURING_INIT, false)) {
                 Log.e(TAG, "Detected crash loop during previous initialization. Aborting service start.")
                 sendStatusBroadcast("Error: Crash loop detected. Service stopped.")
                 stopSelf()
                 return START_NOT_STICKY
             }
 
-            modelPath = prefs.getString("saved_model_path", null)
+            modelPath = prefs.getString(KEY_SAVED_MODEL_PATH, null)
             backend = prefs.getString("saved_backend", "GPU")
+            maxNumTokens = prefs.getInt(KEY_SAVED_MAX_NUM_TOKENS, 0).takeIf { it > 0 }
+            speculativeValue = prefs.getString(KEY_SAVED_SPECULATIVE, null)
+            visionValue = prefs.getString(KEY_SAVED_VISION_BACKEND, null)
+            audioValue = prefs.getString(KEY_SAVED_AUDIO_BACKEND, null)
             if (modelPath != null) {
                 Log.i(TAG, "Restored model path from prefs: $modelPath")
                 sendStatusBroadcast("Restoring service state...")
@@ -95,6 +108,15 @@ class InferenceService : Service() {
         if (modelPath != null) {
             sendStatusBroadcast("Loading model from path: $modelPath")
             val finalBackend = backend ?: "GPU"
+            if (SpeculativeDecodingOption.isUnknown(speculativeValue)) {
+                Log.w(TAG, "Unknown speculative decoding setting, using ${SpeculativeDecodingOption.DEFAULT}")
+            }
+            val speculativeOption = SpeculativeDecodingOption.fromStored(speculativeValue)
+            if (EncoderBackendOption.isUnknown(visionValue) || EncoderBackendOption.isUnknown(audioValue)) {
+                Log.w(TAG, "Unknown encoder backend setting, using ${EncoderBackendOption.AUTO}")
+            }
+            val visionOption = EncoderBackendOption.fromStored(visionValue)
+            val audioOption = EncoderBackendOption.fromStored(audioValue)
             
             serviceScope.launch {
                 try {
@@ -113,75 +135,64 @@ class InferenceService : Service() {
                     isModelLoading = true
 
                     // Mark as potentially crashing region
-                    prefs.edit().putBoolean("crashed_during_init", true).commit()
+                    markInitStarted(prefs)
 
                     Log.d(TAG, "Attempting to load model with backend: $finalBackend")
                     sendStatusBroadcast("Initializing engine...")
                     
                     withTimeout(300000) { // 5 minutes timeout
-                        aiEngineManager.loadModel(modelPath, finalBackend)
+                        aiEngineManager.loadModel(modelPath, finalBackend, cacheDir.absolutePath, maxNumTokens, speculativeOption, visionOption, audioOption)
                     }
 
                     // If we reached here, we didn't crash (Java-wise).
                     // Update flag to false implies success or handled exception
-                    prefs.edit().putBoolean("crashed_during_init", false).apply()
+                    prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
 
                     Log.d(TAG, "loadModel returned. Starting readiness verification...")
                     sendStatusBroadcast("Verifying model readiness...")
                     
-                    var isReady = false
-                    var lastDummyId: String? = null
-                    
-                    for (i in 1..10) {
-                        try {
-                             var responseText = ""
-                             // Create a new dummy session for each attempt
-                             val newDummyState = ConversationState(
-                                 conversationId = "ping_${System.currentTimeMillis()}",
-                                 apiToken = "self_test",
-                                 ttlMs = 60000
-                             )
-                             lastDummyId = newDummyState.conversationId
-                             val dummyMessage = listOf(ChatMessage(role = "user", content = com.google.gson.JsonPrimitive("Hello")))
-
-                             aiEngineManager.generateConversationResponseAsync(
-                                 state = newDummyState,
-                                 messages = dummyMessage,
-                                 onToken = {},
-                                 onComplete = { responseText = it },
-                                 onErrorCallback = { throw it }
-                             )                       
-                             if (responseText.isNotEmpty()) {
-                                 Log.d(TAG, "Ping response (attempt $i): Success. Length: ${responseText.length}")
-                                 sendStatusBroadcast("Ping success ($i)")
-                                 isReady = true
-                                 break
-                             } else {
-                                 throw Exception("Empty response")
-                             }
-                        } catch (e: Exception) {
-                            val msg = "Ping failed ($i): ${e.message}"
-                            Log.d(TAG, msg)
-                            sendStatusBroadcast(msg)
-                            delay(2000)
-                        }
+                    // A GPU engine can load and still fail its first request (no OpenCL): give it fewer attempts,
+                    // then fall back to CPU instead of waiting out the full retry budget.
+                    var readinessError = verifyEngineReady()
+                    val fallbackBackend = if (readinessError != null) BackendFallbackPolicy.next(aiEngineManager.activeBackend ?: "") else null
+                    if (readinessError != null && fallbackBackend != null) {
+                        Log.w(TAG, "GPU readiness failed, falling back to CPU: ${readinessError.message}")
+                        sendStatusBroadcast("GPU unavailable, loading on CPU...")
+                        markInitStarted(prefs)
+                        withTimeout(300000) { aiEngineManager.fallBackToCpu(modelPath, cacheDir.absolutePath, maxNumTokens, speculativeOption, visionOption, audioOption) }
+                        prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
+                        readinessError = verifyEngineReady()
                     }
 
-                    // Cleanup the last dummy session
-                    lastDummyId?.let { aiEngineManager.closeConversation(it) }
-
-                    if (isReady) {
-                        sendStatusBroadcast("Model loaded successfully ($finalBackend)")
+                    if (readinessError == null) {
+                        val backendInUse = aiEngineManager.activeBackend ?: finalBackend
+                        val mtp = aiEngineManager.activeSpeculativeMode?.let { ", MTP ${it.name.lowercase()}" } ?: ""
+                        val status = if (aiEngineManager.fellBackFromGpu) {
+                            "Model loaded successfully ($backendInUse, GPU unavailable$mtp; ${aiEngineManager.activeEncoders.describe()})"
+                        } else {
+                            "Model loaded successfully ($backendInUse$mtp; ${aiEngineManager.activeEncoders.describe()})"
+                        }
+                        Log.i(TAG, status)
+                        sendStatusBroadcast(status)
                     } else {
+                        Log.e(TAG, "Model verification failed", readinessError)
                         sendStatusBroadcast("Error: Model verification failed")
                     }
 
+                } catch (e: UnsupportedModelException) {
+                    Log.e(TAG, "Unsupported model file", e)
+                    sendStatusBroadcast(STATUS_UNSUPPORTED_MODEL)
+                    // A sticky restart must not retry a file known to be unusable.
+                    prefs.edit {
+                        putBoolean(KEY_CRASHED_DURING_INIT, false)
+                        remove(KEY_SAVED_MODEL_PATH)
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to initialize in service", e)
-                    sendStatusBroadcast("Error loading model: ${e.message}")
+                    sendStatusBroadcast(STATUS_LOAD_FAILED)
                     // Note: If we caught an exception, it's not a native crash, so clear the flag?
                     // Yes, because we handled it.
-                    prefs.edit().putBoolean("crashed_during_init", false).apply()
+                    prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
                 } finally {
                     isModelLoading = false
                 }
@@ -189,6 +200,29 @@ class InferenceService : Service() {
         }
 
         return START_STICKY
+    }
+
+    /**
+     * Sets the crash-loop guard before a native model load. `commit()` is deliberate: the flag must be on disk before
+     * the native code can abort the process, which `apply()` (asynchronous) would not guarantee.
+     */
+    private fun markInitStarted(prefs: SharedPreferences) {
+        prefs.edit(commit = true) { putBoolean(KEY_CRASHED_DURING_INIT, true) }
+    }
+
+    /** Runs the readiness ping on the loaded engine; fewer attempts on GPU, which may fall back to CPU. */
+    private suspend fun verifyEngineReady(): Throwable? {
+        val attempts = if (aiEngineManager.activeBackend == BackendFallbackPolicy.GPU) GPU_PING_ATTEMPTS else PING_ATTEMPTS
+        return aiEngineManager.verifyReady(attempts) { attempt, error ->
+            if (error == null) {
+                Log.d(TAG, "Ping response (attempt $attempt): Success")
+                sendStatusBroadcast("Ping success ($attempt)")
+            } else {
+                val msg = "Ping failed ($attempt): ${error.message}"
+                Log.d(TAG, msg)
+                sendStatusBroadcast(msg)
+            }
+        }
     }
 
     private fun sendStatusBroadcast(status: String) {
@@ -244,9 +278,23 @@ class InferenceService : Service() {
         const val ACTION_STOP = "STOP"
         const val EXTRA_MODEL_PATH = "MODEL_PATH"
         const val EXTRA_BACKEND = "BACKEND"
+        const val EXTRA_MAX_NUM_TOKENS = "MAX_NUM_TOKENS"
+        private const val KEY_SAVED_MAX_NUM_TOKENS = "saved_max_num_tokens"
+        const val EXTRA_SPECULATIVE_DECODING = "SPECULATIVE_DECODING"
+        const val EXTRA_VISION_BACKEND = "VISION_BACKEND"
+        const val EXTRA_AUDIO_BACKEND = "AUDIO_BACKEND"
+        private const val KEY_SAVED_VISION_BACKEND = "saved_vision_backend"
+        private const val KEY_SAVED_AUDIO_BACKEND = "saved_audio_backend"
+        private const val KEY_SAVED_SPECULATIVE = "saved_speculative_decoding"
         const val ACTION_STATUS_UPDATE = "com.aanand.edgeaicore.STATUS_UPDATE"
         const val EXTRA_STATUS = "STATUS"
         const val ACTION_TOKEN_REQUEST = "com.aanand.edgeaicore.TOKEN_REQUEST"
         const val EXTRA_PACKAGE_NAME = "PACKAGE_NAME"
+        private const val PING_ATTEMPTS = 10
+        private const val GPU_PING_ATTEMPTS = 2
+        private const val KEY_CRASHED_DURING_INIT = "crashed_during_init"
+        private const val KEY_SAVED_MODEL_PATH = "saved_model_path"
+        private const val STATUS_UNSUPPORTED_MODEL = "Error: Unsupported model file"
+        private const val STATUS_LOAD_FAILED = "Error: Model failed to load"
     }
 }
