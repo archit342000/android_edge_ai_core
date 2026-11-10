@@ -602,4 +602,47 @@ class OpenAIServerTest {
         }
         assertEquals(HttpStatusCode.OK, response.status)
     }
+
+    @Test
+    fun aNonStreamingClientThatDisconnectsCancelsTheGenerationAndFreesTheLock() {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = newManager(factory)
+        runBlocking { manager.loadModel(tmp.newFile("m-gone.litertlm").absolutePath, "CPU") }
+        var fired = 0
+        val disposed = java.util.concurrent.atomic.AtomicInteger()
+        val gone: (io.ktor.server.application.ApplicationCall, () -> Unit) -> kotlinx.coroutines.DisposableHandle? = { _, onGone ->
+            // only the first request's client goes away
+            if (fired == 0) Thread {
+                val deadline = System.currentTimeMillis() + 5_000
+                while (factory.engine.conversations.firstOrNull()?.sent != 1 && System.currentTimeMillis() < deadline) Thread.sleep(5)
+                fired++
+                onGone()
+            }.start() else Unit
+            kotlinx.coroutines.DisposableHandle { disposed.incrementAndGet() }
+        }
+        val server = OpenAIServer(manager, gone) { it == validToken }
+        testApplication {
+            application { with(server) { module() } }
+            val response = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody(chatBody)
+            }
+            // The handler sent no response of its own: no 200, 400 or 500 body
+            assertTrue(response.status.value.toString(), response.status != HttpStatusCode.OK && response.status != HttpStatusCode.InternalServerError)
+            assertEquals(1, fired)
+            assertEquals(1, factory.engine.conversations[0].cancelCount)
+            assertTrue(factory.engine.conversations[0].closed)
+            assertEquals(1, disposed.get())
+            awaitLoadZero()
+            // The lock is free: the next request completes
+            factory.engine.hangUntilCancelled = false
+            val ok = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody(chatBody)
+            }
+            assertEquals(HttpStatusCode.OK, ok.status)
+        }
+    }
 }

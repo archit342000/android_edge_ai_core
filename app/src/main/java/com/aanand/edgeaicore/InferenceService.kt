@@ -39,7 +39,7 @@ class InferenceService : Service() {
         conversationManager = ConversationManager(
             context = this,
         )
-        openAIServer = OpenAIServer(aiEngineManager, tokenManager::isValidToken)
+        openAIServer = OpenAIServer(aiEngineManager, isValidToken = tokenManager::isValidToken)
         createNotificationChannel()
     }
 

@@ -44,7 +44,7 @@ client app ──HTTP :8080──> OpenAIServer
       (usage = prompt/completion/cached token counts read from the engine; if they cannot be read the request fails with "Token usage unavailable")
    5. stream=true  -> SSE chunks "data: {...}\n\n" ... "data: [DONE]"
       stream=false -> one ChatCompletionResponse (JSON)
-      a streaming client that disconnects cancels the generation (cancelProcess) and frees the inference lock
+      a client that disconnects (a failed stream write, or the closed connection for a non-streaming request, `NettyDisconnect`) cancels the generation (cancelProcess) and frees the inference lock
 ```
 
 `OpenAIServer` does not use `ConversationManager`. The REST API stays stateless: a request carries the whole history. `AiEngineManager` keeps the engine

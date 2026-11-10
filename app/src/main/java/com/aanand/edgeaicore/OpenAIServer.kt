@@ -22,6 +22,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -34,6 +35,8 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class OpenAIServer(
     private val aiEngineManager: AiEngineManager,
+    /** Calls the callback when the call's client goes away; null = not watched. A seam so tests can simulate a disconnect. */
+    private val onClientGone: (ApplicationCall, () -> Unit) -> DisposableHandle? = NettyDisconnect::watch,
     private val isValidToken: (String?) -> Boolean
 ) {
     private var server: NettyApplicationEngine? = null
@@ -214,18 +217,36 @@ class OpenAIServer(
                             val reasoning = StringBuilder()
                             val toolCalls = mutableListOf<com.google.ai.edge.litertlm.ToolCall>()
 
-                            // Call the engine
-                            aiEngineManager.generateConversationResponseAsync(
-                                state = state,
-                                messages = turns,
-                                onToken = { /* No-op for non-streaming */ },
-                                onComplete = { text, usage -> finalResponse = text; finalUsage = usage },
-                                onErrorCallback = { errorOccurred = it },
-                                options = options,
-                                chatOptions = chatOptions,
-                                onReasoning = { reasoning.append(it) },
-                                onToolCalls = { toolCalls.addAll(it) }
-                            )
+                            // The generation is a child job so a client disconnect can cancel it (and with it native decoding).
+                            var clientGone = false
+                            coroutineScope {
+                                val generation = launch(Dispatchers.IO) {
+                                    aiEngineManager.generateConversationResponseAsync(
+                                        state = state,
+                                        messages = turns,
+                                        onToken = { /* No-op for non-streaming */ },
+                                        onComplete = { text, usage -> finalResponse = text; finalUsage = usage },
+                                        onErrorCallback = { errorOccurred = it },
+                                        options = options,
+                                        chatOptions = chatOptions,
+                                        onReasoning = { reasoning.append(it) },
+                                        onToolCalls = { toolCalls.addAll(it) }
+                                    )
+                                }
+                                val watcher = onClientGone(call) {
+                                    clientGone = true
+                                    generation.cancel()
+                                }
+                                try {
+                                    generation.join()
+                                } finally {
+                                    watcher?.dispose()
+                                }
+                            }
+                            if (clientGone) {
+                                Log.i(TAG, "Generation cancelled (client disconnected)")
+                                return@post
+                            }
 
                             if (errorOccurred != null) {
                                 Log.e(TAG, "Inference failed", errorOccurred)

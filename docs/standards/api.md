@@ -90,13 +90,13 @@ With `stream_options.include_usage: true` the last event before `[DONE]` is a ch
 chunk carries `usage`.
 
 On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`.
-If the client disconnects mid-stream, the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops.
+If the client disconnects mid-stream, or while a non-streaming answer is being generated (noticed through the closed connection), the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops.
 
 ## Unsupported or ignored
 
 Accepted but ignored (clients such as the OpenAI SDKs send them by default): `stop` (no stop sequences), `logit_bias`, `parallel_tool_calls` (the server returns every call the model emits).
 Not supported: `n` other than 1 (400), `tool_choice` naming a function (400: the engine cannot force a call), `regex` response formats, `reasoning_tokens` in `usage` (the engine gives no thinking count),
-cancelling a non-streaming request when the client disconnects, request timeouts and queue limits (requests wait for the inference lock without a limit).
+request timeouts and queue limits (requests wait for the inference lock without a limit).
 `json_schema` output may contain properties the schema does not list unless the schema sets `additionalProperties: false`.
 The context size set in the app is clamped to the model's maximum when the model reports a fixed one (the status line says so).
 
