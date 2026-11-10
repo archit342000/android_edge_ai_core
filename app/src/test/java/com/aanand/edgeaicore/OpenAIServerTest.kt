@@ -609,14 +609,14 @@ class OpenAIServerTest {
         val factory = FakeEngineFactory(hangUntilCancelled = true)
         val manager = newManager(factory)
         runBlocking { manager.loadModel(tmp.newFile("m-gone.litertlm").absolutePath, "CPU") }
-        var fired = 0
+        val fired = java.util.concurrent.atomic.AtomicInteger()
         val disposed = java.util.concurrent.atomic.AtomicInteger()
         val gone: (io.ktor.server.application.ApplicationCall, () -> Unit) -> kotlinx.coroutines.DisposableHandle? = { _, onGone ->
             // only the first request's client goes away
-            if (fired == 0) Thread {
+            if (fired.get() == 0) Thread {
                 val deadline = System.currentTimeMillis() + 5_000
                 while (factory.engine.conversations.firstOrNull()?.sent != 1 && System.currentTimeMillis() < deadline) Thread.sleep(5)
-                fired++
+                fired.incrementAndGet()
                 onGone()
             }.start() else Unit
             kotlinx.coroutines.DisposableHandle { disposed.incrementAndGet() }
@@ -629,9 +629,9 @@ class OpenAIServerTest {
                 header(HttpHeaders.ContentType, "application/json")
                 setBody(chatBody)
             }
-            // The handler sent no response of its own: no 200, 400 or 500 body
-            assertTrue(response.status.value.toString(), response.status != HttpStatusCode.OK && response.status != HttpStatusCode.InternalServerError)
-            assertEquals(1, fired)
+            // The handler sent no response of its own: no body
+            assertEquals("", response.bodyAsText())
+            assertEquals(1, fired.get())
             assertEquals(1, factory.engine.conversations[0].cancelCount)
             assertTrue(factory.engine.conversations[0].closed)
             assertEquals(1, disposed.get())
@@ -662,14 +662,16 @@ class OpenAIServerTest {
             }
             awaitLoadZero()
         }
-        // no model loaded (/v1/load answers 503 then, so only the absence of a crash is checked)
+        // no model loaded (/v1/load answers 503 then, so the counter is checked by the next request below)
         withServer(AiEngineManager(FakeEngineFactory())) {
             for (body in listOf(chatBody, streamBody)) {
-                client.post("/v1/chat/completions") {
+                val response = client.post("/v1/chat/completions") {
                     header(HttpHeaders.Authorization, "Bearer $validToken")
                     header(HttpHeaders.ContentType, "application/json")
                     setBody(body)
-                }.bodyAsText()
+                }
+                // non-streaming: the outer catch answers 400; streaming: an error event on a 200
+                assertTrue(response.bodyAsText(), response.bodyAsText().contains("Model not loaded"))
             }
         }
         // success on both paths
@@ -739,6 +741,7 @@ class OpenAIServerTest {
                     kotlinx.coroutines.delay(25)
                     load = client.get("/v1/load") { header(HttpHeaders.Authorization, "Bearer $validToken") }.bodyAsText().replace(" ", "")
                 }
+                assertTrue(load, load.contains("\"load\":2"))
                 val refused = post(chatBody)
                 assertEquals(HttpStatusCode.ServiceUnavailable, refused.status)
                 assertEquals("5", refused.headers[HttpHeaders.RetryAfter])
@@ -758,7 +761,7 @@ class OpenAIServerTest {
         withServer(manager, { queueWaitMs = 300; generationTimeoutMs = 1_500 }) {
             kotlinx.coroutines.coroutineScope {
                 val first = this@coroutineScope.async { post(streamBody).bodyAsText() }
-                while (factory.engine.conversations.firstOrNull()?.sent != 1) kotlinx.coroutines.delay(10)
+                kotlinx.coroutines.withTimeout(5_000) { while (factory.engine.conversations.firstOrNull()?.sent != 1) kotlinx.coroutines.delay(10) }
                 val queued = post(chatBody)
                 assertEquals(HttpStatusCode.ServiceUnavailable, queued.status)
                 assertEquals("5", queued.headers[HttpHeaders.RetryAfter])

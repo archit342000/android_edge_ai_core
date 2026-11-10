@@ -56,6 +56,10 @@ class AiEngineManager(
     @Volatile var effectiveMaxNumTokens: Int? = null
         private set
     private var currentSpeculativeOption: SpeculativeDecodingOption? = null
+    // What the loaded engine was requested with besides the model path: a different request reloads it
+    private var currentBackendType: String? = null
+    private var currentVisionOption: EncoderBackendOption? = null
+    private var currentAudioOption: EncoderBackendOption? = null
 
     /** The encoders of the loaded model and the backends they run on (null = the model has no usable such encoder). */
     @Volatile var activeEncoders: EncoderSummary = EncoderSummary()
@@ -87,7 +91,8 @@ class AiEngineManager(
     }
 
     /**
-     * @param maxNumTokens the KV-cache size (input plus output tokens); null keeps the model's default
+     * @param maxNumTokens the KV-cache size (input plus output tokens); null keeps the model's default, and a value above
+     *   the model's fixed maximum is clamped to it (see [effectiveMaxNumTokens])
      * @param speculativeDecoding the MTP setting; only used when the model ships a drafter
      * @param visionOption backend for the vision encoder (AUTO follows [backendType]); the encoder is only created when the model has one
      * @param audioOption same for the audio encoder
@@ -97,7 +102,10 @@ class AiEngineManager(
         visionOption: EncoderBackendOption = EncoderBackendOption.AUTO,
         audioOption: EncoderBackendOption = EncoderBackendOption.AUTO
     ): Unit = withContext(Dispatchers.IO) {
-        if (currentModelPath == modelPath && currentMaxNumTokens == maxNumTokens && currentSpeculativeOption == speculativeDecoding && engine != null) {
+        val sameRequest = currentModelPath == modelPath && currentMaxNumTokens == maxNumTokens &&
+            currentSpeculativeOption == speculativeDecoding && currentBackendType == backendType &&
+            currentVisionOption == visionOption && currentAudioOption == audioOption
+        if (sameRequest && engine != null) {
             return@withContext
         }
 
@@ -133,6 +141,9 @@ class AiEngineManager(
         currentMaxNumTokens = null
         effectiveMaxNumTokens = null
         currentSpeculativeOption = null
+        currentBackendType = null
+        currentVisionOption = null
+        currentAudioOption = null
         activeSpeculativeMode = null
         activeEncoders = EncoderSummary()
         modelCapabilities = null
@@ -181,7 +192,8 @@ class AiEngineManager(
     /**
      * Generates a streaming response. Reuses the cached engine conversation when the request extends the previous one
      * (same settings, earlier messages unchanged), prefilling only the new message; otherwise builds a conversation from
-     * `messages` minus the last. A conversation that failed, was cancelled or produced no text is closed, not cached.
+     * `messages` minus the last. A conversation that failed, was cancelled, produced no text, ended on a stop sequence
+     * (its KV state holds tokens past the match) or made tool calls is closed, not cached.
      */
     suspend fun generateConversationResponseAsync(
         state: ConversationState,
@@ -274,6 +286,8 @@ class AiEngineManager(
                 val stopMatcher = chatOptions.stopSequences.takeIf { it.isNotEmpty() }?.let { StopSequenceMatcher(it) }
                 // Set when a stop sequence matched: later output is dropped and the reply ends as a normal completion.
                 var stoppedBySequence = false
+                // A reply with tool calls is rebuilt from text only for the cache key, so it is never cached.
+                var sawToolCalls = false
 
                 // cancelProcess() throws on a closed conversation, so skip it then. A close can still race in
                 // between, and an exception here would escape the cancellation handler, so log it instead.
@@ -312,7 +326,10 @@ class AiEngineManager(
                                 val reasoning = message.channels.values.joinToString("")
                                 if (reasoning.isNotEmpty()) onReasoning(reasoning)
                             }
-                            if (message.toolCalls.isNotEmpty()) onToolCalls(message.toolCalls)
+                            if (message.toolCalls.isNotEmpty()) {
+                                sawToolCalls = true
+                                onToolCalls(message.toolCalls)
+                            }
 
                             if (chunk.isNotEmpty()) {
                                 if (stopMatcher == null) {
@@ -352,6 +369,8 @@ class AiEngineManager(
                             } catch (t: Throwable) {
                                 Log.e(TAG, "Could not read token usage", t)
                                 // The conversation is closed in the finally block (not cached): the engine holds a reply that the history will not.
+                                // Not a completion after all: the error path below reports it (once).
+                                outcomeReported.set(false)
                                 if (cont.isActive) cont.resumeWithException(UsageUnavailableException(t))
                                 return
                             }
@@ -396,7 +415,7 @@ class AiEngineManager(
 
                 // 5. Keep the conversation for the next request when it holds exactly history + reply
                 // A stop sequence leaves tokens past the match in the KV state: never cache that conversation.
-                if (lastResponseText.isNotEmpty() && !stoppedBySequence) {
+                if (lastResponseText.isNotEmpty() && !stoppedBySequence && !sawToolCalls) {
                     conversationCache.put(
                         settings,
                         fullHistory + ChatMessage("assistant", com.google.gson.JsonPrimitive(lastResponseText)),
@@ -416,7 +435,8 @@ class AiEngineManager(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Error in generateConversationResponseAsync", e)
-                onErrorCallback(e)
+                // A completion that was already reported is not followed by an error.
+                if (outcomeReported.compareAndSet(false, true)) onErrorCallback(e)
             } finally {
                 // An error, a cancel or an empty reply leaves the conversation's KV state unknown: never cache it.
                 conversation?.let { closeQuietly(it) }
@@ -436,7 +456,9 @@ class AiEngineManager(
         maxNumTokens: Int?,
         speculativeDecoding: SpeculativeDecodingOption,
         visionOption: EncoderBackendOption,
-        audioOption: EncoderBackendOption
+        audioOption: EncoderBackendOption,
+        /** The backend the caller asked for (differs from [backendType] on the CPU retry); remembered to skip identical reloads. */
+        requestedBackendType: String = backendType
     ) {
         val initStartedAt = System.nanoTime()
         // An unknown name runs GPU, and that is what is used, reported and (on failure) retried on CPU.
@@ -496,6 +518,9 @@ class AiEngineManager(
             currentMaxNumTokens = maxNumTokens
             effectiveMaxNumTokens = effectiveTokens
             currentSpeculativeOption = speculativeDecoding
+            currentBackendType = requestedBackendType
+            currentVisionOption = visionOption
+            currentAudioOption = audioOption
             activeSpeculativeMode = speculativeMode
             // Set together with the engine, so it is non-null exactly while a model is loaded.
             modelCapabilities = capabilities
@@ -506,7 +531,7 @@ class AiEngineManager(
             val fallback = BackendFallbackPolicy.next(resolvedBackend)
             if (fallback != null) {
                  Log.w(TAG, "Retrying with $fallback backend...")
-                 loadEngine(modelPath, fallback, capabilities, cacheDir, maxNumTokens, speculativeDecoding, visionOption, audioOption)
+                 loadEngine(modelPath, fallback, capabilities, cacheDir, maxNumTokens, speculativeDecoding, visionOption, audioOption, requestedBackendType)
                  fellBackFromGpu = true
             } else {
                 if (t is Exception) throw t else throw Exception(t)

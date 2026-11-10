@@ -20,7 +20,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import java.util.concurrent.atomic.AtomicInteger
 
 class InferenceService : Service() {
 
@@ -30,7 +29,6 @@ class InferenceService : Service() {
     private lateinit var openAIServer: OpenAIServer
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val activeRequests = AtomicInteger(0)
     @Volatile private var serviceStatus: String = "Idle"
     private var isModelLoading = false
 
@@ -326,7 +324,7 @@ class InferenceService : Service() {
         private const val GPU_PING_ATTEMPTS = 2
         private const val KEY_CRASHED_DURING_INIT = "crashed_during_init"
         private const val KEY_SAVED_MODEL_PATH = "saved_model_path"
-        private const val ENGINE_CLOSE_WAIT_MS = 2000L
+        private const val ENGINE_CLOSE_WAIT_MS = 1000L
         private const val PREFS_NAME_SERVICE = "inference_service_prefs"
         private const val KEY_SAVED_BACKEND = "saved_backend"
     }

@@ -29,7 +29,7 @@
 1. **Grant Permissions**: Upon first launch, the app will request permissions for **Microphone** (audio inference), **Storage** (loading models), and **Battery Optimization** (to ensure the service stays alive in the background).
 2. **Select a Model**: Go to the **Backend Settings** tab. Tap **Select Model** and choose your `.litertlm`, `.bin`, or `.tflite` model file.
 3. **Choose Backend**: Select your preferred hardware accelerator (**CPU**, **GPU**, or **NPU**) depending on your device's capabilities.
-   Optionally set the **Context size (tokens)** below it (empty = the model's default); smaller values use less memory. It applies the next time the server starts.
+   Optionally set the **Context size (tokens)** below it (empty = the model's default); smaller values use less memory, and a value above a model's fixed maximum is clamped to it (the status line says so). It applies the next time the server starts.
    Below it, **Speculative decoding (MTP)** speeds up generation for models that ship a drafter (for example Gemma 4): **Adaptive** (default) uses it only while it is faster, **On** always, **Off** never. Models without a drafter ignore the setting. It applies the next time the server starts.
    For multimodal models you can also choose the backend of the **Vision encoder** and the **Audio encoder** (Auto follows the backend above). Text-only models such as Qwen3-0.6B need no encoder and load normally; they answer text only (image or audio input gets a 400). Applied the next time the server starts.
 
@@ -153,7 +153,7 @@ for line in response.iter_lines():
 1.  **State Management**: The server uses a transient conversation ID for each request to maintain context within the engine, but the REST API itself is stateless. Send the full conversation history in the `messages` array every time; the server reuses its cache automatically when the history extends the previous request.
 2.  **System prompt**: put instructions in a `system` message; with none, the model's own default applies (no built-in prompt). A request with only system messages is rejected with 400.
 3.  **Reuse**: send the assistant's reply back exactly as received (unchanged text); an edited or trimmed reply, a changed earlier message or different settings make the server rebuild the context (correct, just slower).
-4.  **Streaming**: Use `stream: true` for the best user experience, as Large Language Models can take time to generate full responses. Closing a streaming connection stops generation as soon as the next token is written (not during the initial prompt processing), so the next request normally does not wait for it.
+4.  **Streaming**: Use `stream: true` for the best user experience, as Large Language Models can take time to generate full responses. Closing a connection, streaming or not, stops generation as soon as the next token is written (not during the initial prompt processing), so the next request normally does not wait for it.
 5.  **Token usage**: responses carry real `usage` (prompt, completion, total and cached prompt tokens). For streams, send `"stream_options": {"include_usage": true}` to get a final usage chunk before `data: [DONE]`.
 6.  **Error Handling**: Check for HTTP status codes (401 for Unauthorized, 503 for Model Not Loaded).
 

@@ -38,9 +38,9 @@ data class ModelCapabilities(
     /** CPU/GPU backends the vision encoder can run on; null when the model has no (usable) vision encoder. */
     val visionBackends: List<BackendType>? = null,
     val audioBackends: List<BackendType>? = null,
-    /** The model supports function calling (tools). */
+    /** Function calling per the model metadata. Informational: some models (Gemma 4) report false yet support tools, so requests are not refused on it. */
     val supportsTools: Boolean = false,
-    /** The model supports thinking (reasoning_effort). */
+    /** Thinking per the model metadata. Informational, like [supportsTools]. */
     val supportsThinking: Boolean = false,
     /** The model's maximum context in tokens; 0 when it does not say. */
     val maxContextTokens: Int = 0,
@@ -67,6 +67,7 @@ class ModelInspector(private val reader: (String) -> RawModelInfo = ::readModelI
             Log.w(TAG, "Model metadata could not be read: ${e.message}")
             throw UnsupportedModelException("Model file could not be read", e)
         }
+        Log.d(TAG, "Model info: kind=${raw.kind} tools=${raw.supportsTools} thinking=${raw.supportsThinking} maxContext=${raw.maxContextTokens} dynamic=${raw.dynamicContext}")
         return toCapabilities(raw)
     }
 
@@ -106,7 +107,6 @@ internal fun readModelInfo(modelPath: String): RawModelInfo =
             ModelType.EMBEDDING -> ModelKind.EMBEDDING
             ModelType.UNKNOWN -> ModelKind.UNKNOWN
         }
-        Log.d("ModelInspector", "Model info: type=${info.modelType} tools=${(info as? ModelInfo.Llm)?.supportsFunctionCalling()} thinking=${(info as? ModelInfo.Llm)?.supportsThinking()} maxContext=${info.maxContextTokens()} dynamic=${info.isDynamicContext()}")
         RawModelInfo(
             kind, modalities.text, modalities.vision, modalities.audio,
             speculativeSupport = info is ModelInfo.Llm && info.hasSpeculativeDecodingSupport(),
