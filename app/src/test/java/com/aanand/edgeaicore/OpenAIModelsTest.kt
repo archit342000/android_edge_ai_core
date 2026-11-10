@@ -137,4 +137,13 @@ class OpenAIModelsTest {
         assertFalse(json, json.contains("\"content\""))
         assertTrue(json, json.contains("\"tool_calls\"") && json.contains("\"reasoning_content\":\"thinking\""))
     }
+
+    @Test
+    fun finishReasonPrefersToolCallsThenLengthThenStop() {
+        assertEquals("tool_calls", FinishReason.of(true, 99, 5))
+        assertEquals("length", FinishReason.of(false, 5, 5))
+        assertEquals("length", FinishReason.of(false, 9, 5))
+        assertEquals("stop", FinishReason.of(false, 4, 5))
+        assertEquals("stop", FinishReason.of(false, 500, null))
+    }
 }

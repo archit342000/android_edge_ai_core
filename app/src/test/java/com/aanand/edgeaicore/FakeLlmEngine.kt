@@ -166,6 +166,7 @@ class FakeEngineFactory(
 /** A model every test accepts: an LLM with text, vision and audio input. */
 val FULL_LLM = ModelCapabilities(
     ModelKind.LLM, supportsText = true, supportsVision = true, supportsAudio = true,
+    supportsTools = true, supportsThinking = true,
     visionBackends = listOf(com.google.ai.edge.litertlm.BackendType.CPU, com.google.ai.edge.litertlm.BackendType.GPU),
     audioBackends = listOf(com.google.ai.edge.litertlm.BackendType.CPU, com.google.ai.edge.litertlm.BackendType.GPU)
 )

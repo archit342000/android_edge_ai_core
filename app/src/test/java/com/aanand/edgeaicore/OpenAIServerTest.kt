@@ -533,4 +533,35 @@ class OpenAIServerTest {
         }
         assertEquals(HttpStatusCode.OK, ok.status)
     }
+
+    @Test
+    fun finishReasonIsLengthWhenTheOutputCapIsReachedOnBothPaths() = withServer(usageManager()) {
+        // the fake engine reports 3 decoded tokens
+        for (stream in listOf(false, true)) {
+            val text = client.post("/v1/chat/completions") {
+                header(HttpHeaders.Authorization, "Bearer $validToken")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody("""{"stream":$stream,"max_tokens":3,"messages":[{"role":"user","content":"ping"}]}""")
+            }.bodyAsText().replace(" ", "").replace("\n", "")
+            assertTrue(text, text.contains("\"finish_reason\":\"length\""))
+        }
+        val uncapped = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody(chatBody)
+        }.bodyAsText().replace(" ", "").replace("\n", "")
+        assertTrue(uncapped, uncapped.contains("\"finish_reason\":\"stop\""))
+    }
+
+    @Test
+    fun moreThanOneChoiceIsA400AndTheLoadCounterReturnsToZero() = withServer(loadedManager()) {
+        val response = client.post("/v1/chat/completions") {
+            header(HttpHeaders.Authorization, "Bearer $validToken")
+            header(HttpHeaders.ContentType, "application/json")
+            setBody("""{"n":2,"messages":[{"role":"user","content":"hi"}]}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertTrue(response.bodyAsText().contains("n must be 1"))
+        awaitLoadZero()
+    }
 }

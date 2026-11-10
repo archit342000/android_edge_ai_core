@@ -18,7 +18,9 @@ data class ChatCompletionRequest(
     val tools: List<ToolDto>? = null,
     val tool_choice: JsonElement? = null,
     val response_format: ResponseFormatDto? = null,
-    val reasoning_effort: String? = null
+    val reasoning_effort: String? = null,
+    /** Only 1 is supported (one serial engine); another value is a 400. */
+    val n: Int? = null
 ) {
     /** The output cap: `max_completion_tokens` (OpenAI's newer name) wins over `max_tokens`. */
     val maxOutputTokens: Int? get() = max_completion_tokens ?: max_tokens
@@ -181,3 +183,17 @@ data class HealthResponse(
 data class ErrorResponse(
     val error: String
 )
+
+/** The `finish_reason` of a completed reply. */
+object FinishReason {
+    const val STOP = "stop"
+    const val LENGTH = "length"
+    const val TOOL_CALLS = "tool_calls"
+
+    /** `tool_calls` wins; `length` when the output cap was reached; otherwise `stop`. */
+    fun of(hasToolCalls: Boolean, completionTokens: Int, maxOutputTokens: Int?): String = when {
+        hasToolCalls -> TOOL_CALLS
+        maxOutputTokens != null && completionTokens >= maxOutputTokens -> LENGTH
+        else -> STOP
+    }
+}

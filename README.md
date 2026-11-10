@@ -77,6 +77,8 @@ Mimics the OpenAI API.
 
 Also supported: `max_tokens` / `max_completion_tokens`, `top_p`, `top_k`, `presence_penalty`, `frequency_penalty` and `seed`. Values out of range are rejected with `400` (see `docs/standards/api.md`).
 
+`finish_reason` is `length` when the reply reached the token cap and `tool_calls` after a tool call. Ignored: `stop`, `logit_bias`, `parallel_tool_calls`. Not supported: `n` above 1 (400), a named `tool_choice` (400), `reasoning_tokens` in `usage`, stopping a non-streaming request when you disconnect, request timeouts and queue limits. With `json_schema`, set `additionalProperties: false` to forbid extra properties.
+
 **Tool calling, JSON output and thinking** (supported by models such as Gemma 4):
 ```json
 {

@@ -41,7 +41,8 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 | `tools` | list of `{type: "function", function: {name, description, parameters}}`, at most 32; `parameters` is a JSON schema | none |
 | `tool_choice` | `"auto"` (offer the tools) or `"none"` (answer in text); anything else is a 400 | `"auto"` |
 | `response_format` | `{type: "text"}`, `{type: "json_object"}` or `{type: "json_schema", json_schema: {name, schema}}` (schema object up to 16 KB); constrained decoding | none |
-| `reasoning_effort` | `none` turns thinking off; `minimal`, `low`, `medium`, `high`, `xhigh` turn it on (no token budget per level) | the model's default |
+| `reasoning_effort` | `none` turns thinking off; `minimal`, `low`, `medium`, `high`, `xhigh` turn it on with a thinking-token budget of 256, 1024, 4096, 16384 or unlimited (advisory: Gemma 4 E2B on CPU produced the same amount of thinking for `low` and `xhigh`) | the model's default |
+| `n` | must be `1` (or absent); anything else is a 400 | `1` |
 | `stream_options` | `{"include_usage": boolean}`; with `stream: true`, `include_usage: true` adds a final usage chunk | none |
 
 Ranges are checked before generation: `messages` has 1 to 256 items, `temperature` is 0 to 2, `top_p` is above 0 and at most 1, `top_k` is at least 1, the
@@ -60,7 +61,7 @@ prompt). A request with no message left after the system messages (only system m
 `message.tool_calls[]` (`id` `call_<uuid>`, `type` `function`, `function.name`, `function.arguments` as a JSON string). Send the result back as an assistant message
 with those `tool_calls` plus a `tool` message with the same `tool_call_id`. Tool, response-format and reasoning settings are part of the conversation-reuse key.
 `tools` and `response_format` cannot be combined (the engine would constrain the tool-call turn to the schema): that is a 400. Tool-call arguments and tool results are limited to 16 KB each.
-Invalid tools, tool calls, schemas or `reasoning_effort` values give a 400 with a fixed message. Support depends on the model (tested with Gemma 4 E2B).
+Invalid tools, tool calls, schemas or `reasoning_effort` values give a 400 with a fixed message. Support depends on the model (tested with Gemma 4 E2B); the app does not refuse `tools` or `reasoning_effort` up front because a model's metadata can say it supports neither while it handles both (Gemma 4 E2B does), so a model that cannot do them fails like any engine error.
 
 Each request is independent: send the full history every time. The server reuses its cached engine conversation when your `messages` extend the previous
 request exactly (same settings, the earlier messages and the assistant reply unchanged, as text), so only the new message is prefilled; otherwise it rebuilds
@@ -69,7 +70,7 @@ the context from `messages`. The response never depends on whether the cache was
 ## Responses
 
 Non-streaming: `ChatCompletionResponse` with `id` `chatcmpl-<uuid>`, `object` `chat.completion`, `created` (seconds), one `choices[0]`
-with `message.role = "assistant"` and `finish_reason = "stop"` (`"tool_calls"` when the model called a tool, then `content` is omitted when empty and
+with `message.role = "assistant"` and `finish_reason = "stop"` (`"length"` when the reply reached `max_tokens`/`max_completion_tokens`; `"tool_calls"` when the model called a tool, then `content` is omitted when empty and
 `message.tool_calls` is set), `message.reasoning_content` when thinking produced text (separate from `content`), and `usage`: `prompt_tokens`, `completion_tokens`, `total_tokens`
 and `prompt_tokens_details.cached_tokens` (prompt tokens already in the conversation's KV cache; they are included in `prompt_tokens`).
 The counts come from the engine (LiteRT-LM benchmark info), not from re-tokenising text. If the engine cannot report them the response is `500 {"error": "Token usage unavailable"}`.
@@ -90,6 +91,14 @@ chunk carries `usage`.
 
 On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`.
 If the client disconnects mid-stream, the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops.
+
+## Unsupported or ignored
+
+Accepted but ignored (clients such as the OpenAI SDKs send them by default): `stop` (no stop sequences), `logit_bias`, `parallel_tool_calls` (the server returns every call the model emits).
+Not supported: `n` other than 1 (400), `tool_choice` naming a function (400: the engine cannot force a call), `regex` response formats, `reasoning_tokens` in `usage` (the engine gives no thinking count),
+cancelling a non-streaming request when the client disconnects, request timeouts and queue limits (requests wait for the inference lock without a limit).
+`json_schema` output may contain properties the schema does not list unless the schema sets `additionalProperties: false`.
+The context size set in the app is clamped to the model's maximum when the model reports a fixed one (the status line says so).
 
 ## Errors
 
