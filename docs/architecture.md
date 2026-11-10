@@ -40,7 +40,8 @@ client app ──HTTP :8080──> OpenAIServer
    2. call.receive<ChatCompletionRequest>()                          (400 on parse error)
    3. SystemPromptSplitter: system/developer messages -> the system instruction (400 if no other message is left);
       new transient ConversationState(ttlMs = 0, random UUID, systemInstruction)
-   4. AiEngineManager.generateConversationResponseAsync(state, messages, onToken, onComplete(text, usage), onError)
+   3a. more than 4 held requests -> 503 Server busy; 4. AiEngineManager.generateConversationResponseAsync(state, messages, onToken, onComplete(text, usage, stopped), onError)
+      (waits at most 120 s for the engine lock -> 503; a generation over 10 min is stopped -> 504)
       (usage = prompt/completion/cached token counts read from the engine; if they cannot be read the request fails with "Token usage unavailable")
    5. stream=true  -> SSE chunks "data: {...}\n\n" ... "data: [DONE]"
       stream=false -> one ChatCompletionResponse (JSON)

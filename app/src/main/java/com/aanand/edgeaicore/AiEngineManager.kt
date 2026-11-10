@@ -192,7 +192,11 @@ class AiEngineManager(
         options: GenerationOptions = GenerationOptions(),
         chatOptions: ChatOptions = ChatOptions(),
         onReasoning: (String) -> Unit = {},
-        onToolCalls: (List<ToolCall>) -> Unit = {}
+        onToolCalls: (List<ToolCall>) -> Unit = {},
+        /** How long to wait for the engine before giving up with [EngineBusyException]; null waits forever (the readiness ping). */
+        queueWaitMs: Long? = null,
+        /** How long decoding may run before it is stopped with [GenerationTimeoutException]; null = no limit (the readiness ping). */
+        generationTimeoutMs: Long? = null
     ) = withContext(Dispatchers.IO) {
         if (messages.isEmpty()) {
             onErrorCallback(IllegalArgumentException("No messages provided"))
@@ -201,7 +205,14 @@ class AiEngineManager(
 
         // A cancel while this request is still queued for the lock is reported here, once.
         try {
-            inferenceMutex.lock()
+            if (queueWaitMs == null) {
+                inferenceMutex.lock()
+            } else if (withTimeoutOrNull(queueWaitMs) { inferenceMutex.lock() } == null) {
+                // The lock was not taken, so this path must not reach the unlock below.
+                Log.w(TAG, "Request gave up waiting for the engine after $queueWaitMs ms")
+                onErrorCallback(EngineBusyException())
+                return@withContext
+            }
         } catch (e: CancellationException) {
             onErrorCallback(e)
             throw e
@@ -276,6 +287,8 @@ class AiEngineManager(
                 val currentGeneration = CancellableGeneration(cancelAction = stopNative)
                 generation = currentGeneration
 
+                // Only the native wait runs under the timeout: a timeout around more would look like a client cancel.
+                val finished = withTimeoutOrNull(generationTimeoutMs ?: Long.MAX_VALUE) {
                 suspendCancellableCoroutine<Unit> { cont ->
                     // Stop native decoding (the conversation and its KV state are closed after the wait below).
                     cont.invokeOnCancellation { currentGeneration.cancel() }
@@ -371,6 +384,14 @@ class AiEngineManager(
                     // Cancelled between the check above and the send: the handler's cancelProcess() found nothing to
                     // stop, so stop the decoding that has just started.
                     if (cont.isCancelled) stopNative()
+                }
+                }
+                if (finished == null) {
+                    // The timeout cancelled the wait, which stopped native decoding; the conversation is closed in the finally block.
+                    val stopped = generation?.awaitStopped(cancelWaitMs) ?: true
+                    Log.w(TAG, "Generation timed out after $generationTimeoutMs ms (stopped=$stopped)")
+                    if (outcomeReported.compareAndSet(false, true)) onErrorCallback(GenerationTimeoutException())
+                    return@withContext
                 }
 
                 // 5. Keep the conversation for the next request when it holds exactly history + reply
