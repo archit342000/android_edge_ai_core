@@ -44,8 +44,8 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
     On the emulator (2026-11-09) Gemma 4's vision and audio encoders ran on CPU and answered; Gemma 3n lists only GPU for vision, and its image request still answered there (not explained: the main backend on GPU still fails at the first request, pitfall 22).
     NPU-only encoders are treated as absent. Phone GPU vision is untested.
 21. **An unsupported or corrupt model must not reach the engine.** `AiEngineManager.loadModel` first reads the file with `ModelInspector` (LiteRT-LM `ModelInfo`) and rejects what it cannot read,
-    what is not an LLM, or what has no text input with `UnsupportedModelException`; the service then shows "Error: Unsupported model file", clears the crash flag and the saved model path, and stays
-    up without a model (health 503). A random-bytes file and a truncated real model were both rejected this way on `0.19.1` (the process survived). Native aborts inside `Engine.initialize()`
+    what is not an LLM, or what has no text input with `UnsupportedModelException`; the service then shows "Error: Unsupported model file", clears the crash flag, and keeps the running model with its saved settings
+    (status "... previous model still loaded"); with no model loaded it drops the saved path and stays up without one (health 503). The running model is closed only after the new file passed inspection. A random-bytes file and a truncated real model were both rejected this way on `0.19.1` (the process survived). Native aborts inside `Engine.initialize()`
     for a file whose metadata reads fine are still possible (Gemma 4 aborted with `0.9.0-alpha02`: `Unknown model type: tf_lite_end_of_vision`; it loads with `0.19.1`). The crash-loop guard
     stays for those: it refuses the sticky restart until a new model path is sent.
 22. **GPU "loads" before it fails.** With `BACKEND=GPU` and no OpenCL, `Engine.initialize()` can fail (the loader then retries on CPU at once) or succeed and fail on the first request (`Can not find OpenCL library`). The service treats both as a GPU failure:

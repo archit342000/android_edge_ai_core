@@ -59,7 +59,7 @@ request builds a new conversation from `messages[:-1]`. A conversation that fail
   `onStartCommand` starts the server, goes foreground, loads the model and returns `START_STICKY`.
   On a sticky restart it restores the model path from `inference_service_prefs`, and refuses to start if `crashed_during_init` is set (the flag spans the model load and the readiness check, including a GPU to CPU fallback). A model rejected as unsupported clears the saved path (pitfall 21).
 - `InferenceService` alone owns `ConversationManager` (create, `deleteAllConversations`, `shutdown`).
-- `onDestroy` cancels coroutines, shuts down conversations, closes the engine and stops the server. Tokens survive restarts.
+- `onDestroy` cancels coroutines, shuts down conversations, stops the server (which cancels running generations) and then closes the engine under the inference lock (`AiEngineManager.closeWhenIdle`, waits at most 2 s). Tokens survive restarts.
 
 ## Storage
 

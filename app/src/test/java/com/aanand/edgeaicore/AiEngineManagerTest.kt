@@ -1110,4 +1110,49 @@ class AiEngineManagerTest {
         assertNull(none.configs[0].maxNumTokens)
         assertNull(m5.effectiveMaxNumTokens)
     }
+
+    @Test
+    fun aRejectedFileKeepsTheRunningModelLoaded() = runTest {
+        val factory = FakeEngineFactory()
+        val manager = newManager(factory) { path ->
+            if (path.endsWith("bad.litertlm")) throw UnsupportedModelException("not a model") else FULL_LLM
+        }
+        val good = modelFile()
+        manager.loadModel(good, "CPU")
+        val bad = File(tmp.root, "bad.litertlm").also { it.writeText("x") }.absolutePath
+        try {
+            manager.loadModel(bad, "CPU")
+            fail("expected UnsupportedModelException")
+        } catch (e: UnsupportedModelException) {
+            assertTrue(manager.isModelLoaded)
+            assertFalse(factory.engine.closed)
+            assertEquals(FULL_LLM, manager.modelCapabilities)
+        }
+        val none = newManager(FakeEngineFactory()) { throw UnsupportedModelException("not a model") }
+        try { none.loadModel(bad, "CPU"); fail("expected UnsupportedModelException") } catch (e: UnsupportedModelException) { assertFalse(none.isModelLoaded) }
+    }
+
+    @Test
+    fun closeWhenIdleWaitsForARunningGenerationThenClosesAfterTheTimeout() = runTest {
+        val factory = FakeEngineFactory(hangUntilCancelled = true)
+        val manager = newManager(factory)
+        manager.loadModel(modelFile(), "CPU")
+        val generation = launch(Dispatchers.Default) { manager.request(listOf(userChat("one"))) }
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) { while (factory.engine.conversations.firstOrNull()?.sent != 1) delay(5) }
+        }
+        // The generation never ends: the engine is closed anyway after the timeout
+        withContext(Dispatchers.Default) { manager.closeWhenIdle(150) }
+        assertTrue(factory.engine.closed)
+        assertFalse(manager.isModelLoaded)
+        generation.cancelAndJoin()
+        // An idle engine closes at once
+        val idle = FakeEngineFactory()
+        val m2 = newManager(idle)
+        m2.loadModel(modelFile2(), "CPU")
+        m2.closeWhenIdle(5_000)
+        assertTrue(idle.engine.closed)
+    }
+
+    private fun modelFile2() = tmp.newFile("second-${System.nanoTime()}.litertlm").absolutePath
 }

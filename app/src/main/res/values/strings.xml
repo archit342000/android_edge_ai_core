@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">Edge AI Core</string>
     <string name="select_model">Select Model (.litertlm)</string>
     <string name="enable_server">Enable Server</string>
@@ -29,11 +29,29 @@
     <string name="encoder_audio_title">Audio encoder</string>
     <string name="encoder_help">Backend for the image or audio part of multimodal models. Auto follows the backend above. Models without that encoder ignore it. Applied the next time the server starts.</string>
     <string name="encoder_auto">Auto</string>
+    <string name="status_service_starting">Service starting...</string>
+    <string name="status_crash_loop">Error: Crash loop detected. Service stopped.</string>
+    <string name="status_restoring" tools:ignore="TypographyEllipsis">Restoring service state...</string>
+    <string name="status_loading_model">Loading model from path: %1$s</string>
+    <string name="status_model_missing">Error: Model file missing</string>
+    <string name="status_initializing" tools:ignore="TypographyEllipsis">Initializing engine...</string>
+    <string name="status_verifying" tools:ignore="TypographyEllipsis">Verifying model readiness...</string>
+    <string name="status_gpu_fallback" tools:ignore="TypographyEllipsis">GPU unavailable, loading on CPU...</string>
+    <string name="status_loaded">Model loaded successfully (%1$s)</string>
+    <string name="status_loaded_gpu_unavailable_part">, GPU unavailable</string>
+    <string name="status_loaded_mtp_part">, MTP %1$s</string>
+    <string name="status_loaded_context_part">, context clamped to %1$d</string>
+    <string name="status_verification_failed">Error: Model verification failed</string>
+    <string name="status_unsupported_model">Error: Unsupported model file</string>
+    <string name="status_unsupported_model_kept">Error: Unsupported model file (previous model still loaded)</string>
+    <string name="status_load_failed">Error: Model failed to load</string>
+    <string name="status_ping_success">Ping success (%1$d)</string>
+    <string name="status_ping_failed">Ping failed (%1$d): %2$s</string>
     <string name="logs_label">Logs:</string>
     <string name="notification_channel_id">inference_channel</string>
     <string name="notification_channel_name">Inference Service</string>
     <string name="notification_title">AI Server Running</string>
-    <string name="notification_content">Listening for requests...</string>
+    <string name="notification_content" tools:ignore="TypographyEllipsis">Listening for requests...</string>
     
     <!-- API Token -->
     <string name="api_token_label">API Token</string>

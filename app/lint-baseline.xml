@@ -15,17 +15,6 @@
     <issue
         id="ApplySharedPref"
         message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
-        errorLine1="                    prefs.edit().putBoolean(&quot;crashed_during_init&quot;, true).commit()"
-        errorLine2="                                                                         ~~~~~~~~">
-        <location
-            file="src/main/java/com/aanand/edgeaicore/InferenceService.kt"
-            line="116"
-            column="74"/>
-    </issue>
-
-    <issue
-        id="ApplySharedPref"
-        message="Consider using `apply()` instead; `commit` writes its data to persistent storage immediately, whereas `apply` will handle it in the background"
         errorLine1="            .commit()"
         errorLine2="             ~~~~~~~~">
         <location
