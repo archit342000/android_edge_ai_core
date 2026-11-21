@@ -51,6 +51,7 @@ Turn the working-tree changes into well-formed commits and a pull request. Follo
 ## Ticket mode
 
 Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
+- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
 - **Epic IDs:** if the ID is an epic (`type: epic`), do not run on it. List its unfinished children (as `/ticket list epic <ID>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
 - The ticket's Plan, Verification results and unresolved review findings feed the PR's Summary, Testing and Notes. The ticket ID may go in commits, the branch name and the PR where the repo's conventions allow, and the PR may link the ticket on the repo's `tickets` branch (`https://github.com/<owner>/<repo>/blob/tickets/<file>`). Never put local paths (`~/.claude/tickets/...`, evidence folders) in any of them.
 - After the PR is open (or already existed), append `PR: <url>, branch <name>, base <base>` as the last line of Implementation notes and add a Log line. Do not change the ticket status; the user closes it.

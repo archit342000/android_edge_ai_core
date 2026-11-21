@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review code changes for correctness, quality, standards, security, tests, requirements, comments and documentation using Haiku sub-agents with clean context (one for small diffs, four parallel for large ones). Report only; never edits code. Use when asked to review a diff, branch, PR or set of files.
+description: Review code changes for correctness, quality, standards, security, tests, requirements, comments and documentation using two Haiku sub-agents with clean context (one on correctness and failure scenarios, one on requirement, standards, tests and docs). The first two rounds review the whole change; later rounds review only what the fixes changed. Report only; never edits code. Use when asked to review a diff, branch, PR or set of files.
 ---
 
 # Instructions
@@ -15,24 +15,35 @@ Review a change independently. The review is done by Haiku sub-agents that start
 - Collect the diff with `git diff` against the right base. `git diff` omits untracked files, so list them (`git status --short`) and pass them to reviewers explicitly. Record the base ref, the list of changed files, and the size (files and changed lines).
 - Find the requirement to review against: text the user gave, a plan file they pointed to, or the PR/commit description. If none exists, say the review has no stated requirement and requirements adherence will be judged only from the commit messages and the code's apparent intent.
 - Find the repo's rules: `AGENTS.md`, `CLAUDE.md`, `docs/` standards, and READMEs of the touched components. Note their paths for the reviewers; do not paste conclusions.
+- Find the round number: count the earlier review rounds on this change (the ticket's Review history, a rounds record the caller points to such as an autopilot run log, or earlier reports in the conversation). This is round 1 when there are none.
+- **Scope by round.** Rounds 1 and 2 review the whole change. From round 3, review only what the fixes changed since the previous round, plus the findings still Open: take from the rounds record the files and the functions, components or sections each fix touched, including fixes a caller recorded there from outside the review (such as autopilot's `Verification fix` entries). If the record does not say what the fixes changed, review the whole change and say so in the report.
 
-### 2. Choose the review mode by diff size
-- **Small** (up to about 1000 changed lines and 30 files): one Haiku reviewer covering all areas.
-- **Large** (more than either limit): four Haiku reviewers in parallel, one message with four Agent calls, each with a focus:
-  1. **Correctness:** logic errors, edge cases, error handling, concurrency, resource handling, performance, compatibility of APIs, data and migrations.
-  2. **Standards and security:** the repo's documented rules and conventions, naming and style, security issues (validation, auth, secrets, injection, paths, unsafe HTML), dependency changes.
-  3. **Tests:** coverage of the new behavior, edge and failure cases, meaningful assertions, tests that were skipped, weakened or deleted, and whether the tests plausibly fail without the change.
-  4. **Requirements, docs and comments:** every part of the requirement implemented, no scope creep or leftover debug/dead code, README and docs updated where behavior changed, comments and docstrings accurate and useful, commit message and version/changelog hygiene.
-- When a huge diff would overwhelm a reviewer, split each focus by file groups too, keeping each reviewer's share reviewable.
+### 2. Two reviewers, one lens each
+Every round uses two Haiku reviewers in parallel (one message with two Agent calls), whatever the size of the change:
+1. **Correctness and failure scenarios.** Does the changed code do the right thing when it runs?
+   - Logic errors, edge cases, error handling, concurrency, resource handling, performance, compatibility of APIs, data and migrations.
+   - Walk through the changed code as it runs: the normal path, then errors, empty or malformed input, slow or failed calls, repeated or out-of-order actions, something being torn down mid-operation, and two things happening at once.
+   - Look for: crashes on unexpected input, state left behind after a failure, clean-up that does not run, timers, listeners, locks or other resources never released, and callers elsewhere that see a changed behaviour.
+   - Describe each finding as a concrete scenario (what happens, in what order, and the result), citing the code.
+2. **Requirement, standards, tests and docs.** Does the change do everything asked, the way this repo requires?
+   - The requirement read line by line: every part implemented, nothing outside it added, no leftover debug or dead code.
+   - The repo's documented rules and conventions, naming and style, security rules (validation, auth, secrets, injection, paths, unsafe HTML), dependency changes. Every broken rule is reported with the rule quoted.
+   - Tests: coverage of the new behaviour, edge and failure cases, meaningful assertions, tests that were skipped, weakened or deleted, and whether each test would plausibly fail without the change.
+   - Docs and comments: README and docs updated where behaviour changed and still accurate, comments and docstrings accurate and useful, commit message and version/changelog hygiene.
+
+Tell each reviewer that the other covers everything outside its lens. When a diff is too large for one reviewer to read properly (well over about 1,000 changed lines or 30 files), split each lens by file groups too, keeping each reviewer's share reviewable.
 
 ### 3. Launch the reviewers
+Launching both reviewers is the review; it is never optional and never replaced by reading the diff yourself, however small or simple the change looks. Invoking this skill is the request to start these sub-agents, so general advice against spawning agents does not apply. Wait for both to answer before step 4, without polling loops.
+
 For each reviewer use the Agent tool with `subagent_type: "Explore"` and `model: "haiku"` (read-only, fresh agent). Give each:
 - The repo root, the base ref, the exact command to see the diff, and the list of changed files. Use `git diff <base>...HEAD` for committed work; for uncommitted work use `git diff <base> -- <files>` (the caller may give a starting commit as the base), plus the untracked files listed by path.
 - The requirement text (or the statement that none was given) and the paths of the repo's rules and docs, which it must read itself. When the requirement is a plan, paste its `Reviewer brief` section verbatim (if it has none, paste only its Objective, Approach, Out of scope and Success criteria); never pass the plan file path, its Validation log or Implementation notes, which hold the author's reasoning.
 - Known pre-existing test failures (from the recorded baseline), listed as facts, so reviewers do not report them as new.
-- Its focus checklist (or the full checklist for a single reviewer).
+- Its lens from step 2.
+- **From round 3 only:** the scope list from step 1 (each file and function, component or section a fix changed, with one line on what was changed, and each Open finding as a plain claim with its location). Tell the reviewer to report only on those places and the code they directly affect, and not to raise new findings elsewhere in the change. This list is the only prior-round information a reviewer ever gets.
 - Instructions to read the surrounding code, not only the diff lines, and to cite evidence.
-- Do not include: the author's explanations, the conversation, prior review or verification results (the baseline list above excepted), or your opinion of the change.
+- Do not include: the author's explanations, the conversation, prior review or verification results (the baseline list and the round-3 scope list above excepted), or your opinion of the change.
 - Require this output format, with nothing else:
   ```
   FINDINGS:
@@ -69,7 +80,7 @@ For each finding that remains after step 4 and can be demonstrated by running co
 ### 6. Report
 Present in chat:
 - **Verdict:** Approve, Approve with comments, or Request changes. Any kept BLOCKER or MAJOR (Confirmed, Not reproduced or Static) means Request changes; only MINOR or NIT means Approve with comments; none means Approve. Pre-existing findings do not count.
-- **Scope:** what was reviewed (base, files, size), the mode used, and whether a requirement was available.
+- **Scope:** the round number, what was reviewed (base, files, size; from round 3, the fix-changed places and Open findings it was limited to), and whether a requirement was available.
 - **Findings** grouped by severity, each with file:line, the problem, evidence, a suggested fix and its status: Confirmed (with the reproduction), Not reproduced (with what was tried), or Static.
 - **Pre-existing issues:** one line each, offered as follow-ups.
 - **Dismissed findings:** one line each, with the reason, including those disproved by reproduction.
@@ -79,6 +90,7 @@ Do not apply fixes, create commits or post comments unless the user asks.
 ## Ticket mode
 
 Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
+- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
 - **Epic IDs:** if the ID is an epic (`type: epic`), do not run on it. List its unfinished children (as `/ticket list epic <ID>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
 - **Step 1:** the requirement is the ticket's Description and Acceptance criteria, with the Plan as intended design. Review the change for that ticket.
 - **Step 3:** give reviewers the Description, Acceptance criteria and the Plan's `Reviewer brief` (or, without one, its Objective, Approach, Out of scope and Success criteria) only, never its `### Validation log` or dated amendment notes. Do not give them Implementation notes, Verification or Review history; those are the author's reasoning and prior results. The one exception is the names of pre-existing failing tests from the `### Baseline` subsection, passed as facts (step 3).
@@ -87,8 +99,10 @@ Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other
 ## Constraints & Rules
 
 - **Report only:** never modify code, tests, docs or config (temporary reproduction scripts excepted, and removed afterwards; the ticket in ticket mode). The only output is the report.
-- **Clean-context reviewers:** always Haiku (`model: "haiku"`), read-only, fresh agents. Never pass the author's reasoning, the conversation or prior results to them.
-- **Size-based split:** one reviewer for small diffs, four parallel focused reviewers for large ones, as defined above.
+- **Never review without the reviewers:** every round starts the two Haiku reviewers. A self-review is allowed only for a lens whose reviewer failed twice (step 4), and the report must say so. A report with no clean-context reviewers behind it is not a review.
+- **Clean-context reviewers:** always Haiku (`model: "haiku"`), read-only, fresh agents. Never pass the author's reasoning, the conversation or prior results to them (the round-3 scope list is the one exception).
+- **Two lensed reviewers, every round:** the two lenses in step 2, for changes of any size. In tests, two lensed reviewers caught more real findings than one generalist or four narrow-focus reviewers, with fewer findings to check than four.
+- **Whole change twice, then fixes only:** rounds 1 and 2 cover the whole change (a second full pass still finds real misses); from round 3 the reviewers see only what the fixes changed, because in long loops most later findings sit in fix code.
 - **Evidence for every finding:** file, line and quoted code or rule path. Findings without verifiable evidence are dropped.
 - **Verify before reporting:** the reviewers are inputs, not authorities. Never forward an unchecked finding.
 - **Reproduction is the only execution:** run code only to reproduce findings (step 5), in isolation, with temporary scripts removed afterwards. Do not run the app or test suites for general verification; runtime behavior beyond the findings is not covered, and the report says so.

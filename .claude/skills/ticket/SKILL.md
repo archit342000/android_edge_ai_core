@@ -43,11 +43,11 @@ Each repo's tickets live on its `tickets` branch on `origin`: an orphan branch h
 !/*.md
 ```
 
-**Read.** Before the first ticket read of an action or skill run, `git pull --rebase` (skip it without a remote). If it fails for network reasons, continue with the local copy and say so.
+**Read.** Before the first ticket read of an action or skill run, `git pull --no-rebase --no-edit` (skip it without a remote). Use a merge pull, never `--rebase` or `--autostash`: parallel sessions share this clone and may have uncommitted edits to other tickets in it, which a rebase refuses and a stash would hide from them. If it fails for network reasons, continue with the local copy and say so.
 
-**Write.** After each action, commit every ticket file it changed in one commit (`git add <those files> && git commit -m "<ID>: <what changed>"`, e.g. `MYAI-12: start`, `MYAI-12: plan validated`, `MYAI-12, MYAI-10: link blocked_by`) and `git push`. Stage by explicit path, since parallel sessions share this clone and may have their own edits in progress.
-- `index.lock` exists: another session is committing; wait a few seconds and retry.
-- Push rejected: `git pull --rebase`, then push again. Tickets are append-only, so resolve a conflict by keeping both sides' lines (in date order) and the later `updated`; for a conflicting `status`, keep the later change. If a new ticket's number was taken on the remote meanwhile, renumber the new ticket (file name and `id`) to the next free number before pushing.
+**Write.** After each action, commit every ticket file it changed in one commit (`git add <those files> && git commit -m "<ID>: <what changed>" -- <those files>`, e.g. `MYAI-12: start`, `MYAI-12: plan validated`, `MYAI-12, MYAI-10: link blocked_by`) and `git push`. Stage and commit by explicit path (the trailing `-- <files>` keeps files another session has staged out of your commit), since parallel sessions share this clone and may have their own edits in progress. Then check it landed: `git status --short -- <those files>` prints nothing and `git log origin/tickets..HEAD --oneline` is empty.
+- `index.lock` exists, or a pull stops on a file another session has staged: that session is mid-commit; wait a few seconds and retry. Never unstage, stash or reset its files.
+- Push rejected: `git pull --no-rebase --no-edit`, then push again. Tickets are append-only, so resolve a conflict by keeping both sides' lines (in date order) and the later `updated`; for a conflicting `status`, keep the later change. If a new ticket's number was taken on the remote meanwhile, renumber the new ticket (file name and `id`) to the next free number before pushing.
 - Push fails for network or auth reasons: keep the commit, carry on, and list the unpushed tickets in the final report.
 - Never force-push or rewrite the branch's history.
 
@@ -213,7 +213,7 @@ Update `updated` and add a Log line on both the ticket and the epic (`- YYYY-MM-
 
 - Resolve the ticket per "Locations" and read all of it first. Description and Acceptance criteria are the requirement; the other sections are prior context to continue from.
 - Durable output goes into the matching section instead of a `plans/` file: plan to Plan, progress to Implementation notes, scenarios and results to Verification, findings and their resolution to Review history.
-- Write as you go (after each step or stage), not only at the end, so another conversation can resume mid-work. Commit each write on the `tickets` branch and push at least at the end of each stage (see "Storage and sync").
+- Write as you go (after each step or stage), not only at the end, so another conversation can resume mid-work. Pull before the first read. Commit the ticket and push when the skill finishes, and under `autopilot` at the end of every stage: a skill never ends with the ticket uncommitted, and its report says so if the push failed (see "Storage and sync"). This is separate from code commits: a skill's "do not commit or push" rule is about the project repo, never the ticket.
 - Append dated subsections; do not rewrite earlier content. The one exception is the Plan, which may be revised in place until validated, and amended by dated notes after that. Resolving a review finding updates that finding's status in place.
 - Use `###` or deeper for headings inside a section, so the `##` section order holds.
 - On each write, set `updated` and add a Log line for notable events (plan validated, implementation done, verification result, review round, PR opened).
