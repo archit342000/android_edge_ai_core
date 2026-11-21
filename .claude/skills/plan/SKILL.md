@@ -1,18 +1,18 @@
 ---
 name: plan
-description: Plan a change from a requirement by reading the repo's docs and code, drafting a plan, and having a Haiku sub-agent validate it (max 5 validation rounds; stops at the first round with no valid blocking issues, fixing minors inline). Use when asked to plan, design an approach, or scope work before implementing. Does not implement.
+description: Plan a change from a requirement by reading the repo's docs and code, drafting a plan, and having two Haiku validators check it each round (requirement and standards; failure scenarios), with the main session judging every issue against the code. Max 5 validation rounds; stops at the first round with no valid blocking issues. Decisions that need the user are collected and asked once, after the loop. Use when asked to plan, design an approach, or scope work before implementing. Does not implement.
 ---
 
 # Instructions
 
-Turn a user requirement into a concrete, verified implementation plan grounded in the repository's own docs and code. This skill plans only; it never edits source code. The plan is drafted, validated by a Haiku sub-agent, revised, and re-validated, up to 5 validation rounds.
+Turn a user requirement into a concrete, verified implementation plan grounded in the repository's own docs and code. This skill plans only; it never edits source code. The plan is drafted, validated by Haiku sub-agents, revised, and re-validated, up to 5 validation rounds. The user is not asked for decisions while the loop runs: decisions are collected in the plan and put to the user once, after the loop.
 
 ## Steps
 
 ### 1. Understand the requirement
 - Restate the requirement in one or two sentences. List explicit constraints and success criteria.
 - If a plan for this requirement already exists (a `plans/` file the user names, or the ticket's Plan), revise it instead of starting a new file, and validate the revision.
-- Ask the user (AskUserQuestion) only when a question blocks the plan and cannot be answered from the repo or sensible defaults. Otherwise record assumptions in the plan.
+- Ask the user (AskUserQuestion) before drafting only when the requirement cannot be understood at all. Every other question becomes a recorded assumption, or an entry under `## Decisions for the owner` that is asked after the validation loop (step 6). Never stop mid-loop to ask.
 
 ### 2. Gather context (docs first, then code)
 - Read, when they exist: `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/` (architecture, standards, pitfalls), and the README of every component you will touch.
@@ -60,22 +60,44 @@ Write it to `plans/<topic>-<YYYY-MM-DD>.md`, or into the existing plan file when
 ## Risks and open questions
 <risk, impact, mitigation; unresolved questions for the user>
 
+## Decisions for the owner
+<only when there are any (see step 5, "Owner decisions"); omit the section otherwise>
+
 ## Success criteria
 - [ ] <checkable outcome>
 ```
 
 Rules for the draft: `Status` starts as `todo` (implement sets `done` or `done (deviation: ...)`); every path must exist (or be marked "create"); every symbol must exist or be marked new; steps are ordered and each has a verification; no placeholders such as TBD or "etc."; do not plan work outside the requirement.
 
-### 5. Validate with a Haiku sub-agent (iteration loop)
-Run at most 5 validation rounds. For each round:
+### 5. Validate with Haiku sub-agents (iteration loop)
+Run at most 5 validation rounds. Do not ask the user anything during the loop.
 
-1. Spawn one validator with the Agent tool: `subagent_type: "Explore"`, `model: "haiku"`. Use a fresh agent each round. Give it the plan file path, the original requirement, and the repo root, and tell it to be read-only. From round 2, also give it the headings of the sections you changed and the text of the previous round's valid BLOCKING issues, so it can scope its check. Ask it to check, against the actual repo:
-   - **Grounding:** every referenced file and symbol exists (or is explicitly marked to be created); described current behaviour matches the code.
-   - **Coverage:** every part of the requirement and every stated success criterion is addressed by a step, and nothing the requirement asks for is listed under Out of scope.
-   - **Standards:** no step contradicts `AGENTS.md`, `CLAUDE.md` or `docs/` rules; required tests, docs and README updates are included.
-   - **Executability:** steps are ordered, specific, and each has a verification; `Depends on` only points to earlier steps.
-   - **Scope and consistency:** nothing outside the requirement; no internal contradictions; no placeholders.
-2. Require this exact response format:
+**Choose the path first, and say which in one line:**
+- **Pair** (default): two validators per round, one per lens below.
+- **Single**: one generalist validator per round, only for a small, simple plan: at most 3 steps, at most 2 source files changed (tests and docs not counted), and no shared state, concurrency, data migration, authentication or external interface involved. When unsure, use the pair.
+
+For each round:
+
+1. Spawn the validators with the Agent tool: `subagent_type: "Explore"`, `model: "haiku"`, fresh agents each round, both in one message so they run in parallel. Give each the plan file path, the original requirement, and the repo root, and tell it to be read-only. Wait for every validator before going on.
+   - **Pair path.** Tell each validator that the other covers everything outside its lens, so it reports only what its lens covers and goes deep on it.
+     - **Lens 1, Requirement and standards.** Does the plan do everything asked, and follow the repo's rules?
+       - Read the requirement line by line. Every part of it and every success criterion must be addressed by a step and be provable by a verification. Nothing the requirement asks for may sit under Out of scope. Nothing outside the requirement may be planned.
+       - Read `AGENTS.md`, `CLAUDE.md`, the READMEs of the components touched and everything relevant under `docs/` (standards, architecture, pitfalls). Report every step that contradicts a documented rule, with the rule quoted.
+       - Check that the tests the repo's standards require are planned for every piece of code that changes, and that the docs and READMEs the rules require to be updated are in a step.
+       - Check that every file and symbol the plan names exists (or is marked to be created), and internal consistency: contradictions between sections, `Depends on` pointing to later steps, placeholders.
+     - **Lens 2, Failure scenarios.** If the plan is implemented exactly as written, what goes wrong at runtime?
+       - Read the code the plan changes and walk through each step as the implementer would, then run the result in your head: the normal path, then errors, timeouts, retries, restarts, empty or malformed input, and two requests at once.
+       - Look for: wrong ordering of operations, race conditions, locks or resources never released, state left behind after a failure, clean-up that does not run on an error path, callers that see a changed behaviour, and changes that break an existing feature next to the one being changed.
+       - Check each step's verification: would it actually fail if the step were done wrong? Report verifications that cannot detect the failure they are meant to catch.
+       - Describe each issue as a concrete scenario (what happens, in what order, and the result), citing the code.
+   - **Single path.** One validator checks, against the actual repo:
+     - **Grounding:** every referenced file and symbol exists (or is explicitly marked to be created); described current behaviour matches the code.
+     - **Coverage:** every part of the requirement and every stated success criterion is addressed by a step, and nothing the requirement asks for is listed under Out of scope.
+     - **Standards:** no step contradicts `AGENTS.md`, `CLAUDE.md` or `docs/` rules; required tests, docs and README updates are included.
+     - **Executability:** steps are ordered, specific, and each has a verification; `Depends on` only points to earlier steps.
+     - **Scope and consistency:** nothing outside the requirement; no internal contradictions; no placeholders.
+   - **From round 2**, also give each validator the headings of the sections you changed and the text of the previous round's valid BLOCKING issues, so it can scope its check.
+2. Require this exact response format from every validator:
    ```
    VERDICT: PASS | FAIL
    ISSUES:
@@ -83,30 +105,34 @@ Run at most 5 validation rounds. For each round:
    ```
    `PASS` means zero BLOCKING issues. Any BLOCKING issue means `FAIL`. MINOR issues are advisory.
    - **BLOCKING** only if the plan cannot be executed as written, or executing it would break behaviour or a stated standard. Style, wording, and "could be more precise" are MINOR.
-   - **Issue cap:** at most 10 issues per round, BLOCKING first.
-   - **Diff-scoped from round 2:** check only the sections changed since the previous round, plus the previous round's BLOCKING items. Do not raise new issues in unchanged sections. A round run because you doubt a PASS is a full check, not diff-scoped.
-   - **Failed validator:** if the agent errors or its output does not follow the format, re-launch it once with the format restated; a failed launch is not a round. If it fails twice, stop validating, mark the plan `Draft - unresolved issues` with "validator unavailable", and say so.
-3. Do not follow the validator's verdict or its issue list blindly. Treat every issue as a claim to check. For each issue, read the cited file and lines yourself, decide whether the claim is true, and record the decision: `valid` (fix it), `disproved` (say what the code shows), or `out of scope` (say why). Never apply a fix you have not verified against the repo.
-4. The verdict is your call, not the validator's. Judge PASS by the remaining valid BLOCKING issues after your own checks. A validator FAIL whose BLOCKING issues are all disproved counts as a pass. A validator PASS you have reason to doubt is not a pass; spot-check its cited paths and run another round if needed.
+   - **Issue cap:** at most 7 issues per lensed validator (10 for the single generalist), BLOCKING first.
+   - **Diff-scoped from round 2:** check only the sections changed since the previous round, plus the previous round's BLOCKING items, each validator through its own lens. Do not raise new issues in unchanged sections. A round run after a redesign (see below), or because you doubt a PASS, is a full check, not diff-scoped.
+   - **Failed validator:** if an agent errors or its output does not follow the format, re-launch it once with the format restated; a failed launch is not a round. If one of the pair fails twice, judge the round on the one that answered and say so in the log. If no validator answers after the retry, stop validating, mark the plan `Draft - unresolved issues` with "validator unavailable", and say so.
+3. Merge issues that make the same claim, then judge each distinct claim once. Do not follow a validator's verdict or its issue list blindly. Treat every issue as a claim to check: read the cited file and lines yourself, decide whether the claim is true, and record the decision: `valid` (fix it), `disproved` (say what the code shows), or `out of scope` (say why). Never apply a fix you have not verified against the repo.
+4. The verdict is your call, not the validators'. Judge PASS by the remaining valid BLOCKING issues after your own checks. A FAIL whose BLOCKING issues are all disproved counts as a pass. A PASS you have reason to doubt is not a pass; spot-check its cited paths and run another round if needed.
 5. Stop rule:
    - **Any round with no valid BLOCKING issues** (by your judgement): stop validating. Fix the valid MINOR issues inline without another round, but only with mechanical edits (a path, a missing verification line, a wording fix); log any MINOR whose fix would need new content as accepted or deferred to implement. The plan is Validated.
    - **Otherwise** (valid BLOCKING issues remain): revise and run the next round, until round 5.
    - **After round 5,** stop even if issues remain. Mark the plan `Draft - unresolved issues` and list them.
-6. Each round: revise only the sections the valid issues touch, and only to fix those issues. Add no new steps, sections or detail beyond what the fix needs; new content is what the next round finds new problems in.
+6. Each round: revise only the sections the valid issues touch, and only to fix those issues. Add no new steps, sections or detail beyond what the fix needs; new content is what the next round finds new problems in. Two kinds of valid BLOCKING issue are handled differently:
+   - **Redesign rule.** If a round produces a valid BLOCKING issue in a plan section (or about a mechanism) that already had a valid BLOCKING issue in the previous round, stop patching it. Patches on a mechanism that keeps failing add moving parts, and each one brings new failure modes. Instead: rewrite that part of the Approach and its steps around the simplest mechanism that still meets the requirement (the fewest moving parts, one owner for each piece of shared state, one lock, one place where each outcome is decided; remove options and special cases rather than adding guards). State the invariants the mechanism must keep and, for each concurrent path, the order of events and who wins each race. The next round is a full check of the whole plan.
+   - **Owner decisions.** If a valid issue is that the plan contradicts a documented repo rule whose deviation needs the owner's agreement, or that the requirement cannot be met without a choice only the user can make, first look for a simpler design that follows the rule and prefer it. If there is none, do not patch around it and do not declare it accepted. Add an entry under `## Decisions for the owner`: the rule (quoted, with its file) or the question, why the requirement conflicts with it, the options, and your recommendation. Mark the affected steps `blocked until the owner decides`. An issue handled this way no longer counts as BLOCKING for the stop rule, and the loop carries on with the rest. Do not ask the user now.
 
 ### 6. Finish
-- Set `Status` in the plan to `Validated` (clean pass by your judgement), `Validated - minors logged` (passed with valid MINOR issues left unfixed), or `Draft - unresolved issues` (cap reached or validator unavailable), and append a `## Validation log` section: for each round, the validator's verdict, your judgement of the verdict, the issues found, and what was changed or why an issue was dismissed.
+- **Owner decisions, after the loop only.** If `## Decisions for the owner` has entries, ask them now in one go with AskUserQuestion (each with its options, your recommendation first). Record each answer under its entry, revise the affected steps, remove their `blocked until the owner decides` marks, and run one more round scoped to those sections. It follows the same judging rules and does not count towards the 5-round cap; run at most two such rounds, and if valid BLOCKING issues still remain, list them as unresolved. If questions are not allowed (the caller forbids them, or nobody is there to answer), leave the entries open with your recommendation; the plan is then `Draft - unresolved issues` and the open decisions are its unresolved issues.
+- Set `Status` in the plan to `Validated` (clean pass by your judgement), `Validated - minors logged` (passed with valid MINOR issues left unfixed), or `Draft - unresolved issues` (cap reached, validator unavailable, or owner decisions left open), and append a `## Validation log` section: the path chosen (pair or single) and, for each round, each validator's verdict, your judgement of the verdict, the issues found (merged), any redesign or owner decision, and what was changed or why an issue was dismissed.
 - Append a `## Reviewer brief` section (ticket mode: `### Reviewer brief` in the Plan, placed before `### Validation log`) written from the final plan: Objective, the key decisions from Approach, Out of scope and Success criteria, in a few lines, with no reasoning, deviations or validation history. End it with: "The decisions above are intended; report a problem with one only if it breaks a requirement or a documented rule." The review skill passes it to reviewers verbatim. It is not validated; it only restates validated content.
 - Other skills read any Status starting with `Validated` as ready (autopilot may set `Validated - assumptions logged` after settling open issues by recorded assumptions).
-- Report to the user: the plan path, a short summary of the approach and steps, the number of validation rounds used, the outcome, and any unresolved issues or open questions.
+- Report to the user: the plan path, a short summary of the approach and steps, the number of validation rounds used, the outcome, the decisions the user made (or the ones still open), and any unresolved issues or open questions.
 - Stop. Do not start implementing; the user decides when to execute the plan.
 
 ## Ticket mode
 
 Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
+- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
 - **Step 1:** read the ticket. Its Description and Acceptance criteria are the requirement; any existing Plan content is prior work to build on.
 - **Step 4:** write the plan into the ticket's `## Plan` section, not `plans/`. Use the same structure with headings demoted: sections as `###`, steps as `####`, no `# Plan:` title, keep the Date/Status line.
-- **Step 5:** give the validator the ticket path and tell it to check only the `## Plan` section against the Description and Acceptance criteria. Revise the Plan in place between rounds.
+- **Step 5:** give each validator the ticket path and tell it to check only the `## Plan` section against the Description and Acceptance criteria. Revise the Plan in place between rounds. `Decisions for the owner` is a `###` subsection of the Plan.
 - **Step 6:** set Status in the Plan, put the validation log in a `### Validation log` subsection, and add a Log line (`plan validated, N rounds` or `plan drafted, unresolved issues`).
 - **Size gate:** if the requirement should be split, tell the user to create more tickets (suggest an epic to group them, or the ticket's existing epic); do not write several plans into one ticket.
 - **Epic IDs:** an epic gets no implementation plan. Instead, from its Description, Scope and Acceptance criteria (plus any children that already exist), write the proposed split into the epic's `## Breakdown` as a dated `###` subsection: each proposed child as a numbered item with title, one-line scope, the epic criteria it covers, and its `blocked_by` / `conflicts_with` relations to the others by item number (the user adds them with `/ticket link` once the tickets exist). Skip the validator loop; this is a proposal. Add a Log line, then suggest the `/ticket create ... epic:<ID>` commands and stop. Never create the tickets; once the user does, each child is planned on its own.
@@ -115,9 +141,9 @@ Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other
 
 - **Planning only:** edit nothing except the plan file (and `plans/` if it must be created), or the ticket in ticket mode. No source, config or doc changes.
 - **Docs before code, repo before memory:** every claim about the repo is verified by reading it. Cite paths. Never invent files, functions or APIs.
-- **Respect project rules:** follow `AGENTS.md`/`CLAUDE.md` and `docs/` standards. If the requirement conflicts with a documented rule, surface the conflict in the plan and ask the user rather than overriding it.
-- **Haiku validator, 5-round cap:** always use `model: "haiku"` with a read-only agent type. Never exceed 5 validation rounds, and do not add rounds beyond that without an explicit user instruction. Never skip validation (the one exception is an epic's Breakdown in ticket mode, which is a proposal and is not validated), and never declare the plan clean without a judged pass (valid BLOCKING issues resolved, or all disproved).
-- **Judge the validator:** it is a check, not an authority. Do not follow its verdict or its fixes without verifying each one against the repo yourself. Record every accepted, disproved and out-of-scope issue in the validation log.
+- **Respect project rules:** follow `AGENTS.md`/`CLAUDE.md` and `docs/` standards. If the requirement conflicts with a documented rule, record the conflict under `Decisions for the owner` and ask the user after the loop rather than overriding it.
+- **Haiku validators, 5-round cap:** always use `model: "haiku"` with a read-only agent type; a stronger single validator tested no better than one Haiku, and two Haiku validators tested clearly better than either. Never exceed 5 validation rounds (the rounds that follow the owner's decisions in step 6 are the only extra ones), and do not add rounds beyond that without an explicit user instruction. Never skip validation (the one exception is an epic's Breakdown in ticket mode, which is a proposal and is not validated), and never declare the plan clean without a judged pass (valid BLOCKING issues resolved, or all disproved).
+- **Judge the validators:** they are a check, not an authority. Do not follow a verdict or a fix without verifying it against the repo yourself. Record every accepted, disproved and out-of-scope issue in the validation log.
 - **No scope creep:** plan what was asked. Put extras under "Risks and open questions", not in steps.
 - **Keep the plan lean:** specific and actionable, no padding. Prefer a short plan that is correct to a long one that is vague.
-- **Clarify sparingly:** ask only blocking questions; make and record sensible assumptions for the rest.
+- **No questions during the loop:** make and record sensible assumptions; collect what only the user can decide under `Decisions for the owner` and ask it all once, after the loop.

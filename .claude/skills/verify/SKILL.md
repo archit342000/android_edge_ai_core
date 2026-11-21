@@ -89,6 +89,7 @@ Applies when a verification plan for this change already exists (for example aft
 ## Ticket mode
 
 Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
+- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
 - **Epic IDs:** if the ID is an epic (`type: epic`), do not run on it. List its unfinished children (as `/ticket list epic <ID>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
 - **Step 1:** a re-run is detected by the ticket's Verification section already holding a plan, not by `plans/` files. The plan and intent come from the ticket's Plan and Acceptance criteria; Implementation notes say what was built. The diff is still the ground truth.
 - **Step 2:** write the verification plan into the ticket's `## Verification` section (`###` headings), not a `plans/` file.

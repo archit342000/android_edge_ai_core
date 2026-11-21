@@ -41,7 +41,7 @@ Then present the triage report to the user in chat before changing anything: a t
 - If there are valid findings you did not fix, ask the user how to proceed in one batch (AskUserQuestion), with a recommendation for each. Apply the answers, then check them as in step 4.
 
 ### 6. Report
-- Summarize per finding id: Fixed (what changed, files), Rejected (evidence), or Deferred (why, what is needed; pre-existing ones listed as follow-ups).
+- Summarize per finding id: Fixed (what changed, with each file and the function, component or section touched, so a later review round can be limited to the fixes), Rejected (evidence), or Deferred (why, what is needed; pre-existing ones listed as follow-ups).
 - Say whether any fix changed runtime behaviour (as opposed to tests, comments or docs only), and list those files, so a caller knows whether live verification needs re-running.
 - State the checks that ran and their results, any failures that remain, and extra defects noticed but not fixed.
 - Do not commit or push unless the user asked.
@@ -49,10 +49,11 @@ Then present the triage report to the user in chat before changing anything: a t
 ## Ticket mode
 
 Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
+- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
 - **Epic IDs:** if the ID is an epic (`type: epic`), do not run on it. List its unfinished children (as `/ticket list epic <ID>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
 - **Step 1:** unless the user pasted a different review, the findings are the Open items in the latest round of the ticket's Review history (`R<N>-<k>` ids). Read the Plan and Implementation notes for context.
 - **Step 2:** the triage table goes into that round of Review history (above the findings), which is where it is shown in automatic mode.
-- **Steps 2 to 5:** as each finding is decided, update its status in that round in place: `Fixed`, `Rejected` or `Deferred`, with a one-line reason or evidence and the files changed. Write as you go.
+- **Steps 2 to 5:** as each finding is decided, update its status in that round in place: `Fixed`, `Rejected` or `Deferred`, with a one-line reason or evidence and the files changed (and the function, component or section in each). Write as you go.
 - **Step 6:** add a `Resolution:` summary to the round (counts, checks run and results, remaining failures) and a Log line. Deferred findings stay visible in the round with what is needed to resolve them.
 
 ## Constraints & Rules

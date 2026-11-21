@@ -42,6 +42,7 @@ Execute an existing plan faithfully. Implement the steps in order, make small ed
 ## Ticket mode
 
 Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
+- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
 - **Epic IDs:** if the ID is an epic (`type: epic`), do not run on it. List its unfinished children (as `/ticket list epic <ID>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
 - **Step 1:** the plan is the ticket's `## Plan` section; do not look in `plans/`. If it is empty, say so and ask whether to run `plan` first. Read Implementation notes and Review history too, in case work is already underway, and continue from there. Record the baseline test result under `### Baseline (YYYY-MM-DD)` and pre-existing dirty files in Implementation notes (not the plan).
 - **Step 2:** do not edit step Status lines in the ticket's Plan (it is frozen once validated); after each step, append to `### Implementation progress` in Implementation notes a line `- [x] Step N: <name> - <files>`, plus any deviation and the branch name once known. Write as you go so work can resume in a new conversation.
