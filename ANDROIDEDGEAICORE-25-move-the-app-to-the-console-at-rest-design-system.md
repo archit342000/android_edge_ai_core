@@ -487,7 +487,7 @@ Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted w
 
 Other findings: docs/testing-on-device.md names `system-images;android-26;google_apis;x86`, which cannot install the APK (it has only x86_64 and arm64-v8a libraries); the working image is `default;x86_64`. Notes (not failures): the busy spinner sits at the button's start edge, not beside the word; the open block shows only the top of the sphere at rest; the status line and the notice strip repeat the same error text; the bottom bar shows faintly through the 97% sheet.
 
-Verdict: partly verified. PASS 24, FAIL 7 (V5, V8, V11, V17, V25, V30, plus the doc finding folded into V9's notes), BLOCKED 0.
+Verdict: partly verified. PASS 25, FAIL 6 (V5, V8, V11, V17, V25, V30), BLOCKED 0; plus the docs finding above.
 
 ## Review history
 
@@ -497,4 +497,4 @@ Verdict: partly verified. PASS 24, FAIL 7 (V5, V8, V11, V17, V25, V30, plus the 
 - 2026-11-25: plan rewritten from a full code read and validated with minors logged (rounds: 5, 2 after owner decisions, 2 added by the owner's request and after the rewrite)
 - 2026-11-25: autopilot started (stage 2 implement next; plan already validated)
 - 2026-11-25: implemented (stage 2), smoke tests pass: 270 unit tests, lint and docs checks clean
-- 2026-11-25: verification: partly verified, 24 PASS, 7 FAIL (V5 sphere follows taps, V8 Escape, V11 focus rings on bar and segments, V17 vision in foreground, V25 stop+start race, V30 decode speed with sphere running), 0 BLOCKED
+- 2026-11-25: verification: partly verified, 25 PASS, 6 FAIL (V5 sphere follows taps, V8 Escape, V11 focus rings on bar and segments, V17 vision in foreground, V25 stop+start race, V30 decode speed with sphere running), 0 BLOCKED
