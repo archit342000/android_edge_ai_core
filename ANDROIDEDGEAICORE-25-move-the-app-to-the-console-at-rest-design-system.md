@@ -356,7 +356,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
 - Counters: fix 3/10, review 2/5, plan amendments 0/3, re-verify 0
-- Last completed stage: 5 review iteration 1 (resolved)  Next: 5 review round 2, then re-verify (runtime changed)
+- Last completed stage: 5 review iteration 2 (resolved)  Next: 5 review round 3 (fixes only), then re-verify
 - Hard blocker: none
 - WIP commit: none
 
@@ -625,21 +625,23 @@ Dismissed:
 Resolution: 16 fixed, 1 deferred (R1-7), 0 rejected; 6 pre-existing deferred. Checks: ./gradlew testDebugUnitTest lintDebug (277 tests pass; lint 2 warnings, both already there, baseline unchanged), scripts/check_docs.sh OK. Runtime behaviour changed: ControlsPolicy.kt, MainActivity.kt, ConsoleUi.kt, DotSphereModel.kt, DotSphereView.kt, InferenceService.kt, strings.xml, styles.xml, frames.xml, pieces.xml, page_server/page_backend/page_tokens.xml, layout-w600dp and layout-w1024dp activity_main.xml; re-verify needed.
 
 ### Round 2 - 2026-11-25
+Triage (resolve-review): R2-1..R2-13 all Valid (each checked against the code; R2-2, R2-3, R2-4 seen on the emulator). R2-2: stack a segment track's choices when a label's longest word does not fit its third. R2-7: the numbers move to pieces.xml and are passed in. Plan: fixing 13, rejecting 0, deferring 0.
+
 Verdict: Request changes. Scope: round 2, whole change against a26f8674 (working tree) plus console-at-rest; same requirement; four Haiku reviewers (two lenses, Kotlin and resource groups). Emulator checks for reproduction: R2-computer-server.png, R2-font2-backend-segments.png, R2-phone-3button.png in the evidence folder.
 
-- R2-1 [MAJOR] row_authorized_app.xml:3 - the row piece has no Widget.Console.Row style (requirement 2: a style for every piece, row included); the row is built from inline attributes - Static - Open
-- R2-2 [MINOR] page_backend.xml:205 / styles.xml Widget.Console.Segment - at font scale 2 on a phone "Adaptive" breaks mid-word ("Adaptiv / e"); the R1-12 change removed the cap but a single word wider than a third of the track still splits - Confirmed (R2-font2-backend-segments.png) - Open
-- R2-3 [MINOR] layout-w1024dp/activity_main.xml:66 - the content header row has no end padding, so the status word touches and is cut at the panel's right edge ("OFF", "READY") - Confirmed (R2-computer-server.png; found by me) - Open
-- R2-4 [MINOR] page_server.xml:31 / MainActivity.kt render() - at 1024dp and over the status light and word show twice (content header and the Server page's open block) and are announced twice - Confirmed (R2-computer-server.png) - Open
-- R2-5 [MINOR] DotSphereView.kt:131, ConsoleUi.kt ticker - the system animator setting is read only on resume/start; turning animations off while the activity stays resumed (quick settings) leaves the sphere and loops moving - Static - Open
-- R2-6 [MINOR] DotSphereView.kt:53,56 - currentDots and colourOf() are unused - Static - Open
-- R2-7 [MINOR] ConsoleUi.kt:262 SPINNER_SWEEP, LoopFrames.kt:35-36 PEAK_AT/REST_FROM - piece geometry and keyframe stops as raw numbers in Kotlin (android.md: a piece's own numbers live in pieces.xml) - Static - Open
-- R2-8 [MINOR] DotSphereModelTest.kt:26 - the 1024dp dot-count boundary is not tested (1023 -> 250, 1024 -> 600) - Static - Open
-- R2-9 [MINOR] docs/standards/security.md:42, docs/standards/android.md:11 - name sendStatusBroadcast as the function that sets setPackage; it is broadcastStatus() now, and android.md does not name ServerStatusStore as the status owner - Static - Open
-- R2-10 [MINOR] README.md:41 - says a failed start offers Try again (Select model when no model is chosen) and writes the status words as STARTING/READY (stored as Starting/Ready) - Static - Open
-- R2-11 [MINOR] docs/testing-on-device.md:53 - "1066 dp" for wm size 2560x1600 at density 240; the width is 1707 dp - Static - Open
-- R2-12 [MINOR] docs/pitfalls.md:56 - item 24 now describes fixed behaviour under a header of unfixed traps; items 15 and 23 use "(Removed.)" - Static - Open
-- R2-13 [NIT] styles.xml:132,170-171 - move_rest (a movement end point) used as a zero elevation and zero item insets; elevation_none now exists - Static - Open
+- R2-1 [MAJOR] row_authorized_app.xml:3 - the row piece has no Widget.Console.Row style (requirement 2: a style for every piece, row included); the row is built from inline attributes - Static - Fixed - styles.xml Widget.Console.Row (new), row_authorized_app.xml root uses it
+- R2-2 [MINOR] page_backend.xml:205 / styles.xml Widget.Console.Segment - at font scale 2 on a phone "Adaptive" breaks mid-word ("Adaptiv / e"); the R1-12 change removed the cap but a single word wider than a third of the track still splits - Confirmed (R2-font2-backend-segments.png) - Fixed - ConsoleUi.kt fitSegments()/stackIfCramped() (a track stacks its choices when a longest word does not fit its share), MainActivity.kt onCreate (the four segment tracks); re-checked: R2-fixed-font2-backend-segments.png
+- R2-3 [MINOR] layout-w1024dp/activity_main.xml:66 - the content header row has no end padding, so the status word touches and is cut at the panel's right edge ("OFF", "READY") - Confirmed (R2-computer-server.png; found by me) - Fixed - layout-w1024dp/activity_main.xml content header row (end padding, RtlSymmetry ignored with the reason); re-checked: R2-fixed-computer-server.png
+- R2-4 [MINOR] page_server.xml:31 / MainActivity.kt render() - at 1024dp and over the status light and word show twice (content header and the Server page's open block) and are announced twice - Confirmed (R2-computer-server.png) - Fixed - MainActivity.kt onCreate (page status_line GONE when the header status exists); re-checked: R2-fixed-computer-server.png
+- R2-5 [MINOR] DotSphereView.kt:131, ConsoleUi.kt ticker - the system animator setting is read only on resume/start; turning animations off while the activity stays resumed (quick settings) leaves the sphere and loops moving - Static - Fixed - DotSphereView.kt doFrame() (animations off -> still frame via start()), ConsoleUi.kt ticker (animations off -> each loop drawn at its first frame, ticker stops; Loop class keeps each start)
+- R2-6 [MINOR] DotSphereView.kt:53,56 - currentDots and colourOf() are unused - Static - Fixed - DotSphereView.kt (currentDots and colourOf removed)
+- R2-7 [MINOR] ConsoleUi.kt:262 SPINNER_SWEEP, LoopFrames.kt:35-36 PEAK_AT/REST_FROM - piece geometry and keyframe stops as raw numbers in Kotlin (android.md: a piece's own numbers live in pieces.xml) - Static - Fixed - pieces.xml spinner_sweep, working_dot_peak_at, working_dot_rest_from; LoopFrames.dotBounce() takes peakAt and restFrom; ConsoleUi.kt setDotsWorking() and SpinnerDrawable read them; LoopFramesTest updated
+- R2-8 [MINOR] DotSphereModelTest.kt:26 - the 1024dp dot-count boundary is not tested (1023 -> 250, 1024 -> 600) - Static - Fixed - DotSphereModelTest.dotCountFollowsTheWidthClass (1023 and 1024)
+- R2-9 [MINOR] docs/standards/security.md:42, docs/standards/android.md:11 - name sendStatusBroadcast as the function that sets setPackage; it is broadcastStatus() now, and android.md does not name ServerStatusStore as the status owner - Static - Fixed - docs/standards/security.md (broadcastStatus), docs/standards/android.md Components (ServerStatusStore owns the status)
+- R2-10 [MINOR] README.md:41 - says a failed start offers Try again (Select model when no model is chosen) and writes the status words as STARTING/READY (stored as Starting/Ready) - Static - Fixed - README.md Run server step
+- R2-11 [MINOR] docs/testing-on-device.md:53 - "1066 dp" for wm size 2560x1600 at density 240; the width is 1707 dp - Static - Fixed - docs/testing-on-device.md Look line (1707 dp)
+- R2-12 [MINOR] docs/pitfalls.md:56 - item 24 now describes fixed behaviour under a header of unfixed traps; items 15 and 23 use "(Removed.)" - Static - Fixed - docs/pitfalls.md item 24 (Removed, number kept, test note kept)
+- R2-13 [NIT] styles.xml:132,170-171 - move_rest (a movement end point) used as a zero elevation and zero item insets; elevation_none now exists - Static - Fixed - styles.xml BottomBar elevation_none, NavPanel item insets nav_item_inset_none (pieces.xml)
 Dismissed:
 - Status kind not sent as an extra; values-v27 route for pitfall 15; nav focus ring inside the item; raw strokeWidth in icons; unused fonts; ControlsPolicy.kt types; test name: repeats of Round 1 dismissals or decisions recorded in the Plan (line on rejected alternatives; bar icon colours set in code).
 - Copy, recording and test state lost on recreation: repeat of R1-7 (Deferred); the unscoped coroutines and the recording file are base code.
@@ -650,6 +652,7 @@ Dismissed:
 - Sphere snaps to the centre on resize: the keyboard does not resize it edge to edge and rotation recreates the activity; only multi-window resizes reach it.
 - Navigation panel items under 48dp: their minimum is listPreferredItemHeightSmall (48dp or more; the theme does not override it).
 - strings.xml quotes around "Model: ": they keep the trailing space; punctuation and the Main button style name are preferences.
+Resolution: 13 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTest lintDebug (277 tests pass; lint 2 warnings, both already there), scripts/check_docs.sh OK; R2-2, R2-3, R2-4 re-checked on claude_edgeaicore_api34. Runtime behaviour changed: ConsoleUi.kt, LoopFrames.kt, DotSphereView.kt, MainActivity.kt, styles.xml, pieces.xml, row_authorized_app.xml, layout-w1024dp/activity_main.xml.
 
 ## Log
 - 2026-11-24: created from the approved architecture
@@ -663,3 +666,4 @@ Dismissed:
 - 2026-11-25: review round 1: Request changes (2 MAJOR, 10 MINOR, 5 NIT open; 6 pre-existing)
 - 2026-11-25: review round 1 resolved: 16 fixed, 1 deferred, 0 rejected; 277 tests, lint and docs pass
 - 2026-11-25: review round 2: Request changes (1 MAJOR, 11 MINOR, 1 NIT open)
+- 2026-11-25: review round 2 resolved: 13 fixed; 277 tests, lint and docs pass
