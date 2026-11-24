@@ -356,7 +356,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
 - Counters: fix 3/10, review 1/5, plan amendments 0/3, re-verify 0
-- Last completed stage: 4 fix loop (3 rounds)  Next: 5 review
+- Last completed stage: 5 review iteration 1 (resolved)  Next: 5 review round 2, then re-verify (runtime changed)
 - Hard blocker: none
 - WIP commit: none
 
