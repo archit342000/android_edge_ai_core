@@ -355,7 +355,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
-- Counters: fix 3/10, review 1/5, plan amendments 0/3, re-verify 0
+- Counters: fix 3/10, review 2/5, plan amendments 0/3, re-verify 0
 - Last completed stage: 5 review iteration 1 (resolved)  Next: 5 review round 2, then re-verify (runtime changed)
 - Hard blocker: none
 - WIP commit: none
@@ -624,6 +624,33 @@ Dismissed:
 - MainActivity growth, several types in ControlsPolicy.kt, KDoc wording, letterSpacing 0, move_rest name, test-prompt punctuation, licence wording, weak-test claims: style preferences with no rule broken, or tests already assert the behaviour.
 Resolution: 16 fixed, 1 deferred (R1-7), 0 rejected; 6 pre-existing deferred. Checks: ./gradlew testDebugUnitTest lintDebug (277 tests pass; lint 2 warnings, both already there, baseline unchanged), scripts/check_docs.sh OK. Runtime behaviour changed: ControlsPolicy.kt, MainActivity.kt, ConsoleUi.kt, DotSphereModel.kt, DotSphereView.kt, InferenceService.kt, strings.xml, styles.xml, frames.xml, pieces.xml, page_server/page_backend/page_tokens.xml, layout-w600dp and layout-w1024dp activity_main.xml; re-verify needed.
 
+### Round 2 - 2026-11-25
+Verdict: Request changes. Scope: round 2, whole change against a26f8674 (working tree) plus console-at-rest; same requirement; four Haiku reviewers (two lenses, Kotlin and resource groups). Emulator checks for reproduction: R2-computer-server.png, R2-font2-backend-segments.png, R2-phone-3button.png in the evidence folder.
+
+- R2-1 [MAJOR] row_authorized_app.xml:3 - the row piece has no Widget.Console.Row style (requirement 2: a style for every piece, row included); the row is built from inline attributes - Static - Open
+- R2-2 [MINOR] page_backend.xml:205 / styles.xml Widget.Console.Segment - at font scale 2 on a phone "Adaptive" breaks mid-word ("Adaptiv / e"); the R1-12 change removed the cap but a single word wider than a third of the track still splits - Confirmed (R2-font2-backend-segments.png) - Open
+- R2-3 [MINOR] layout-w1024dp/activity_main.xml:66 - the content header row has no end padding, so the status word touches and is cut at the panel's right edge ("OFF", "READY") - Confirmed (R2-computer-server.png; found by me) - Open
+- R2-4 [MINOR] page_server.xml:31 / MainActivity.kt render() - at 1024dp and over the status light and word show twice (content header and the Server page's open block) and are announced twice - Confirmed (R2-computer-server.png) - Open
+- R2-5 [MINOR] DotSphereView.kt:131, ConsoleUi.kt ticker - the system animator setting is read only on resume/start; turning animations off while the activity stays resumed (quick settings) leaves the sphere and loops moving - Static - Open
+- R2-6 [MINOR] DotSphereView.kt:53,56 - currentDots and colourOf() are unused - Static - Open
+- R2-7 [MINOR] ConsoleUi.kt:262 SPINNER_SWEEP, LoopFrames.kt:35-36 PEAK_AT/REST_FROM - piece geometry and keyframe stops as raw numbers in Kotlin (android.md: a piece's own numbers live in pieces.xml) - Static - Open
+- R2-8 [MINOR] DotSphereModelTest.kt:26 - the 1024dp dot-count boundary is not tested (1023 -> 250, 1024 -> 600) - Static - Open
+- R2-9 [MINOR] docs/standards/security.md:42, docs/standards/android.md:11 - name sendStatusBroadcast as the function that sets setPackage; it is broadcastStatus() now, and android.md does not name ServerStatusStore as the status owner - Static - Open
+- R2-10 [MINOR] README.md:41 - says a failed start offers Try again (Select model when no model is chosen) and writes the status words as STARTING/READY (stored as Starting/Ready) - Static - Open
+- R2-11 [MINOR] docs/testing-on-device.md:53 - "1066 dp" for wm size 2560x1600 at density 240; the width is 1707 dp - Static - Open
+- R2-12 [MINOR] docs/pitfalls.md:56 - item 24 now describes fixed behaviour under a header of unfixed traps; items 15 and 23 use "(Removed.)" - Static - Open
+- R2-13 [NIT] styles.xml:132,170-171 - move_rest (a movement end point) used as a zero elevation and zero item insets; elevation_none now exists - Static - Open
+Dismissed:
+- Status kind not sent as an extra; values-v27 route for pitfall 15; nav focus ring inside the item; raw strokeWidth in icons; unused fonts; ControlsPolicy.kt types; test name: repeats of Round 1 dismissals or decisions recorded in the Plan (line on rejected alternatives; bar icon colours set in code).
+- Copy, recording and test state lost on recreation: repeat of R1-7 (Deferred); the unscoped coroutines and the recording file are base code.
+- Phone bottom bar under the system navigation bar: disproved; with 3-button navigation the bar sits above the system bar (R2-phone-3button.png); Material pads it by the navigation inset.
+- msg_in alpha read as int: wrong; the animator has valueType floatType.
+- Resting shadow shows through translucent panels: not visible on the computer frame by day (R2-computer-server.png); kept as a re-verify check at night.
+- adjustResize counts the keyboard twice: with setDecorFitsSystemWindows(false) the window is not resized; the keyboard scenario passed in verification.
+- Sphere snaps to the centre on resize: the keyboard does not resize it edge to edge and rotation recreates the activity; only multi-window resizes reach it.
+- Navigation panel items under 48dp: their minimum is listPreferredItemHeightSmall (48dp or more; the theme does not override it).
+- strings.xml quotes around "Model: ": they keep the trailing space; punctuation and the Main button style name are preferences.
+
 ## Log
 - 2026-11-24: created from the approved architecture
 - 2026-11-25: plan drafted, unresolved issues (5 validation rounds plus 2 after owner decisions; last-round fixes not re-validated)
@@ -635,3 +662,4 @@ Resolution: 16 fixed, 1 deferred (R1-7), 0 rejected; 6 pre-existing deferred. Ch
 - 2026-11-25: fix round 3; re-run 3: all PASS except V33 BLOCKED (pulse not measurable on screen)
 - 2026-11-25: review round 1: Request changes (2 MAJOR, 10 MINOR, 5 NIT open; 6 pre-existing)
 - 2026-11-25: review round 1 resolved: 16 fixed, 1 deferred, 0 rejected; 277 tests, lint and docs pass
+- 2026-11-25: review round 2: Request changes (1 MAJOR, 11 MINOR, 1 NIT open)
