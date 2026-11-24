@@ -1,7 +1,7 @@
 ---
 id: ANDROIDEDGEAICORE-25
 title: "Move the app to the Console at Rest design system"
-status: todo
+status: in-progress
 created: 2026-11-24
 updated: 2026-11-25
 ---
@@ -349,6 +349,22 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - **Rewrite (2026-11-25).** After that round the whole plan was rewritten from a full read of `MainActivity.kt` and `InferenceService.kt` instead of being patched again. What changed: all control state is decided by a tested plain function and applied in one `render()`; numbers are split into token values (checked against `tokens.json`) and piece values copied from the reference page (assumption 1), so step 1 is only the shadows; the full set of states and movements is in step 3; the model copy gets a progress bar; `ContextSizeInput` moved to step 7; step 10 now holds the docs and both device checks.
 - **Round on the rewritten plan (full).** Failure scenarios: PASS, five minors. Requirement and standards: FAIL with two issues it called blocking; judged PASS. Both were one-sentence gaps whose answer the requirement already fixes, and neither makes the plan unexecutable or breaks behaviour or a repo rule: the touch size could be read as the token's 44 off phones (now 48 at every width, as the acceptance criterion and rule book Part 6 say); "Saving" was missing before "Saved" (added). Minors fixed mechanically: the second token prefix in the authorised-app row, create markers, the store in its own file (`kotlin.md`), where the resting elevation applies, the address line's colour, "optional" on the context size, the audio test's remaining exits, no switch reason while starting, the brief message helper created in step 7. Logged without change: a model picked while the server runs overwrites the file in use (existing behaviour); the busy set is lost on recreation (existing behaviour).
 ## Implementation notes
+### Autopilot run (2026-11-25)
+- Mode: automatic
+- Checkout: /home/archit-anand/Coding/repos/android_edge_ai_core (design-system repo: /home/archit-anand/Coding/repos/console-at-rest)
+- Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
+- Dirty before start: none
+- Work files: none yet
+- Counters: fix 0/10, review 0/5, plan amendments 0/3, re-verify 0
+- Last completed stage: 1 plan (validated before this run)  Next: 2 implement
+- Hard blocker: none
+- WIP commit: none
+
+### Autopilot decisions (2026-11-25)
+- Pre-flight: the request "work on this ticket till it's done" names ticket 25 from the conversation, so the run is in ticket mode for ANDROIDEDGEAICORE-25.
+- Pre-flight: stage 1 skipped; the ticket's Plan is already `Validated - minors logged` with all owner decisions taken.
+- Pre-flight: used the checkout at ~/Coding/repos (on `develop` at the latest origin commit) rather than the older one under docker-data.
+- Pre-flight: branch `feature/console-at-rest-design-system` from `develop` (gitflow: `feature/<topic>`, lowercase kebab).
 
 ## Verification
 
@@ -358,3 +374,4 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - 2026-11-24: created from the approved architecture
 - 2026-11-25: plan drafted, unresolved issues (5 validation rounds plus 2 after owner decisions; last-round fixes not re-validated)
 - 2026-11-25: plan rewritten from a full code read and validated with minors logged (rounds: 5, 2 after owner decisions, 2 added by the owner's request and after the rewrite)
+- 2026-11-25: autopilot started (stage 2 implement next; plan already validated)
