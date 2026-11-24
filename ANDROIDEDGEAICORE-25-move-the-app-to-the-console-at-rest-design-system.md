@@ -355,8 +355,8 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
-- Counters: fix 3/10, review 3/5, plan amendments 0/3, re-verify 0
-- Last completed stage: 5 review (3 iterations, clean)  Next: 5 re-verify (runtime changed), then 6 ship
+- Counters: fix 4/10, review 3/5, plan amendments 0/3, re-verify 1
+- Last completed stage: 4 fix round 4 after re-verify  Next: 5 review round 4 (verification fixes only), then 6 ship
 - Hard blocker: none
 - WIP commit: none
 
@@ -409,6 +409,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Round 1 re-run (on the round-1 build): V5, V8, V11, V16, V30 (17.2-17.5 vs 20.0 background), V17 API path PASS; Test vision from the UI still FAILED (unexpected end of stream): during the app's own tests the busy spinner, working dots and light pulse ran at the display rate and the RenderThread took 88% of a core, pushing the streamed image request past Ktor Netty's 10 s write timeout (pre-existing server limit, develop under the same 10 s).
 - Round 2 (2026-11-25). Product defect (V17 UI). Fix: ConsoleUi drives the three looping movements from one Choreographer ticker at the sphere's rest interval (10 a second) instead of full-rate ObjectAnimators and Material's IndeterminateDrawable; the busy spinner is ConsoleUi.SpinnerDrawable (.spin: 14, stroke 2, three quarters of a ring); the keyframe maths is LoopFrames.kt (plain Kotlin) with LoopFramesTest (3 tests); MainActivity pauses and resumes the ticker in onPause/onResume. RenderThread during a test: 27% (was 88%). 274 unit tests pass, lint clean, check_docs OK, raw-value check clean.
 - Round 3 (2026-11-25). Product defect (V8, landscape): the window did not draw into the display cutout. Fix: setUpEdgeToEdge sets layoutInDisplayCutoutMode SHORT_EDGES on API 28+; the existing insets (system bars plus cutout) keep the content clear. Re-run V8/V22: background fills the cutout strip, rail padded clear, portrait unchanged. 274 unit tests pass, lint clean.
+- Round 4 (after re-run 4): V42 product defect: fold_diagnostics_body keeps clipChildren=false so focus rings can spill, which also let the scrolled log draw outside its box. Fix: page_server.xml wraps scroll_logs in a FrameLayout that carries the code box background and clips (the scroll view lost its own background and margin). No unit test possible (layout only); checked live. V43 wrong doc from review round 1 (R1-11): docs/testing-on-device.md says READY again; uiautomator reads the label in capitals. Checks: 283 unit tests, lint 2 old warnings, check_docs OK.
 
 ## Verification
 ### Verification plan (2026-11-25)
@@ -633,6 +634,18 @@ Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted w
 
 Verdict: failed (2 FAIL: V42 log box overflow, V43 test doc wording); 1 BLOCKED (V33); all others PASS.
 
+### Results (re-run 5, 2026-11-25)
+Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted work; hashes in `ANDROIDEDGEAICORE-25-evidence/verify/hashes-results-6.txt`. Fix round 4 changed page_server.xml (log box) and docs/testing-on-device.md. Re-run: V42, V43 and the scenarios that show the Diagnostics box (V12, V17).
+
+| ID | Status | Evidence and notes |
+|----|--------|--------------------|
+| V42 | PASS | after Test chat and Test two turns the log stays inside the dark box; nothing above it or below it (R5-V42-grid) |
+| V43 | PASS | the doc's poll matches: `ui` shows `READY` for tv_status_word |
+| V12, V17 | PASS | Diagnostics box, buttons and logs render; Test chat and Test two turns finish (R5-V42-grid) |
+| all others | as re-run 4 | no other file changed |
+
+Verdict: verified except V33 (BLOCKED: the sphere's pulse while working cannot be told apart in screenshots; unit-tested only). V25 superseded by V32.
+
 ## Review history
 
 ### Round 1 - 2026-11-25
@@ -741,6 +754,7 @@ Verdict: Approve with comments. Scope: round 3, only the places the Round 2 fixe
 Dismissed:
 - Row has no 16dp side padding (.lrow padding 8px 16px): the reference's .lrow sits inside a bordered .lrows box (reference line 817); the app's rows sit in the page column and line up with the section labels, so side padding would indent them. Its unused value is covered by R3-5.
 Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTest lintDebug (283 tests pass; lint 2 warnings, both already there), scripts/check_docs.sh OK. Runtime behaviour changed: ConsoleUi.kt, DotSphereView.kt, MainActivity.kt, LoopFrames.kt, SegmentFit.kt (new), pieces.xml, interpolator/dot_bounce_ease.xml (new). No BLOCKER or MAJOR in this round, so the review loop ends clean; re-verify next.
+- Verification fix (fix round 4, after re-run 4): app/src/main/res/layout/page_server.xml - the log box: scroll_logs now sits in a FrameLayout that carries the code_box background and clips the scrolled log. docs/testing-on-device.md - UI flow poll string back to READY (reverts part of the R1-11 fix).
 
 ## Log
 - 2026-11-24: created from the approved architecture
@@ -758,3 +772,4 @@ Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTes
 - 2026-11-25: review round 3 (fixes only): Approve with comments (8 MINOR, 4 NIT open)
 - 2026-11-25: review round 3 resolved: 12 fixed; 283 tests, lint and docs pass; review loop clean
 - 2026-11-25: re-verify (re-run 4): 2 FAIL (V42 log box text drawn outside the box, V43 test doc says Ready), 1 BLOCKED (V33), rest PASS
+- 2026-11-25: fix round 4 (V42 log box clip, V43 doc); re-run 5: all PASS except V33 BLOCKED
