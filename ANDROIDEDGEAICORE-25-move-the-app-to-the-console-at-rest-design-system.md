@@ -365,6 +365,12 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Pre-flight: stage 1 skipped; the ticket's Plan is already `Validated - minors logged` with all owner decisions taken.
 - Pre-flight: used the checkout at ~/Coding/repos (on `develop` at the latest origin commit) rather than the older one under docker-data.
 - Pre-flight: branch `feature/console-at-rest-design-system` from `develop` (gitflow: `feature/<topic>`, lowercase kebab).
+- Stage 2: downloaded the seven font files and their OFL texts from the official repos (sora-xor/sora-font, Instrument/instrument-sans, JetBrains/JetBrainsMono v2.304), as the approved plan's step 2 says; all three are OFL 1.1.
+- Stage 2: the console-at-rest change is committed and its PR opened in stage 6 with the app PR (not in step 1), so the emulator comparison can still adjust the elevation numbers.
+- Stage 2: the contrast test models the blur over each translucent surface (a raw dot under 5% night glass fails even for ink at 2.6:1); status words on the open sphere use ink and the light carries the colour.
+- Stage 2: touches only lean the sphere; ripples are for commits (rule book 3.1), not every press as in the reference script.
+- Stage 2: 'Saved' is the settings status word, with 'Applies the next time the server starts.' as a small line beneath it.
+- Stage 2: the step 10 device check and Part 10 checklist walk run in the verify stage.
 
 ### Baseline (2026-11-25)
 - `./gradlew testDebugUnitTest lintDebug`: 220 tests, 0 failures. Lint passes; 2 warnings not in the baseline already existed (AndroidGradlePluginVersion in gradle-wrapper.properties, GradleDependency in build.gradle.kts) plus a LintBaselineFixed hint.
