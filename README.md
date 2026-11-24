@@ -25,24 +25,28 @@
 
 ## 📱 App Usage Guide
 
+The app has three tabs: **Server**, **Backend** and **Tokens** (a bottom bar on phones, a rail of icons on tablets and a navigation panel on wider screens).
+It follows the Console at Rest design system, in light and dark.
+
 ### 1. Initial Setup
-1. **Grant Permissions**: Upon first launch, the app will request permissions for **Microphone** (audio inference), **Storage** (loading models), and **Battery Optimization** (to ensure the service stays alive in the background).
-2. **Select a Model**: Go to the **Backend Settings** tab. Tap **Select Model** and choose your `.litertlm`, `.bin`, or `.tflite` model file.
-3. **Choose Backend**: Select your preferred hardware accelerator (**CPU**, **GPU**, or **NPU**) depending on your device's capabilities.
-   Optionally set the **Context size (tokens)** below it (empty = the model's default); smaller values use less memory, and a value above a model's fixed maximum is clamped to it (the status line says so). It applies the next time the server starts.
-   Below it, **Speculative decoding (MTP)** speeds up generation for models that ship a drafter (for example Gemma 4): **Adaptive** (default) uses it only while it is faster, **On** always, **Off** never. Models without a drafter ignore the setting. It applies the next time the server starts.
-   For multimodal models you can also choose the backend of the **Vision encoder** and the **Audio encoder** (Auto follows the backend above). Text-only models such as Qwen3-0.6B need no encoder and load normally; they answer text only (image or audio input gets a 400). Applied the next time the server starts.
+1. **Select a model**: In the **Server** tab, tap **Select model** and choose your `.litertlm`, `.bin`, or `.tflite` model file. A progress bar shows the copy.
+2. **Choose the backend**: In the **Backend** tab, pick **CPU**, **GPU** or **NPU** depending on your device's capabilities.
+   Optionally set the **Context size (tokens)** (empty = the model's default); smaller values use less memory, and a value above a model's fixed maximum is clamped to it (the status line says so).
+   **Speculative decoding** speeds up generation for models that ship a drafter (for example Gemma 4): **Adaptive** (default) uses it only while it is faster, **On** always, **Off** never. Models without a drafter ignore the setting.
+   For multimodal models you can also choose where the **Vision encoder** and the **Audio encoder** run (Auto follows the backend above). Text-only models such as Qwen3-0.6B need no encoder and load normally; they answer text only (image or audio input gets a 400).
+   Settings are saved as you change them ("Saved"); a running server picks them up the next time it starts.
+3. **Permissions are asked when they matter**: once the server is ready, a card on the Server tab explains why the app wants to show a notification and to run in the background, with **Not now** beside the allow button. The microphone is asked for only when you run **Test audio**.
 
 ### 2. Managing the Service
-- **Switch On**: In the **Server** tab, toggle the **Enable AI Server** switch. The status will change to `Loading...` and then `Ready (http://localhost:8080)` once the model is initialized.
-- **Diagnostics**: Use the **Test Inference**, **Multi-Turn Test**, **Health Check**, or **Get Load** buttons to verify the model and server status.
+- **Run server**: In the **Server** tab, turn on **Run server**. The status reads Starting while the model loads and Ready once it answers, with the address `http://localhost:8080` under the app's name. If it cannot start, a notice says why and offers **Try again**, or **Select model** when no model is chosen.
+- **Diagnostics**: Open **Diagnostics** to run **Test chat**, **Test two turns**, **Test vision**, **Test audio**, **Check health** and **Check load**, and to read the logs.
 
 ### 3. API Token Management
 The service requires an API token for all requests.
-- **Generate Token**: In the **Tokens** tab, tap **Generate New Token**.
+- **Generate token**: In the **Tokens** tab, tap **Generate token**.
 - **Single Active Token**: Generating a new token automatically revokes any previous tokens.
-- **Revoke Access**: You can revoke the current token at any time.
-- **Backup/Restore**: Securely export your token to a JSON file.
+- **Delete token** and **Revoke access** (per authorised app) ask for confirmation, because they cannot be undone.
+- **Back up tokens** / **Restore tokens**: export your token to a JSON file. The file holds the token; keep it secret.
 
 ---
 

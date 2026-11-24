@@ -13,7 +13,9 @@ Unit tests and lint are in `docs/standards/testing.md`; this file covers runtime
 | Test model | a `.litertlm` in `~/.cache/edgeaicore-test-models/` (see "Models"; Gemma 4 E2B for multimodal, Qwen3-0.6B for text only) |
 | Host | KVM (`/dev/kvm`) for emulator speed |
 
-Use only the dedicated `claude_edgeaicore_api34` emulator for automated runs; never the owner's own emulators or app data.
+Use only the dedicated emulators for automated runs, never the owner's own emulators or app data: `claude_edgeaicore_api34`, and
+`claude_edgeaicore_api26` for UI-only checks below API 31 (solid surfaces; no model). Create the second with
+`sdkmanager "system-images;android-26;default;x86_64"` and `avdmanager create avd -n claude_edgeaicore_api26 -k "system-images;android-26;default;x86_64" -d pixel_7` (x86_64: the APK has no 32-bit x86 libraries), then boot it with `AVD=claude_edgeaicore_api26 PORT=5586 scripts/device.sh boot`.
 `scripts/device.sh boot` starts it with `-read-only -no-snapshot`, so nothing is written back and every boot starts clean.
 
 ## Quick start
@@ -35,10 +37,10 @@ boot about 30 s, build and install a few seconds, model copy about 70 s for 3.6 
 |------|---------|-------|
 | Boot | `boot` | Headless, read-only, console port 5584 (`emulator-5584`); animations turned off |
 | Build | `build` | `./gradlew assembleDebug` gives `app/build/outputs/apk/debug/app-debug.apk` |
-| Install | `install` | `adb install -r`, grants runtime permissions, whitelists the app from battery optimisation so MainActivity's "run in background?" dialog does not cover the UI |
+| Install | `install` | `adb install -r`, grants runtime permissions and whitelists the app from battery optimisation, so the Server page shows no explain card |
 | Model | `model [FILE]` | `adb push` to `/data/local/tmp`, then `run-as` copies it into the app's `files/` (debug builds only), and seeds `litertlm_prefs` `model_path` so the UI flow needs no file picker |
 | Start | `start [CPU\|GPU\|NPU]` | `am start-foreground-service` with `MODEL_PATH` and `BACKEND` extras (and `SPECULATIVE_DECODING` from `SPEC`, if set); waits for `Model loaded successfully (<backend in use>)` in logcat; `Ping failed` lines are retries, not errors |
-| Token | `token` | Taps Generate in the API Tokens tab, reads the token with `run-as` into `~/.cache/edgeaicore-device/token` (mode 600). Never print it. |
+| Token | `token` | Taps Generate token in the Tokens tab, reads the token with `run-as` into `~/.cache/edgeaicore-device/token` (mode 600). Never print it. |
 | Forward | `forward` | `adb forward tcp:18080 tcp:8080`; the API is then `http://127.0.0.1:18080` |
 | Stop | `stop-service` | Sends `ACTION_STOP` |
 
@@ -46,7 +48,11 @@ boot about 30 s, build and install a few seconds, model copy about 70 s for 3.6 
 
 - **REST:** `api METHOD PATH [JSON]` sends the saved token and prints the body plus `[HTTP nnn]`. Check failure paths too (no token gives 401).
 - **UI:** `ui` lists on-screen text, ids and bounds; `tap ID` taps by resource id (`nav_server`, `nav_backend`, `nav_tokens`, `switch_enable_server`, `btn_test_inference`, ...).
-  For a full UI flow: `model`, then `tap nav_backend`, `tap rb_cpu`, `tap nav_server`, `tap switch_enable_server`, and poll `ui` until `tv_status` shows "Model loaded".
+  For a full UI flow: `model`, then `tap nav_backend`, `tap rb_cpu`, `tap nav_server`, `tap switch_enable_server`, and poll `ui` until `tv_status_word` shows `READY` (the label is in capitals, and `ui` reads it that way; at 1024 dp and wider the status is in `tv_header_status_word` instead).
+  The six test buttons are inside the Diagnostics box: `tap fold_diagnostics` before tapping one.
+- **Look:** the rail frame by `adb shell wm size 1600x2560` and `wm density 320` (800 dp wide), the navigation panel frame by `wm size 2560x1600` and `wm density 240` (1707 dp; reset with `wm size reset`, `wm density reset`); night by `cmd uimode night yes`;
+  solid surfaces on API 31+ by `adb shell am start -n com.aanand.edgeaicore/.MainActivity --ez console_solid true` (debug builds); large text by
+  `settings put system font_scale 2.0`; no motion by `settings put global animator_duration_scale 0`; keyboard focus by `input keyevent KEYCODE_TAB`.
 - **Evidence:** `logs` (app tags only), `screenshot FILE`, and the `api` output. Put them with the plan or ticket for the change, not in the repo.
 
 ## Backends and models
