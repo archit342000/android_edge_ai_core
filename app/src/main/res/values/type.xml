@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Console at Rest lettering (rule book 2.2): Sora for headings, Instrument Sans for everything read or pressed, JetBrains Mono for labels, figures, status and code. -->
+<resources>
+    <style name="TextAppearance.Console" parent="TextAppearance.AppCompat">
+        <item name="android:textColor">@color/console_fg</item>
+        <item name="android:textSize">@dimen/text_body_size</item>
+        <item name="android:fontFamily">@font/instrument_sans_regular</item>
+        <item name="fontFamily">@font/instrument_sans_regular</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="textAllCaps">false</item>
+    </style>
+
+    <style name="TextAppearance.Console.Greeting">
+        <item name="android:textSize">@dimen/text_greeting_size_min</item>
+        <item name="android:fontFamily">@font/sora_bold</item>
+        <item name="fontFamily">@font/sora_bold</item>
+        <item name="android:letterSpacing">@dimen/text_greeting_tracking</item>
+        <item name="lineHeight">@dimen/line_height_greeting</item>
+    </style>
+
+    <style name="TextAppearance.Console.Page">
+        <item name="android:textSize">@dimen/text_page_size_min</item>
+        <item name="android:fontFamily">@font/sora_semibold</item>
+        <item name="fontFamily">@font/sora_semibold</item>
+        <item name="android:letterSpacing">@dimen/text_page_tracking</item>
+        <item name="lineHeight">@dimen/line_height_page</item>
+    </style>
+
+    <style name="TextAppearance.Console.Popup">
+        <item name="android:textSize">@dimen/text_popup_size</item>
+        <item name="android:fontFamily">@font/sora_semibold</item>
+        <item name="fontFamily">@font/sora_semibold</item>
+        <item name="android:letterSpacing">@dimen/text_popup_tracking</item>
+    </style>
+
+    <style name="TextAppearance.Console.Section">
+        <item name="android:textSize">@dimen/text_section_size</item>
+        <item name="android:fontFamily">@font/sora_semibold</item>
+        <item name="fontFamily">@font/sora_semibold</item>
+        <item name="android:letterSpacing">@dimen/text_section_tracking</item>
+    </style>
+
+    <style name="TextAppearance.Console.Heading">
+        <item name="android:textSize">@dimen/text_heading_size</item>
+        <item name="android:fontFamily">@font/sora_semibold</item>
+        <item name="fontFamily">@font/sora_semibold</item>
+        <item name="android:letterSpacing">@dimen/text_heading_tracking</item>
+    </style>
+
+    <style name="TextAppearance.Console.Body">
+        <item name="lineHeight">@dimen/line_height_body</item>
+    </style>
+
+    <style name="TextAppearance.Console.Strong">
+        <item name="android:textSize">@dimen/text_strong_size</item>
+        <item name="android:fontFamily">@font/instrument_sans_medium</item>
+        <item name="fontFamily">@font/instrument_sans_medium</item>
+    </style>
+
+    <style name="TextAppearance.Console.Small">
+        <item name="android:textSize">@dimen/text_small_size</item>
+        <item name="android:textColor">@color/console_muted</item>
+    </style>
+
+    <!-- The typewriter label: section names, figures, times and status only. -->
+    <style name="TextAppearance.Console.Label">
+        <item name="android:textSize">@dimen/text_label_size</item>
+        <item name="android:fontFamily">@font/jetbrains_mono_regular</item>
+        <item name="fontFamily">@font/jetbrains_mono_regular</item>
+        <item name="android:letterSpacing">@dimen/text_label_tracking</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="textAllCaps">true</item>
+        <item name="android:textColor">@color/console_muted</item>
+    </style>
+
+    <!-- Figures that keep their own capitals (file names, paths). -->
+    <style name="TextAppearance.Console.Figure">
+        <item name="android:textSize">@dimen/text_label_size</item>
+        <item name="android:fontFamily">@font/jetbrains_mono_regular</item>
+        <item name="fontFamily">@font/jetbrains_mono_regular</item>
+        <item name="android:textColor">@color/console_muted</item>
+    </style>
+
+    <style name="TextAppearance.Console.Code">
+        <item name="android:textSize">@dimen/text_code_size</item>
+        <item name="android:fontFamily">@font/jetbrains_mono_regular</item>
+        <item name="fontFamily">@font/jetbrains_mono_regular</item>
+        <item name="android:textColor">@color/console_code_fg</item>
+        <item name="lineHeight">@dimen/line_height_code</item>
+    </style>
+</resources>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Console at Rest sizes. Mirrors tokens.json (px there, dp and sp here); checked by ConsoleTokensTest. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="UnusedResources">
+    <!-- space: eight steps and nothing in between -->
+    <dimen name="space_1">4dp</dimen>
+    <dimen name="space_2">8dp</dimen>
+    <dimen name="space_3">12dp</dimen>
+    <dimen name="space_4">16dp</dimen>
+    <dimen name="space_5">24dp</dimen>
+    <dimen name="space_6">36dp</dimen>
+    <dimen name="space_7">48dp</dimen>
+    <dimen name="space_8">72dp</dimen>
+
+    <!-- pagePadding -->
+    <dimen name="page_padding_phone">16dp</dimen>
+    <dimen name="page_padding_other">36dp</dimen>
+
+    <!-- size -->
+    <dimen name="touch_phone">48dp</dimen>
+    <dimen name="touch_other">44dp</dimen>
+    <dimen name="measure">704dp</dimen>
+    <dimen name="side_panel">252dp</dimen>
+    <dimen name="rail">70dp</dimen>
+    <dimen name="status_light">7dp</dimen>
+
+    <!-- radius: three corners rounded, bottom left squared -->
+    <dimen name="radius_small_top_left">10dp</dimen>
+    <dimen name="radius_small_top_right">10dp</dimen>
+    <dimen name="radius_small_bottom_right">10dp</dimen>
+    <dimen name="radius_small_bottom_left">3dp</dimen>
+    <dimen name="radius_control_top_left">12dp</dimen>
+    <dimen name="radius_control_top_right">12dp</dimen>
+    <dimen name="radius_control_bottom_right">12dp</dimen>
+    <dimen name="radius_control_bottom_left">3dp</dimen>
+    <dimen name="radius_panel_top_left">16dp</dimen>
+    <dimen name="radius_panel_top_right">16dp</dimen>
+    <dimen name="radius_panel_bottom_right">16dp</dimen>
+    <dimen name="radius_panel_bottom_left">4dp</dimen>
+    <dimen name="radius_sheet_top_left">22dp</dimen>
+    <dimen name="radius_sheet_top_right">22dp</dimen>
+    <dimen name="radius_sheet_bottom_right">0dp</dimen>
+    <dimen name="radius_sheet_bottom_left">0dp</dimen>
+
+    <!-- text sizes -->
+    <dimen name="text_hero_size_min">42sp</dimen>
+    <dimen name="text_hero_size_max">104sp</dimen>
+    <dimen name="text_greeting_size_min">44sp</dimen>
+    <dimen name="text_greeting_size_max">80sp</dimen>
+    <dimen name="text_page_size_min">26sp</dimen>
+    <dimen name="text_page_size_max">36sp</dimen>
+    <dimen name="text_popup_size">24sp</dimen>
+    <dimen name="text_section_size">22sp</dimen>
+    <dimen name="text_heading_size">18sp</dimen>
+    <dimen name="text_body_size">15sp</dimen>
+    <dimen name="text_strong_size">15sp</dimen>
+    <dimen name="text_small_size">13sp</dimen>
+    <dimen name="text_label_size">12sp</dimen>
+    <dimen name="text_code_size">13sp</dimen>
+
+    <!-- shadow.androidElevation -->
+    <dimen name="elevation_rest">3dp</dimen>
+    <dimen name="elevation_lift">8dp</dimen>
+
+    <!-- glass -->
+    <dimen name="glass_float_blur">14dp</dimen>
+    <dimen name="glass_panel_blur">3.6dp</dimen>
+
+    <!-- sphere -->
+    <dimen name="sphere_open_until_scroll">120dp</dimen>
+    <dimen name="sphere_fade_blur">10dp</dimen>
+    <dimen name="sphere_fade_pad_x_min">8dp</dimen>
+    <dimen name="sphere_fade_pad_x_max">14dp</dimen>
+    <dimen name="sphere_fade_pad_y_min">4dp</dimen>
+    <dimen name="sphere_fade_pad_y_max">8dp</dimen>
+    <dimen name="sphere_fade_patch_radius">12dp</dimen>
+</resources>

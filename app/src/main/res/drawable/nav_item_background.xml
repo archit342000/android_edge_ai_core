@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bottom bar and rail items: the well when pressed, and the keyboard focus ring drawn inside the item (a bar edge would clip it outside). Selection is the active indicator. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/console_well">
+    <item android:id="@android:id/mask">
+        <shape>
+            <corners android:topLeftRadius="@dimen/radius_small_top_left" android:topRightRadius="@dimen/radius_small_top_right" android:bottomRightRadius="@dimen/radius_small_bottom_right" android:bottomLeftRadius="@dimen/radius_small_bottom_left" />
+            <solid android:color="@color/console_fg" />
+        </shape>
+    </item>
+    <item>
+        <selector>
+            <item android:state_focused="true">
+            <inset android:inset="@dimen/focus_ring_offset">
+                <shape>
+                    <corners android:topLeftRadius="@dimen/radius_small_top_left" android:topRightRadius="@dimen/radius_small_top_right" android:bottomRightRadius="@dimen/radius_small_bottom_right" android:bottomLeftRadius="@dimen/radius_small_bottom_left" />
+                    <stroke android:width="@dimen/focus_ring_width" android:color="@color/console_accent" />
+                </shape>
+            </inset>
+            </item>
+        </selector>
+    </item>
+</ripple>

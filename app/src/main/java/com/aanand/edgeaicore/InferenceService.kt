@@ -29,7 +29,6 @@ class InferenceService : Service() {
     private lateinit var openAIServer: OpenAIServer
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    @Volatile private var serviceStatus: String = "Idle"
     private var isModelLoading = false
 
     override fun onCreate() {
@@ -46,6 +45,8 @@ class InferenceService : Service() {
         Log.d(TAG, "onStartCommand called with intent: $intent")
         val action = intent?.action
         if (action == ACTION_STOP) {
+            ServerStatusStore.stop()
+            broadcastStatus()
             getSharedPreferences(PREFS_NAME_SERVICE, Context.MODE_PRIVATE).edit().clear().apply()
             conversationManager.deleteAllConversations()
             openAIServer.stop()
@@ -53,7 +54,8 @@ class InferenceService : Service() {
             return START_NOT_STICKY
         }
 
-        sendStatusBroadcast(getString(R.string.status_service_starting))
+        ServerStatusStore.begin(this)
+        sendStatusBroadcast(ServerStatus.STARTING, getString(R.string.status_service_starting))
         openAIServer.start()
 
         val notification = createNotification()
@@ -90,7 +92,7 @@ class InferenceService : Service() {
             // Restore from prefs if this is a sticky restart
             if (prefs.getBoolean(KEY_CRASHED_DURING_INIT, false)) {
                 Log.e(TAG, "Detected crash loop during previous initialization. Aborting service start.")
-                sendStatusBroadcast(getString(R.string.status_crash_loop))
+                sendStatusBroadcast(ServerStatus.ERROR, getString(R.string.status_crash_loop))
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -103,12 +105,15 @@ class InferenceService : Service() {
             audioValue = prefs.getString(KEY_SAVED_AUDIO_BACKEND, null)
             if (modelPath != null) {
                 Log.i(TAG, "Restored model path from prefs: $modelPath")
-                sendStatusBroadcast(getString(R.string.status_restoring))
+                sendStatusBroadcast(ServerStatus.STARTING, getString(R.string.status_restoring))
+            } else {
+                Log.w(TAG, "Started with no model to load")
+                sendStatusBroadcast(ServerStatus.ERROR, getString(R.string.status_no_model))
             }
         }
         
         if (modelPath != null) {
-            sendStatusBroadcast(getString(R.string.status_loading_model, modelPath))
+            sendStatusBroadcast(ServerStatus.STARTING, getString(R.string.status_loading_model, modelPath))
             val finalBackend = backend ?: "GPU"
             if (SpeculativeDecodingOption.isUnknown(speculativeValue)) {
                 Log.w(TAG, "Unknown speculative decoding setting, using ${SpeculativeDecodingOption.DEFAULT}")
@@ -125,7 +130,7 @@ class InferenceService : Service() {
                     val file = java.io.File(modelPath)
                     if (!file.exists()) {
                         Log.e(TAG, "Model file not found at: $modelPath")
-                        sendStatusBroadcast(getString(R.string.status_model_missing))
+                        sendStatusBroadcast(ServerStatus.ERROR, getString(R.string.status_model_missing))
                         stopSelf()
                         return@launch
                     }
@@ -140,7 +145,7 @@ class InferenceService : Service() {
                     markInitStarted(prefs)
 
                     Log.d(TAG, "Attempting to load model with backend: $finalBackend")
-                    sendStatusBroadcast(getString(R.string.status_initializing))
+                    sendStatusBroadcast(ServerStatus.STARTING, getString(R.string.status_initializing))
                     
                     withTimeout(300000) { // 5 minutes timeout
                         aiEngineManager.loadModel(modelPath, finalBackend, cacheDir.absolutePath, maxNumTokens, speculativeOption, visionOption, audioOption)
@@ -149,7 +154,7 @@ class InferenceService : Service() {
                     // The crash flag stays set through the readiness check: a GPU engine can load and still abort natively
                     // on its first request, and a sticky restart must not retry it. It is cleared after the final check.
                     Log.d(TAG, "loadModel returned. Starting readiness verification...")
-                    sendStatusBroadcast(getString(R.string.status_verifying))
+                    sendStatusBroadcast(ServerStatus.STARTING, getString(R.string.status_verifying))
                     
                     // A GPU engine can load and still fail its first request (no OpenCL): give it fewer attempts,
                     // then fall back to CPU instead of waiting out the full retry budget.
@@ -157,7 +162,7 @@ class InferenceService : Service() {
                     val fallbackBackend = if (readinessError != null) BackendFallbackPolicy.next(aiEngineManager.activeBackend ?: "") else null
                     if (readinessError != null && fallbackBackend != null) {
                         Log.w(TAG, "GPU readiness failed, falling back to CPU: ${readinessError.message}")
-                        sendStatusBroadcast(getString(R.string.status_gpu_fallback))
+                        sendStatusBroadcast(ServerStatus.STARTING, getString(R.string.status_gpu_fallback))
                         markInitStarted(prefs)
                         withTimeout(300000) { aiEngineManager.fallBackToCpu(modelPath, cacheDir.absolutePath, maxNumTokens, speculativeOption, visionOption, audioOption) }
                         readinessError = verifyEngineReady()
@@ -171,12 +176,18 @@ class InferenceService : Service() {
                         val effective = aiEngineManager.effectiveMaxNumTokens
                         val ctx = if (maxNumTokens != null && effective != null && effective != maxNumTokens) getString(R.string.status_loaded_context_part, effective) else ""
                         val gpuNote = if (aiEngineManager.fellBackFromGpu) getString(R.string.status_loaded_gpu_unavailable_part) else ""
-                        val status = getString(R.string.status_loaded, "$backendInUse$gpuNote$mtp$ctx; ${aiEngineManager.activeEncoders.describe()}")
-                        Log.i(TAG, status)
-                        sendStatusBroadcast(status)
+                        val encoders = aiEngineManager.activeEncoders.describe()
+                        val status = getString(R.string.status_loaded, "$backendInUse$gpuNote$mtp$ctx; $encoders")
+                        if (sendStatusBroadcast(ServerStatus.READY, status)) {
+                            // A fixed English line, whatever the UI says: scripts/device.sh waits for it.
+                            val mtpLog = aiEngineManager.activeSpeculativeMode?.let { LOG_MTP_PART.format(it.name.lowercase()) } ?: ""
+                            val ctxLog = if (ctx.isEmpty()) "" else LOG_CONTEXT_PART.format(effective)
+                            val gpuLog = if (aiEngineManager.fellBackFromGpu) LOG_GPU_UNAVAILABLE_PART else ""
+                            Log.i(TAG, LOG_MODEL_LOADED.format("$backendInUse$gpuLog$mtpLog$ctxLog; $encoders"))
+                        }
                     } else {
                         Log.e(TAG, "Model verification failed", readinessError)
-                        sendStatusBroadcast(getString(R.string.status_verification_failed))
+                        sendStatusBroadcast(ServerStatus.ERROR, getString(R.string.status_verification_failed))
                     }
 
                 } catch (e: UnsupportedModelException) {
@@ -184,7 +195,7 @@ class InferenceService : Service() {
                     // A sticky restart must not retry a file known to be unusable: with a running model its settings come
                     // back, otherwise the path is dropped.
                     if (previous != null) {
-                        sendStatusBroadcast(getString(R.string.status_unsupported_model_kept))
+                        sendStatusBroadcast(ServerStatus.READY, getString(R.string.status_unsupported_model_kept))
                         prefs.edit {
                             putBoolean(KEY_CRASHED_DURING_INIT, false)
                             putString(KEY_SAVED_MODEL_PATH, previous.path)
@@ -195,7 +206,7 @@ class InferenceService : Service() {
                             putString(KEY_SAVED_AUDIO_BACKEND, previous.audio)
                         }
                     } else {
-                        sendStatusBroadcast(getString(R.string.status_unsupported_model))
+                        sendStatusBroadcast(ServerStatus.ERROR, getString(R.string.status_unsupported_model))
                         prefs.edit {
                             putBoolean(KEY_CRASHED_DURING_INIT, false)
                             remove(KEY_SAVED_MODEL_PATH)
@@ -203,7 +214,7 @@ class InferenceService : Service() {
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to initialize in service", e)
-                    sendStatusBroadcast(getString(R.string.status_load_failed))
+                    sendStatusBroadcast(ServerStatus.ERROR, getString(R.string.status_load_failed))
                     // Note: If we caught an exception, it's not a native crash, so clear the flag?
                     // Yes, because we handled it.
                     prefs.edit().putBoolean(KEY_CRASHED_DURING_INIT, false).apply()
@@ -230,11 +241,10 @@ class InferenceService : Service() {
         return aiEngineManager.verifyReady(attempts) { attempt, error ->
             if (error == null) {
                 Log.d(TAG, "Ping response (attempt $attempt): Success")
-                sendStatusBroadcast(getString(R.string.status_ping_success, attempt))
+                sendStatusBroadcast(ServerStatus.STARTING, getString(R.string.status_ping_success))
             } else {
-                val msg = getString(R.string.status_ping_failed, attempt, error.message)
-                Log.d(TAG, msg)
-                sendStatusBroadcast(msg)
+                Log.d(TAG, "Ping failed (attempt $attempt): ${error.message}")
+                sendStatusBroadcast(ServerStatus.STARTING, getString(R.string.status_ping_failed))
             }
         }
     }
@@ -253,15 +263,26 @@ class InferenceService : Service() {
         )
     }
 
-    private fun sendStatusBroadcast(status: String) {
-        serviceStatus = status
+    /**
+     * Stores the status in [ServerStatusStore] and, if this instance is still the one allowed to report, tells the activity.
+     * Returns whether it was stored; a report from a stopped or replaced instance is dropped.
+     */
+    private fun sendStatusBroadcast(kind: ServerStatus, status: String): Boolean {
+        if (!ServerStatusStore.publish(this, kind, status)) return false
+        broadcastStatus()
+        return true
+    }
+
+    /** Tells the activity the stored status changed; it reads the status from [ServerStatusStore]. */
+    private fun broadcastStatus() {
         val intent = Intent(ACTION_STATUS_UPDATE)
         intent.setPackage(packageName)
-        intent.putExtra(EXTRA_STATUS, status)
+        intent.putExtra(EXTRA_STATUS, ServerStatusStore.current.detail)
         sendBroadcast(intent)
     }
 
     override fun onDestroy() {
+        if (ServerStatusStore.end(this)) broadcastStatus()
         // Cancel all ongoing coroutines
         serviceScope.cancel()
         // Clean up conversations (tokens persist across restarts)
@@ -327,5 +348,10 @@ class InferenceService : Service() {
         private const val ENGINE_CLOSE_WAIT_MS = 1000L
         private const val PREFS_NAME_SERVICE = "inference_service_prefs"
         private const val KEY_SAVED_BACKEND = "saved_backend"
+        /** Logged when a load is ready; `scripts/device.sh` waits for "Model loaded successfully". */
+        private const val LOG_MODEL_LOADED = "Model loaded successfully (%s)"
+        private const val LOG_GPU_UNAVAILABLE_PART = ", GPU unavailable"
+        private const val LOG_MTP_PART = ", MTP %s"
+        private const val LOG_CONTEXT_PART = ", context clamped to %d"
     }
 }

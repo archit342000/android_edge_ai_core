@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The spring curve (tokens.css ease-spring): The main curve: fast start, gentle settle (tokens.json motion.curve.spring) -->
+<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:controlX1="0.2"
+    android:controlY1="0.8"
+    android:controlX2="0.2"
+    android:controlY2="1" />

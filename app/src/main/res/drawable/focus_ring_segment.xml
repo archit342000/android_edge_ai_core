@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keyboard focus ring (:focus-visible): 2 wide, 2 away from the piece, blue. Its parents must not clip children. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <inset android:insetLeft="@dimen/focus_ring_outset" android:insetTop="@dimen/focus_ring_outset" android:insetRight="@dimen/focus_ring_outset" android:insetBottom="@dimen/focus_ring_outset">
+            <shape>
+                <corners android:topLeftRadius="@dimen/segment_radius" android:topRightRadius="@dimen/segment_radius" android:bottomRightRadius="@dimen/segment_radius" android:bottomLeftRadius="@dimen/segment_radius_bottom_left" />
+                <stroke android:width="@dimen/focus_ring_width" android:color="@color/console_accent" />
+            </shape>
+        </inset>
+    </item>
+</selector>

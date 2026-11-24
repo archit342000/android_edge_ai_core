@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tablet and computer: floating panels with panel corners and 36 side padding. -->
+<resources>
+    <dimen name="page_padding">@dimen/page_padding_other</dimen>
+    <item name="page_panel" type="drawable">@drawable/panel_background</item>
+    <!-- Floating panels carry the resting shadow (2.5). -->
+    <dimen name="page_panel_elevation">@dimen/elevation_rest</dimen>
+</resources>

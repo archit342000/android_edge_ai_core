@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The liquid curve (tokens.css ease-liquid): Large entrances (tokens.json motion.curve.liquid) -->
+<!-- Mirrors the token; no movement here uses it yet. -->
+<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="UnusedResources"
+    android:controlX1="0.22"
+    android:controlY1="1"
+    android:controlX2="0.36"
+    android:controlY2="1" />

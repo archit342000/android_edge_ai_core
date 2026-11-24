@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The notice strip (rule book 7.11): a problem with this screen that stays until fixed, with one action. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/Widget.Console.Notice"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <ImageView
+        android:id="@+id/iv_notice_light"
+        android:layout_width="@dimen/status_light_box"
+        android:layout_height="@dimen/status_light_box"
+        android:importantForAccessibility="no"
+        android:src="@drawable/status_light" />
+
+    <TextView
+        android:id="@+id/tv_notice_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="@dimen/notice_gap"
+        android:layout_marginEnd="@dimen/notice_gap"
+        android:textAppearance="@style/TextAppearance.Console.Body" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_notice_action"
+        style="@style/Widget.Console.Button.Quiet"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+</LinearLayout>

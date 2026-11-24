@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Console at Rest piece numbers: a piece's own geometry and movement, which the design system keeps as plain
+    numbers in reference/console-at-rest.html (the rule book says that page wins on how a piece looks and behaves).
+    Each value names the selector, keyframe or script line it was copied from. Shared values live in tokens_*.xml.
+-->
+<resources>
+    <!-- Every pressable piece is at least 48 tall at every width (rule book Part 6). -->
+    <dimen name="piece_touch">@dimen/touch_phone</dimen>
+
+    <!-- .btn: padding 0 18px, gap 8px, 1px edge; .btn-solid:hover translateY(-1px); .btn:active scale(0.96) -->
+    <dimen name="button_padding_horizontal">18dp</dimen>
+    <dimen name="button_icon_gap">8dp</dimen>
+    <dimen name="button_icon_size">18dp</dimen>
+    <dimen name="button_stroke">1dp</dimen>
+    <!-- Only the Outline button has an edge -->
+    <dimen name="button_stroke_none">0dp</dimen>
+    <!-- Material buttons inset their background; ours fill their 48 -->
+    <dimen name="button_inset">0dp</dimen>
+    <!-- The hover lift as a translation (upward is negative). -->
+    <dimen name="button_hover_rise">-1dp</dimen>
+    <item name="button_press_scale" format="float" type="dimen">0.96</item>
+    <!-- .btn:disabled, .switch:disabled, .menu button:disabled: opacity 0.45 -->
+    <item name="switched_off_alpha" format="float" type="dimen">0.45</item>
+    <!-- .spin: 14px, 2px border, holdSpin 0.8s linear -->
+    <dimen name="spinner_size">14dp</dimen>
+    <dimen name="spinner_stroke">2dp</dimen>
+    <integer name="spinner_loop_ms">800</integer>
+    <!-- .spin: the top quarter of the border is transparent, so three quarters of the ring show. -->
+    <item name="spinner_sweep" format="float" type="dimen">270</item>
+
+    <!-- .switch: 48 x 28, corners 14 14 14 4; ::after knob 20, top/left 4, translateX(20px) -->
+    <dimen name="switch_track_width">48dp</dimen>
+    <dimen name="switch_track_height">28dp</dimen>
+    <dimen name="switch_track_radius">14dp</dimen>
+    <dimen name="switch_track_radius_bottom_left">4dp</dimen>
+    <dimen name="switch_thumb_inset">4dp</dimen>
+
+    <!-- .seg: padding 3px, gap 2px; .seg button corners 8 8 8 2, padding 0 12px -->
+    <dimen name="segment_track_padding">3dp</dimen>
+    <dimen name="segment_gap">2dp</dimen>
+    <dimen name="segment_radius">8dp</dimen>
+    <dimen name="segment_radius_bottom_left">2dp</dimen>
+    <dimen name="segment_padding_horizontal">12dp</dimen>
+
+    <!-- .input: padding 0 14px, 1px edge; :focus 3px halo; .field gap 6px; :disabled opacity 0.5 -->
+    <dimen name="input_stroke">1dp</dimen>
+    <dimen name="input_focus_halo">3dp</dimen>
+    <!-- Text inset from the view edge: the halo plus the input's own padding -->
+    <dimen name="text_box_padding">17dp</dimen>
+    <dimen name="field_gap">6dp</dimen>
+    <item name="input_switched_off_alpha" format="float" type="dimen">0.5</item>
+
+    <!-- .lrow: min-height 60px, padding 8px 16px, gap 14px; .row gap 12px -->
+    <dimen name="row_two_line_min_height">60dp</dimen>
+    <dimen name="row_padding_vertical">8dp</dimen>
+    <dimen name="row_gap">14dp</dimen>
+    <dimen name="rule_thickness">1dp</dimen>
+
+    <!-- .topbar: min-height 56px, padding 0 6px; rule book 5.3: content header 58 tall -->
+    <dimen name="top_bar_height">56dp</dimen>
+    <dimen name="content_header_height">58dp</dimen>
+
+    <!-- .nav-item: min-height 44px (48 here), padding 0 10px, gap 12px; icons 24 standing alone (rule book 2.6) -->
+    <dimen name="nav_item_padding">10dp</dimen>
+    <dimen name="nav_item_gap">12dp</dimen>
+    <dimen name="nav_icon_size">24dp</dimen>
+    <!-- .side: padding 16px 12px, floating with a gap around it (rule book 5.3) -->
+    <dimen name="nav_panel_padding_vertical">16dp</dimen>
+    <dimen name="nav_panel_padding_horizontal">12dp</dimen>
+    <dimen name="floating_gap">12dp</dimen>
+
+    <!-- .fold-btn: min-height 44px (48 here), padding 0 12px, gap 10px; .fold > .fold-body padding 4 14 16 18; chevron rotate(90deg) -->
+    <dimen name="fold_header_padding">12dp</dimen>
+    <dimen name="fold_header_gap">10dp</dimen>
+    <dimen name="fold_body_padding_top">4dp</dimen>
+    <dimen name="fold_body_padding_end">14dp</dimen>
+    <dimen name="fold_body_padding_bottom">16dp</dimen>
+    <dimen name="fold_body_padding_start">18dp</dimen>
+    <integer name="fold_chevron_open_degrees">90</integer>
+    <item name="fold_surface_mix" format="float" type="dimen">0.55</item>
+
+    <!-- .codebox pre: padding 14px 16px, line-height 1.65; height of the log box -->
+    <dimen name="code_padding_vertical">14dp</dimen>
+    <dimen name="code_padding_horizontal">16dp</dimen>
+    <dimen name="code_box_height">300dp</dimen>
+
+    <!-- .notice: padding 8 8 8 14, gap 10px -->
+    <dimen name="notice_padding">8dp</dimen>
+    <dimen name="notice_padding_start">14dp</dimen>
+    <dimen name="notice_gap">10dp</dimen>
+
+    <!-- .toast: padding 12px 16px, gap 10px, bottom 24px; rule book 7.11: 2.6 s, 6 s with Undo -->
+    <dimen name="brief_padding_vertical">12dp</dimen>
+    <dimen name="brief_padding_horizontal">16dp</dimen>
+    <dimen name="brief_bottom_offset">24dp</dimen>
+    <integer name="brief_duration_ms">2600</integer>
+
+    <!-- rule book 2.3: padding inside pop-ups is 24 -->
+    <dimen name="sheet_padding">24dp</dimen>
+
+    <!-- .led: 7px, halo 3px at 25%; led keyframe: 1 s loop to opacity 0.5 -->
+    <dimen name="status_light_halo">3dp</dimen>
+    <!-- The light's box: status light plus the halo on each side. -->
+    <dimen name="status_light_box">13dp</dimen>
+    <item name="status_light_halo_alpha" format="float" type="dimen">0.25</item>
+    <integer name="status_light_pulse_ms">1000</integer>
+    <item name="status_light_pulse_alpha" format="float" type="dimen">0.5</item>
+    <!-- .statline gap 9px -->
+    <dimen name="status_line_gap">9dp</dimen>
+
+    <!-- .dots i: 6px, gap 5px; dotBounce 1.4s, delays 0.16s and 0.32s, opacity 0.3 to 1, scale 0.8 to 1.3 -->
+    <dimen name="working_dot_size">6dp</dimen>
+    <dimen name="working_dot_gap">5dp</dimen>
+    <integer name="working_dots_loop_ms">1400</integer>
+    <integer name="working_dot_delay_ms">160</integer>
+    <item name="working_dot_alpha_rest" format="float" type="dimen">0.3</item>
+    <item name="working_dot_scale_rest" format="float" type="dimen">0.8</item>
+    <item name="working_dot_scale_peak" format="float" type="dimen">1.3</item>
+    <!-- dotBounce keyframe stops: the peak at 40%, at rest again from 80%. -->
+    <item name="working_dot_peak_at" format="float" type="dimen">0.4</item>
+    <item name="working_dot_rest_from" format="float" type="dimen">0.8</item>
+    <!-- .dots i: dotBounce runs on CSS ease-in-out, cubic-bezier(0.42, 0, 0.58, 1). -->
+    <item name="working_dot_ease_x1" format="float" type="dimen">0.42</item>
+    <item name="working_dot_ease_y1" format="float" type="dimen">0</item>
+    <item name="working_dot_ease_x2" format="float" type="dimen">0.58</item>
+    <item name="working_dot_ease_y2" format="float" type="dimen">1</item>
+
+    <!-- .ticks: height 5px, 1px marks every 8px -->
+    <dimen name="tick_rule_height">5dp</dimen>
+    <dimen name="tick_width">1dp</dimen>
+    <dimen name="tick_spacing">8dp</dimen>
+
+    <!-- :focus-visible: outline 2px, offset 2px -->
+    <dimen name="focus_ring_width">2dp</dimen>
+    <dimen name="focus_ring_offset">2dp</dimen>
+    <!-- How far the ring's outer edge sits outside the piece: -(offset + width). -->
+    <dimen name="focus_ring_outset">-4dp</dimen>
+
+    <!-- .bar: height 4px, radius 2px -->
+    <dimen name="progress_height">4dp</dimen>
+    <dimen name="progress_radius">2dp</dimen>
+
+    <!-- Shadow none (2.5): a surface that does not float, such as the phone's bottom bar and edge-to-edge panel. -->
+    <dimen name="elevation_none">0dp</dimen>
+    <!-- The app's own choice, not from the reference: while still because animations are off, how often the sphere and the loops look at the setting again. -->
+    <integer name="motion_setting_check_ms">1000</integer>
+    <!-- Navigation panel items fill the panel's padded width (.nav-item has no side margin). -->
+    <dimen name="nav_item_inset_none">0dp</dimen>
+
+    <!-- rule book 2.3: settings and forms are never wider than 40rem -->
+    <dimen name="settings_measure">640dp</dimen>
+
+    <!-- The named movements (tokens.css keyframes). Each ends at rest: no offset. -->
+    <dimen name="move_rest">0dp</dimen>
+    <dimen name="move_msg_in_rise">12dp</dimen>
+    <dimen name="move_pop_over_in_rise">10dp</dimen>
+    <item name="move_pop_over_in_scale" format="float" type="dimen">0.98</item>
+    <item name="move_fade_scale_from" format="float" type="dimen">0.98</item>
+
+    <!-- Sphere script (reference page, "Stars and dot sphere"). Coefficients are per millisecond or per frame as in the script. -->
+    <item name="sphere_radius_phone" format="float" type="dimen">0.42</item>
+    <item name="sphere_radius_computer" format="float" type="dimen">0.28</item>
+    <dimen name="sphere_radius_computer_min">300dp</dimen>
+    <item name="sphere_stretch_factor" format="float" type="dimen">0.3</item>
+    <item name="sphere_stretch_cap" format="float" type="dimen">1.3</item>
+    <item name="sphere_golden_angle" format="float" type="dimen">2.399963229728653</item>
+    <item name="sphere_perspective" format="float" type="dimen">800</item>
+    <item name="sphere_spin_per_ms" format="float" type="dimen">0.0001</item>
+    <item name="sphere_spin_pulse_gain" format="float" type="dimen">2.5</item>
+    <item name="sphere_drift_x" format="float" type="dimen">40</item>
+    <item name="sphere_drift_x_per_ms" format="float" type="dimen">0.0006</item>
+    <item name="sphere_drift_y" format="float" type="dimen">30</item>
+    <item name="sphere_drift_y_per_ms" format="float" type="dimen">0.0008</item>
+    <item name="sphere_breathe" format="float" type="dimen">0.05</item>
+    <item name="sphere_breathe_per_ms" format="float" type="dimen">0.006</item>
+    <item name="sphere_wave" format="float" type="dimen">15</item>
+    <item name="sphere_wave_per_ms" format="float" type="dimen">0.0015</item>
+    <item name="sphere_wave_spread" format="float" type="dimen">2</item>
+    <item name="sphere_ripple_decay" format="float" type="dimen">0.99</item>
+    <item name="sphere_ripple_speed" format="float" type="dimen">2.5</item>
+    <item name="sphere_ripple_reach" format="float" type="dimen">160</item>
+    <item name="sphere_ripple_width" format="float" type="dimen">75</item>
+    <item name="sphere_ripple_push" format="float" type="dimen">140</item>
+    <item name="sphere_ripple_start" format="float" type="dimen">0.3</item>
+    <item name="sphere_ripple_floor" format="float" type="dimen">0.01</item>
+    <item name="sphere_ripple_commit" format="float" type="dimen">0.6</item>
+    <item name="sphere_dot_distance_spread" format="float" type="dimen">0.9</item>
+    <item name="sphere_dot_size_min" format="float" type="dimen">1.5</item>
+    <item name="sphere_dot_size_range" format="float" type="dimen">2.5</item>
+    <item name="sphere_dot_size_base" format="float" type="dimen">0.6</item>
+    <item name="sphere_dot_size_user" format="float" type="dimen">0.4</item>
+    <item name="sphere_alpha_floor" format="float" type="dimen">0.1</item>
+    <item name="sphere_alpha_offset" format="float" type="dimen">0.18</item>
+    <item name="sphere_alpha_cap" format="float" type="dimen">0.92</item>
+    <item name="sphere_follow" format="float" type="dimen">0.06</item>
+    <item name="sphere_lean" format="float" type="dimen">0.05</item>
+    <item name="sphere_lean_x" format="float" type="dimen">0.4</item>
+    <item name="sphere_lean_y" format="float" type="dimen">0.3</item>
+    <item name="sphere_ease" format="float" type="dimen">0.04</item>
+    <item name="sphere_frame_cap_ms" format="float" type="dimen">64</item>
+    <!-- How often the app draws the sphere (ms). The script draws every frame; here the model shares the CPU, so at rest the
+         sphere draws 10 times a second and only a touch or a ripple gets 30 for a moment (measured: decode speed). -->
+    <integer name="sphere_frame_interval_ms">100</integer>
+    <integer name="sphere_frame_interval_active_ms">33</integer>
+    <integer name="sphere_active_after_touch_ms">2000</integer>
+    <!-- The script's per-frame coefficients assume requestAnimationFrame at 60 frames a second. -->
+    <item name="sphere_script_frame_ms" format="float" type="dimen">16.667</item>
+    <!-- .layer: transition opacity 1.2s ease, when the sphere changes between open and reading strength -->
+    <integer name="sphere_strength_change_ms">1200</integer>
+    <!-- Stars: one per 6500 px squared, radius 0.4 + 0.9 r, opacity 0.3 + 0.6 r, fixed seed; dimmed to 40% behind reading (rule book 3.4) -->
+    <bool name="sphere_stars">false</bool>
+    <item name="sphere_star_area" format="float" type="dimen">6500</item>
+    <item name="sphere_star_radius_min" format="float" type="dimen">0.4</item>
+    <item name="sphere_star_radius_range" format="float" type="dimen">0.9</item>
+    <item name="sphere_star_alpha_min" format="float" type="dimen">0.3</item>
+    <item name="sphere_star_alpha_range" format="float" type="dimen">0.6</item>
+    <integer name="sphere_star_seed">20261110</integer>
+    <item name="sphere_star_reading_dim" format="float" type="dimen">0.4</item>
+    <!-- tokens.json sphere.wordsOnSphere.padRule: x = 14% and y = 6% of line height -->
+    <item name="sphere_fade_pad_x_factor" format="float" type="dimen">0.14</item>
+    <item name="sphere_fade_pad_y_factor" format="float" type="dimen">0.06</item>
+
+    <!-- Line heights for the text styles: text size x tokens.json text.*.lineHeight (ConsoleTokensTest checks the products). -->
+    <dimen name="line_height_greeting">48.4sp</dimen>
+    <dimen name="line_height_page">31.2sp</dimen>
+    <dimen name="line_height_body">24sp</dimen>
+    <dimen name="line_height_code">21.45sp</dimen>
+</resources>

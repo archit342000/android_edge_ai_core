@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- .led with its halo. Level 0 off, 1 starting, 2 ready, 3 error (ServerStatus order). -->
+<level-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:maxLevel="0">
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/console_light_halo_off" />
+                </shape>
+            </item>
+            <item android:left="@dimen/status_light_halo" android:top="@dimen/status_light_halo" android:right="@dimen/status_light_halo" android:bottom="@dimen/status_light_halo">
+                <shape android:shape="oval">
+                    <solid android:color="@color/console_muted" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item android:maxLevel="1">
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/console_light_halo_starting" />
+                </shape>
+            </item>
+            <item android:left="@dimen/status_light_halo" android:top="@dimen/status_light_halo" android:right="@dimen/status_light_halo" android:bottom="@dimen/status_light_halo">
+                <shape android:shape="oval">
+                    <solid android:color="@color/console_led" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item android:maxLevel="2">
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/console_light_halo_ready" />
+                </shape>
+            </item>
+            <item android:left="@dimen/status_light_halo" android:top="@dimen/status_light_halo" android:right="@dimen/status_light_halo" android:bottom="@dimen/status_light_halo">
+                <shape android:shape="oval">
+                    <solid android:color="@color/console_ok" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item android:maxLevel="3">
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@color/console_light_halo_error" />
+                </shape>
+            </item>
+            <item android:left="@dimen/status_light_halo" android:top="@dimen/status_light_halo" android:right="@dimen/status_light_halo" android:bottom="@dimen/status_light_halo">
+                <shape android:shape="oval">
+                    <solid android:color="@color/console_bad" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</level-list>

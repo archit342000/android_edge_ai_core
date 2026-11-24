@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Piece numbers that change at night (reference page sphere script: alpha cap 0.98 when dark; stars at night). -->
+<resources>
+    <item name="sphere_alpha_cap" format="float" type="dimen">0.98</item>
+    <bool name="sphere_stars">true</bool>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- msgIn: a notice or card arriving rises 12 and fades in, 0.4 s on the spring curve. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android" android:ordering="together">
+    <objectAnimator android:propertyName="translationY" android:valueFrom="@dimen/move_msg_in_rise" android:valueTo="@dimen/move_rest" android:duration="@integer/duration_enter" android:interpolator="@interpolator/ease_spring" />
+    <objectAnimator android:propertyName="alpha" android:valueFrom="0" android:valueTo="1" android:valueType="floatType" android:duration="@integer/duration_enter" android:interpolator="@interpolator/ease_spring" />
+</set>

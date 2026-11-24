@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backend: a chip. Outline icon: 2 line on a 24 grid, rounded ends and joins (rule book 2.6). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="@dimen/nav_icon_size"
+    android:height="@dimen/nav_icon_size"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M7,7h10v10h-10z"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M10,10h4v4h-4z"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M10,3v4"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M14,3v4"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M10,17v4"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M14,17v4"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M3,10h4"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M3,14h4"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M17,10h4"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M17,14h4"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

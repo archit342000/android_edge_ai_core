@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Console at Rest numbers that are not sizes. Mirrors tokens.json; checked by ConsoleTokensTest. Day values; night overrides in values-night. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="UnusedResources">
+    <!-- text: weight, tracking (em), line height (times the size) -->
+    <integer name="text_hero_weight">700</integer>
+    <item name="text_hero_tracking" format="float" type="dimen">-0.055</item>
+    <item name="text_hero_line_height" format="float" type="dimen">1.12</item>
+    <integer name="text_greeting_weight">700</integer>
+    <item name="text_greeting_tracking" format="float" type="dimen">-0.05</item>
+    <item name="text_greeting_line_height" format="float" type="dimen">1.1</item>
+    <integer name="text_page_weight">600</integer>
+    <item name="text_page_tracking" format="float" type="dimen">-0.03</item>
+    <item name="text_page_line_height" format="float" type="dimen">1.2</item>
+    <integer name="text_popup_weight">600</integer>
+    <item name="text_popup_tracking" format="float" type="dimen">-0.02</item>
+    <integer name="text_section_weight">600</integer>
+    <item name="text_section_tracking" format="float" type="dimen">-0.02</item>
+    <integer name="text_heading_weight">600</integer>
+    <item name="text_heading_tracking" format="float" type="dimen">-0.01</item>
+    <integer name="text_body_weight">400</integer>
+    <item name="text_body_line_height" format="float" type="dimen">1.6</item>
+    <integer name="text_strong_weight">500</integer>
+    <integer name="text_small_weight">400</integer>
+    <integer name="text_label_weight">400</integer>
+    <item name="text_label_tracking" format="float" type="dimen">0.08</item>
+    <integer name="text_code_weight">400</integer>
+    <item name="text_code_line_height" format="float" type="dimen">1.65</item>
+
+    <!-- motion.duration (ms) -->
+    <integer name="duration_fast">150</integer>
+    <integer name="duration_base">200</integer>
+    <integer name="duration_slow">300</integer>
+    <integer name="duration_enter">400</integer>
+    <integer name="duration_greet">800</integer>
+
+    <!-- breakpoint: the widths (dp) where the layout changes; the frames use the same numbers as qualifiers -->
+    <integer name="breakpoint_tablet">600</integer>
+    <integer name="breakpoint_computer">1024</integer>
+
+    <!-- glass -->
+    <item name="glass_frost" format="float" type="dimen">0.9</item>
+    <item name="glass_saturate" format="float" type="dimen">1.4</item>
+
+    <!-- sphere -->
+    <integer name="sphere_dots_computer">600</integer>
+    <integer name="sphere_dots_phone">250</integer>
+    <item name="sphere_size_factor" format="float" type="dimen">0.75</item>
+    <item name="sphere_strength_open" format="float" type="dimen">0.95</item>
+    <item name="sphere_strength_read" format="float" type="dimen">0.5</item>
+    <item name="sphere_phone_factor" format="float" type="dimen">0.6</item>
+    <item name="sphere_fade_strength" format="float" type="dimen">0.92</item>
+    <item name="sphere_panel_under_open_mix" format="float" type="dimen">0.45</item>
+</resources>

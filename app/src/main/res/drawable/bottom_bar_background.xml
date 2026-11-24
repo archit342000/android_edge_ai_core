@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The phone bottom bar: nearly solid (pop), with an edge along its top -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <solid android:color="@color/console_edge" />
+        </shape>
+    </item>
+    <item android:top="@dimen/rule_thickness">
+        <shape>
+            <solid android:color="?attr/consolePop" />
+        </shape>
+    </item>
+</layer-list>

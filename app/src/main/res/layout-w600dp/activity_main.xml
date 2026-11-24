@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tablet frame (600 to 1023): a slim rail of icons plus one column, floating with a gap around them. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity"
+    tools:ignore="MergeRootFrame">
+
+    <com.aanand.edgeaicore.DotSphereView
+        android:id="@+id/sphere"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no" />
+
+    <LinearLayout
+        android:id="@+id/frame_row"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:baselineAligned="false"
+        android:orientation="horizontal"
+        android:padding="@dimen/floating_gap"
+        tools:ignore="InconsistentLayout">
+
+        <FrameLayout
+            android:id="@+id/nav_frame"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent">
+
+            <com.aanand.edgeaicore.SphereFrostView
+                android:id="@+id/frost_nav"
+                tools:ignore="InconsistentLayout"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <com.google.android.material.navigationrail.NavigationRailView
+                android:id="@+id/nav_rail"
+                tools:ignore="InconsistentLayout"
+                android:layout_width="@dimen/rail"
+                android:layout_height="match_parent"
+                app:menu="@menu/bottom_nav_menu" />
+        </FrameLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/content_column"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="@dimen/floating_gap"
+            android:clipChildren="false">
+
+            <FrameLayout
+                android:id="@+id/toolbar_frame"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <com.google.android.material.appbar.MaterialToolbar
+                    android:id="@+id/toolbar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/page_panel"
+                    android:elevation="@dimen/page_panel_elevation"
+                    app:title="@string/nav_server" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/pages"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_marginTop="@dimen/floating_gap"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/toolbar_frame">
+
+            <include layout="@layout/page_server" />
+
+            <include layout="@layout/page_backend" />
+
+            <include layout="@layout/page_tokens" />
+            </FrameLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/brief_host"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:paddingStart="@dimen/page_padding"
+        android:paddingEnd="@dimen/page_padding" />
+</FrameLayout>
