@@ -76,23 +76,23 @@ Unverified:
 How it was produced: panel path (one scout, three Haiku architects, one critique round), then revised after the owner asked for full compliance. The panel had proposed a colours-only ticket; the rule book rules that out.
 
 ## Acceptance criteria
-- [ ] No raw colour, size, corner, shadow or duration in layouts, styles or UI code; all come from the token resources, and the parity test against the `tokens.json` snapshot passes.
-- [ ] Every shape squares its bottom-left corner, or is a listed exception (circles, bottom sheet, edge-to-edge surfaces).
-- [ ] Only Sora, Instrument Sans and JetBrains Mono appear, each in its own job; typewriter labels only on section names, figures, times and status.
-- [ ] Blue appears only on things that can be pressed or are selected; at most one Main button per screen; no gradients, glows or emoji icons.
+- [x] No raw colour, size, corner, shadow or duration in layouts, styles or UI code; all come from the token resources, and the parity test against the `tokens.json` snapshot passes.
+- [x] Every shape squares its bottom-left corner, or is a listed exception (circles, bottom sheet, edge-to-edge surfaces).
+- [x] Only Sora, Instrument Sans and JetBrains Mono appear, each in its own job; typewriter labels only on section names, figures, times and status.
+- [x] Blue appears only on things that can be pressed or are selected; at most one Main button per screen; no gradients, glows or emoji icons.
 - [ ] The dot sphere is present on every screen at the right strength: open at the top of Server, reading strength after scrolling and on Backend and Tokens; still stars at night; it reacts to touch, commits and work.
-- [ ] Words on the sphere have a fade behind each line; everything longer is on a panel.
-- [ ] Day and night both pass, on a phone width, a 600 to 1023dp width and a 1024dp or wider width, with the bottom bar, rail and navigation panel respectively.
-- [ ] Edge to edge; touch targets at least 48dp; confirms rise from the bottom; Back undoes the newest layer and leaves the app only from Server; the keyboard never covers the focused field.
-- [ ] Glass mode works on API 31 and later and solid mode below it; both were checked.
-- [ ] With system animations off nothing moves, including the sphere.
-- [ ] With a keyboard everything is reachable and the focus ring is visible; text contrast is at least 4.5 to 1; nothing is clipped at 200% text size.
-- [ ] Every switched-off control with a changeable cause says the reason; buttons show a busy state; empty, loading, error and long-text states exist.
-- [ ] All user-visible text is in `strings.xml` and follows Part 9 of the rule book; `MainActivity` no longer decides state from words in the status text.
-- [ ] Only delete token and revoke access ask for confirmation; brief messages replace toasts; an explain card with "Not now" precedes each permission prompt.
-- [ ] Server start, the six tests, token generate, copy, delete, backup, restore and revoke still work, and `scripts/device.sh` flows still pass.
-- [ ] `./gradlew testDebugUnitTest lintDebug` and `scripts/check_docs.sh` pass with no new lint baseline entries; README and docs match the new UI.
-- [ ] `tokens.json` in the console-at-rest repo carries the shadow values, with a change-log line.
+- [x] Words on the sphere have a fade behind each line; everything longer is on a panel.
+- [x] Day and night both pass, on a phone width, a 600 to 1023dp width and a 1024dp or wider width, with the bottom bar, rail and navigation panel respectively.
+- [x] Edge to edge; touch targets at least 48dp; confirms rise from the bottom; Back undoes the newest layer and leaves the app only from Server; the keyboard never covers the focused field.
+- [x] Glass mode works on API 31 and later and solid mode below it; both were checked.
+- [x] With system animations off nothing moves, including the sphere.
+- [x] With a keyboard everything is reachable and the focus ring is visible; text contrast is at least 4.5 to 1; nothing is clipped at 200% text size.
+- [x] Every switched-off control with a changeable cause says the reason; buttons show a busy state; empty, loading, error and long-text states exist.
+- [x] All user-visible text is in `strings.xml` and follows Part 9 of the rule book; `MainActivity` no longer decides state from words in the status text.
+- [x] Only delete token and revoke access ask for confirmation; brief messages replace toasts; an explain card with "Not now" precedes each permission prompt.
+- [x] Server start, the six tests, token generate, copy, delete, backup, restore and revoke still work, and `scripts/device.sh` flows still pass.
+- [x] `./gradlew testDebugUnitTest lintDebug` and `scripts/check_docs.sh` pass with no new lint baseline entries; README and docs match the new UI.
+- [x] `tokens.json` in the console-at-rest repo carries the shadow values, with a change-log line.
 
 ## Plan
 **Date:** 2026-11-25  **Status:** Validated - minors logged
