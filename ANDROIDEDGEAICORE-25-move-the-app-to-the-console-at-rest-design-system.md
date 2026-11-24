@@ -398,6 +398,96 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Not run yet (verify stage): wide frames, night, solid, API 26, font scale 2, keyboard, reduced motion, permission cards, sheets, the device.sh flows.
 
 ## Verification
+### Verification plan (2026-11-25)
+**Plan:** this ticket's Plan  **Diff base:** a26f8674a47ccbf08f15c3a65da91c42fa3f066e  **Branch:** feature/console-at-rest-design-system (+ console-at-rest feature/android-shadows)
+
+#### Scope
+The whole UI move (resources, fonts, theme, styles, three width frames, three pages, sphere, frost, fade, status store, ControlsPolicy/render, explain cards, sheets, brief messages, settings saved at once, wording, docs, lint baseline) and the console-at-rest token change. Out of scope: REST contract, inference, token logic (only exercised as regression), notification look, launcher icon.
+
+#### Environment and isolation
+- Only the dedicated emulators: `claude_edgeaicore_api34` (`emulator-5584`, booted `-read-only -no-snapshot`, so every setting change and app datum is thrown away at shutdown) and a new `claude_edgeaicore_api26` (UI only, no model; `PORT=5586`, read-only). Never the owner's AVDs (`Pixel_9_Pro_XL`) or a phone.
+- Models from `~/.cache/edgeaicore-test-models/` (Qwen3-0.6B for UI flows, Gemma 4 E2B for `device.sh up`, vision, audio and decode speed). Host port 18080; token saved by `device.sh` only in `~/.cache/edgeaicore-device/token`, never printed.
+- Display, night mode, font scale, animator scale and permissions are changed with `adb shell` on the emulator only, and reset afterwards.
+- Evidence and scripts: `~/.claude/tickets/android_edge_ai_core/ANDROIDEDGEAICORE-25-evidence/` (`scripts/` for helpers).
+
+#### Scenarios
+| ID | Criterion | Scenario | Type | Method | Files | Expected result | Evidence |
+|----|-----------|----------|------|--------|-------|-----------------|----------|
+| V1 | AC1 | Raw-value check over layouts, styles, shapes, drawables, colour lists, animators, menus and new Kotlin; `ConsoleTokensTest`; mutate one colour and see it fail | unit/CLI | grep script, gradle | res/**, ConsoleTokensTest | no hits; test passes; mutation fails | command output |
+| V2 | AC2 | Zoomed screenshots of buttons, text box, segments, switch, fold, notice, explain card, sheet, panels (wide), nav indicator | happy | emulator screenshot crops | styles.xml, shapes.xml, drawable/* | bottom-left corner squared; exceptions only circles, sheet top, edge-to-edge phone panel and bars | crops |
+| V3 | AC3 | grep font references; screenshots: headings Sora, text Instrument Sans, labels/figures/status/code JetBrains Mono; labels only on section names, figures, status | happy | grep + screenshots | type.xml, layouts | only the 3 families; typewriter only on section names, status words, figures, code | grep output, screenshots |
+| V4 | AC4 | Squint check of every page day and night; count Main buttons; grep emoji, gradient, glow | happy | screenshots + grep | layouts, styles | blue only on pressable/selected (selected nav, segments, switch on, Quiet buttons, status light ready/starting); 0 Main buttons; no gradients/emoji | screenshots, grep |
+| V5 | AC5 | Sphere: Server top open; scrolled past 120 dp reading; Backend and Tokens reading; night stars; touch-and-hold leans; ripple on Run server and on Generate token; pulse while starting | happy | screenshot sequences, pixel diff | DotSphere*, MainActivity | strengths differ open vs reading; stars only at night; frames differ after touch, start, generate | screenshots, diff numbers |
+| V6 | AC6 | Fade patch behind headline/status/address: page-colour patch where a dot passes behind a word, sphere bright beside | happy | screenshot + pixel sampling | SphereFadeLayout, SphereFadePatches | no visible patch edge; dots dimmed behind words only | crops, samples |
+| V7 | AC7 | Three pages x day/night x phone (1080x2400 @420), tablet (wm size 1600x2560 @320 = 800 dp), computer (wm size 2560x1600 @240 = 1706 dp); switch pages in each | happy | wm size/density, cmd uimode | layout*, frames.xml, MainActivity.showPage | bottom bar / rail / navigation panel; header with status on computer; no crash | 18+ screenshots |
+| V8 | AC8 | Edge to edge (content under status and gesture bar, kept clear); every pressable at least 48 dp (uiautomator bounds); delete and revoke sheets rise from the bottom; Back: Backend -> Server, Server -> leaves app; Back closes a sheet first; keyboard on context size box stays above the keyboard | happy/edge | screenshots, ui bounds, keyevents | MainActivity (insets, back), sheet_confirm | as stated | screenshots, bounds list, dumpsys |
+| V9 | AC9 | Glass on API 34 (frost views attached, panel translucent); forced solid on API 34 (`--ez console_solid true`); solid on API 26 emulator, day and night, three pages | happy | screenshots, pixel samples | themes.xml, SphereFrostView, MainActivity.attachFrosts | glass: dots blurred under rail/panel; solid: surfaces opaque solid colours | screenshots |
+| V10 | AC10 | animator_duration_scale 0, start the server, two screenshots 1 s apart during the load | edge | settings + screenshots | DotSphereView, ConsoleUi | identical frames (sphere, dots, light still) | diff = 0 |
+| V11 | AC11 | Keyboard: Tab through Server, Backend, Tokens: ring visible on buttons, switch, segments, rows, fold; contrast test; font_scale 2.0 screenshots of each page | happy/edge | keyevents, screenshots | focus_ring_*, styles | ring visible on every pressable; ConsoleTokensTest contrast passes; no clipped text | screenshots |
+| V12 | AC12 | Reasons: no model (switch), server off (tests), no token (copy/delete); busy labels on a running test, backup, restore; error strip with model missing; long model path ellipsis; empty authorised apps line; progress bar on copy | happy/edge | UI + screenshots | ControlsPolicy, render, layouts | each reason/busy/empty/error/long state shown | screenshots |
+| V13 | AC13 | grep `appendLog("`, literal UI text in Kotlin and layouts; lint HardcodedText/SetTextI18n; no word matching on status | CLI | grep, lint xml | MainActivity, layouts, strings | none | outputs |
+| V14 | AC14 | Generate shows no sheet; Delete token and Revoke access show sheets (Cancel keeps, action deletes); copy shows a brief message; no Toast class used | happy | UI + screenshots + grep | MainActivity, ConsoleUi | as stated | screenshots |
+| V15 | AC14 | Explain cards: revoke POST_NOTIFICATIONS and RECORD_AUDIO, remove battery whitelist; launch: no prompt, no card; start server: no card in the way; ready: notifications card; Not now hides it and it stays hidden after a restart; battery card next, Allow opens the system screen, card gone on return; audio test without mic shows mic card, Allow -> system prompt, grant runs the test; deny twice -> card hides and brief message | happy/failure | pm revoke, UI | ExplainCardPolicy, MainActivity | as stated | screenshots |
+| V16 | AC15 | `scripts/device.sh up` (Gemma 4 E2B, CPU), `api GET /v1/health`, streaming chat; `token` flow taps the Tokens tab | regression | device.sh | whole app | ready, 200, token saved | outputs |
+| V17 | AC15 | UI tests from Diagnostics: Test chat, Test two turns, Check health, Check load, Test vision (image via picker), Test audio (emulator mic); each shows busy then logs | regression | UI | MainActivity tests | each completes and logs a result | screenshots, logs |
+| V18 | AC15 | Tokens: generate, copy, delete, back up (CreateDocument picker), restore (OpenDocument picker), revoke | regression | UI + pickers | MainActivity tokens | each works; files written/read | screenshots, file listing |
+| V19 | AC16 | `./gradlew testDebugUnitTest lintDebug`, `scripts/check_docs.sh`, `git diff --stat app/lint-baseline.xml` | CLI | gradle | all | pass; deletions only | outputs |
+| V20 | AC17 | console-at-rest diff: tokens.json shadow block and elevations, tokens.css elevations, RULEBOOK 2.5 and change log | CLI | git diff, json parse | tokens.json, tokens.css, RULEBOOK.md | present and consistent | outputs |
+| V21 | step 4 | Start, Home during load, return after ready: page shows ready | happy | adb | ServerStatusStore, onResume | READY | screenshot |
+| V22 | step 4 | Rotate while ready: still ready | edge | adb rotation | same | READY | screenshot |
+| V23 | step 4 | Switch off: off, stays off after Home and return | happy | UI | same | OFF | screenshots |
+| V24 | step 4 | Start, send ACTION_STOP from adb during load, wait past the load: still off | failure | adb | ServerStatusStore, InferenceService | OFF, no late READY | screenshot, logcat |
+| V25 | step 4 | Stop then start from adb quickly: reaches ready | edge | adb | same | READY | screenshot |
+| V26 | step 4/7 | Start with the saved model file deleted: error shown and kept; error strip Try again / Select model | failure | run-as rm, UI | InferenceService, render | ERROR with detail; strip action | screenshots |
+| V27 | step 7 | Vision test: busy survives the picker round trip and returning; stop the server mid-test: button leaves busy | edge | UI | busy set, render | as stated | screenshots |
+| V28 | step 7 | Pick a model while off: progress bar runs, switch usable after copy | happy | picker | copyModelFile | as stated | screenshots |
+| V29 | step 8 | Settings: change backend/MTP/encoder -> Saved; leave app and return -> kept; invalid context size -> red edge and reason, not saved; change while ready -> note shown; Escape/Back closes a sheet then returns to Server | happy/edge | UI | saveSetting, commitContextSize | as stated | screenshots, prefs dump |
+| V30 | step 10 | Decode speed with app in foreground (sphere running) vs background (Home), same prompt, temperature 0 | non-functional | API timing script | DotSphereView | difference noted (no large drop) | script output |
+| V31 | step 3 | Elevation numbers: brief message and sheet shadows compared by eye with the reference's lifted shadow | non-functional | screenshot vs reference | tokens elevation | resting 3 / lifted 8 look right, or adjusted | screenshots |
+
+#### Coverage check
+AC1 V1; AC2 V2; AC3 V3; AC4 V4; AC5 V5; AC6 V6; AC7 V7; AC8 V8; AC9 V9; AC10 V10; AC11 V11; AC12 V12; AC13 V13; AC14 V14 V15; AC15 V16 V17 V18; AC16 V19; AC17 V20. Plan steps 4, 7 and 8 emulator checks: V21-V29; step 10 device checks: V7 V9 V10 V11 V30 V31. Not coverable: a real pre-API 31 phone (API 26 emulator stands in); GPU and NPU (emulator has no OpenCL).
+
+### Results (2026-11-25)
+Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted work; per-file `git hash-object` record (123 app files and the 3 console-at-rest files) in `ANDROIDEDGEAICORE-25-evidence/verify/hashes-results-1.txt`. Emulators: claude_edgeaicore_api34 (Gemma 4 E2B and Qwen3-0.6B, CPU) and the new claude_edgeaicore_api26 (`default/x86_64`). Evidence: `ANDROIDEDGEAICORE-25-evidence/verify/`, scripts in `ANDROIDEDGEAICORE-25-evidence/scripts/` (v.sh, grid.py, dots.py, ink.py, matrix.sh, speed.py, rawcheck.sh).
+
+| ID | Status | Evidence and notes |
+|----|--------|--------------------|
+| V1 | PASS | raw-value check clean; ConsoleTokensTest 8/8; a changed colour made it fail (step 2) |
+| V2 | PASS | crops: buttons, Danger, switch track, panels and header square the bottom left; sheet round on top, square below |
+| V3 | PASS | only sora_*, instrument_sans_*, jetbrains_mono_* referenced; typewriter only on section names, status words, figures, code |
+| V4 | PASS | no Main button, no emoji, no gradient; blue only on Quiet buttons, switch on, selected nav, status light, working dots, progress |
+| V5 | FAIL | the sphere's centre follows every tap and stays there: after tapping the bottom bar or rail the dots sit at the bottom or left edge and most pages show almost none (S1, T1, V7 tablet and computer shots). Open vs reading strength, stars at night and stillness work; ripple and pulse not measured |
+| V6 | PASS | fade patches match the page colour within 1 level, no visible edge; dots dim behind the words |
+| V7 | PASS | 18 shots: bottom bar, rail, navigation panel with header status and tick rule; day and night; no crash |
+| V8 | FAIL | edge to edge, 48 dp targets, sheets from the bottom, Back (Backend to Server, Server leaves), keyboard (box above it, bar steps aside) PASS; Escape on Backend or Tokens does nothing (expected: back to Server). Also: in landscape the display-cutout strip stays black |
+| V9 | PASS | API 34 glass; forced solid panels #FAF9F6 day and #0E0E10 night; API 26 day and night solid |
+| V10 | PASS | animations off: two frames 1 s apart while STARTING differ in 0 px |
+| V11 | FAIL | rings visible on buttons, switch row, fold header, text box (blue edge and halo); none on bottom-bar items or segments (segment ring clipped by its track); contrast test passes; font scale 2 wraps, nothing clipped |
+| V12 | PASS | reasons (select a model, start the server, generate a token, wait for the copy), busy labels and spinner, error strip, path ellipsis, empty apps line, copy progress bar |
+| V13 | PASS | no appendLog literal, no layout literal text, no HardcodedText or SetTextI18n, no word matching on status |
+| V14 | PASS | generate without a sheet; delete and revoke sheets with Cancel and the named red action; brief messages (Token copied, New token generated); no Toast |
+| V15 | PASS | no card at launch or while starting; notifications card at READY; Not now persists across a restart; battery card, Allow opens the system screen, gone on return; mic card, Allow shows the system prompt, deny and deny-for-good hide it with the brief message; grant runs the test |
+| V16 | PASS | device.sh up ready in 6 s, health 200, streaming chat 200, token via the Tokens tab |
+| V17 | FAIL | chat, two turns, health, load and audio work; Test vision fails "unexpected end of stream": with the sphere running the streamed image request takes over 10 s to its first byte and the connection is dropped (curl empty reply at 10.0 s); background 6.6 s and works; develop works in the foreground |
+| V18 | PASS | generate, copy, delete (confirmed), back up (file written to Downloads), restore (token and row back), revoke |
+| V19 | PASS | 270 unit tests, lint 2 warnings that were already there, check_docs OK, baseline 770 deletions, 0 additions |
+| V20 | PASS | tokens.json shadow block and androidElevation 3/8, tokens.css elevations, RULEBOOK 2.5 and change log |
+| V21 | PASS | start while the app was in the background: READY on return |
+| V22 | PASS | rotation keeps READY (rail frame in landscape) |
+| V23 | PASS | switch off: OFF, stays OFF after Home and return |
+| V24 | PASS | stop from adb mid-load: OFF stays, the late failure is dropped |
+| V25 | FAIL | device.sh stop-service then start at once: the start reaches the same instance, then its onDestroy (from the stop's stopSelf) cancels the load; server down; UI shows OFF (the true state). With a 3 s gap the start works |
+| V26 | PASS | missing model file: COULDN'T START, detail and error strip; Try again reaches READY |
+| V27 | PASS | vision busy kept across the picker; stopping the server mid-test ends the busy state and shows the reason |
+| V28 | PASS | picked Qwen3-0.6B: progress bar, Copying…, switch off with "Wait for the model to finish copying.", usable after |
+| V29 | PASS | "0" shows the red edge and reason and is not saved; 2048 and CPU saved (prefs dump); note while running |
+| V30 | FAIL | decode with the app in front (sphere running) 6.5-7.2 chunks/s, first token 2.1-2.8 s; background 19.9-20.4; develop in front 20.2-20.4; animations off 20.5. The sphere's frame loop costs about two thirds of CPU decode speed on the emulator |
+| V31 | PASS | brief message and sheet read as lifted by eye; 3 and 8 kept |
+
+Other findings: docs/testing-on-device.md names `system-images;android-26;google_apis;x86`, which cannot install the APK (it has only x86_64 and arm64-v8a libraries); the working image is `default;x86_64`. Notes (not failures): the busy spinner sits at the button's start edge, not beside the word; the open block shows only the top of the sphere at rest; the status line and the notice strip repeat the same error text; the bottom bar shows faintly through the 97% sheet.
+
+Verdict: partly verified. PASS 24, FAIL 7 (V5, V8, V11, V17, V25, V30, plus the doc finding folded into V9's notes), BLOCKED 0.
 
 ## Review history
 
@@ -407,3 +497,4 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - 2026-11-25: plan rewritten from a full code read and validated with minors logged (rounds: 5, 2 after owner decisions, 2 added by the owner's request and after the rewrite)
 - 2026-11-25: autopilot started (stage 2 implement next; plan already validated)
 - 2026-11-25: implemented (stage 2), smoke tests pass: 270 unit tests, lint and docs checks clean
+- 2026-11-25: verification: partly verified, 24 PASS, 7 FAIL (V5 sphere follows taps, V8 Escape, V11 focus rings on bar and segments, V17 vision in foreground, V25 stop+start race, V30 decode speed with sphere running), 0 BLOCKED
