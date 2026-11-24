@@ -355,7 +355,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
-- Counters: fix 1/10, review 0/5, plan amendments 0/3, re-verify 0
+- Counters: fix 2/10, review 0/5, plan amendments 0/3, re-verify 0
 - Last completed stage: 3 verify  Next: 4 fix loop (round 1)
 - Hard blocker: none
 - WIP commit: none
@@ -406,6 +406,8 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
   - V25 wrong expectation: the plan expected READY after an adb stop then start; Android destroyed the instance after the start reached it (stopSelf from the stop), cancelling the load, as develop does too. The plan's Approach asks the store to show the true state, and it did (OFF). Superseded by V32. The service race is a pre-existing follow-up.
   - Docs finding: docs/testing-on-device.md now names system-images;android-26;default;x86_64.
 - Round 1 checks: 271 unit tests pass, lint only the 2 warnings that were already there, check_docs OK, raw-value check clean.
+- Round 1 re-run (on the round-1 build): V5, V8, V11, V16, V30 (17.2-17.5 vs 20.0 background), V17 API path PASS; Test vision from the UI still FAILED (unexpected end of stream): during the app's own tests the busy spinner, working dots and light pulse ran at the display rate and the RenderThread took 88% of a core, pushing the streamed image request past Ktor Netty's 10 s write timeout (pre-existing server limit, develop under the same 10 s).
+- Round 2 (2026-11-25). Product defect (V17 UI). Fix: ConsoleUi drives the three looping movements from one Choreographer ticker at the sphere's rest interval (10 a second) instead of full-rate ObjectAnimators and Material's IndeterminateDrawable; the busy spinner is ConsoleUi.SpinnerDrawable (.spin: 14, stroke 2, three quarters of a ring); the keyframe maths is LoopFrames.kt (plain Kotlin) with LoopFramesTest (3 tests); MainActivity pauses and resumes the ticker in onPause/onResume. RenderThread during a test: 27% (was 88%). 274 unit tests pass, lint clean, check_docs OK, raw-value check clean.
 
 ## Verification
 ### Verification plan (2026-11-25)
@@ -506,6 +508,52 @@ V25 expected READY after `device.sh stop-service` and an immediate `start`. Andr
 |----|--------------------------------|----------|------|--------|-------|-----------------|----------|
 | V32 | step 4 (store shows the true state) | adb stop then start at once; then `GET /v1/health` | edge | adb, API | ServerStatusStore, InferenceService, MainActivity | the page ends in the state the service is in (OFF with health unreachable, or READY with health 200), never stuck at STARTING | screenshot, health output |
 
+### Results (re-run 1, 2026-11-25)
+Round-1 build (sphere 10/30 fps, navigation-only frost, Escape, focus rings, touch release); emulator booted fresh. Uncommitted files changed against the first results; record superseded by re-run 2's.
+
+| ID | Status | Evidence and notes |
+|----|--------|--------------------|
+| V5 | PASS | holding a touch at the bottom pulls the sphere there; after release it returns to the middle (R1-V5-holding-bottom/released); commit ripple: dot spread 395 -> 415 -> 391 after Generate token (R1-V5-before/ripple/after) |
+| V8 | PASS (Escape) | Escape on Backend -> Server, on Server nothing, closes the sheet first; Back on Server -> launcher |
+| V11 | PASS | rings on bottom-bar items (R1-V11-nav_*), segments (R1-V11-rb_cpu), rail (R1-V11-rail-nav_server) and navigation panel (R1-V11-panel-focus) |
+| V16 | PASS | device.sh up ready in 9 s, health 200, streaming chat 200 |
+| V30 | PASS | foreground 17.2-17.5 chunks/s (app idle CPU 13.5%), background 20.0 |
+| V17 | FAIL | API streamed vision in the foreground answers (first byte 7.7 s), but Test vision from the UI fails "unexpected end of stream" (the test's own spinner, dots and light pulse at full rate) |
+| V7 | PASS | 18 shots, three widths, day and night (R1-V7-*) |
+| V9 | PASS (glass) | rail frosts the dots behind it (R1-V9-rail-frost) |
+| V33 | BLOCKED | sphere pulse while working: not distinguishable in screenshots (drift dominates; spread range 21-22 in both states); covered only by DotSphereModelTest.workingSpeedsUpTheTurn |
+
+### Results (re-run 2, 2026-11-25)
+Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted work; per-file hashes (126 files) in `ANDROIDEDGEAICORE-25-evidence/verify/hashes-results-3.txt`. Round-2 build (slow shared ticker for dots, pulse, spinner). Fresh emulator boots; API 26 emulator for solid.
+
+| ID | Status | Evidence and notes |
+|----|--------|--------------------|
+| V1 | PASS | raw-value check clean; ConsoleTokensTest passes |
+| V2 | PASS | panels, card, buttons, segments, sheet (R2-V15-card, R1 crops) |
+| V3, V4, V6, V13, V20 | PASS (carried; files unchanged or re-checked on screenshots) | |
+| V5 | PASS (re-run 1) | DotSphereModel/View unchanged in round 2 |
+| V7 | PASS (re-run 1) | layouts unchanged in round 2 |
+| V8 | FAIL | Escape, Back, sheets, keyboard, 48 dp targets PASS; in landscape the display-cutout strip stays black (R2-V22-landscape): the window does not draw into the cutout |
+| V9 | PASS | forced solid on API 34 (#FAF9F6 panel), API 26 three pages (R2-V9-*), glass rail frost (re-run 1) |
+| V10 | PASS | animations off: during STARTING only the detail line changed (7,428 px in the line's box), no dot, light or sphere movement |
+| V11 | PASS (re-run 1) | styles and drawables unchanged in round 2 |
+| V12 | PASS | reasons (tests, token, copy), busy spinner, error strip, copy progress (R2-V28-copy) |
+| V14, V18 | PASS | generate without a sheet; copy; back up written; delete and revoke sheets confirmed; restore row back (R2-V14-V18.txt) |
+| V15 | PASS (light) | no card at launch; notifications card at READY (R2-V15-card) |
+| V16 | PASS (re-run 1) | |
+| V17 | PASS | Test vision from the UI: "The image is a solid, bright red color..." (R1-V17-vision-busy shows the slowed spinner); RenderThread 27% during a test |
+| V19 | PASS | 274 unit tests, lint 2 old warnings, check_docs OK, baseline deletions only |
+| V21, V23, V24, V26, V27 | PASS | background start READY; OFF kept; stop mid-load OFF; missing model -> Couldn't start + Try again -> READY; stop mid-test ends busy (R2-status-scenarios.txt) |
+| V22 | PASS | rotation keeps state, rail frame |
+| V25 | superseded by V32 | |
+| V28, V29 | PASS | copy with Copying… and the wait reason; Off saved; invalid 0 shows the reason |
+| V30 | PASS | foreground 16.8-17.1 chunks/s vs background 20.1 (-15%) |
+| V31 | PASS (carried) | |
+| V32 | PASS | stop then start at once: OFF with health unreachable, never stuck at STARTING |
+| V33 | BLOCKED | see re-run 1 |
+
+Verdict: partly verified. FAIL 1 (V8 landscape cutout), BLOCKED 1 (V33), all others PASS.
+
 ## Review history
 
 ## Log
@@ -515,3 +563,4 @@ V25 expected READY after `device.sh stop-service` and an immediate `start`. Andr
 - 2026-11-25: autopilot started (stage 2 implement next; plan already validated)
 - 2026-11-25: implemented (stage 2), smoke tests pass: 270 unit tests, lint and docs checks clean
 - 2026-11-25: verification: partly verified, 25 PASS, 6 FAIL (V5 sphere follows taps, V8 Escape, V11 focus rings on bar and segments, V17 vision in foreground, V25 stop+start race, V30 decode speed with sphere running), 0 BLOCKED
+- 2026-11-25: fix rounds 1-2; re-run 2: 1 FAIL (V8 landscape cutout), 1 BLOCKED (V33 pulse), rest PASS
