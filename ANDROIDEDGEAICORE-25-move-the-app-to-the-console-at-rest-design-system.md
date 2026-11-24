@@ -355,7 +355,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
-- Counters: fix 4/10, review 3/5, plan amendments 0/3, re-verify 1
+- Counters: fix 4/10, review 4/5, plan amendments 0/3, re-verify 1
 - Last completed stage: 4 fix round 4 after re-verify  Next: 5 review round 4 (verification fixes only), then 6 ship
 - Hard blocker: none
 - WIP commit: none
@@ -756,6 +756,26 @@ Dismissed:
 Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTest lintDebug (283 tests pass; lint 2 warnings, both already there), scripts/check_docs.sh OK. Runtime behaviour changed: ConsoleUi.kt, DotSphereView.kt, MainActivity.kt, LoopFrames.kt, SegmentFit.kt (new), pieces.xml, interpolator/dot_bounce_ease.xml (new). No BLOCKER or MAJOR in this round, so the review loop ends clean; re-verify next.
 - Verification fix (fix round 4, after re-run 4): app/src/main/res/layout/page_server.xml - the log box: scroll_logs now sits in a FrameLayout that carries the code_box background and clips the scrolled log. docs/testing-on-device.md - UI flow poll string back to READY (reverts part of the R1-11 fix).
 
+### Round 4 - 2026-11-25
+Verdict: Approve with comments. Scope: round 4, only what changed since round 3 (the Round 3 Fixed entries and the Verification fix: MainActivity onCreate status hide, ConsoleUi ticker/motionCheck/stackIfCramped/setDotsWorking, DotSphereView start/stop/motionCheck, SegmentFit and its test, LoopFrames.dotBounce and its test, dot_bounce_ease.xml, pieces.xml, the page_server.xml log box, docs/testing-on-device.md). Two Haiku reviewers.
+
+- R4-1 [MINOR] docs/architecture.md:25, docs/standards/testing.md:6 - the new SegmentFit and SegmentFitTest are not listed (also found by me) - Static - Open
+- R4-2 [MINOR] docs/testing-on-device.md:51 - the UI flow polls tv_status_word, which is hidden at 1024dp and over (the header word shows the status there) - Static - Open
+- R4-3 [MINOR] interpolator/dot_bounce_ease.xml - the dot's ease-in-out control points are a piece movement number outside pieces.xml (the three token curves are a different case) - Static - Open
+- R4-4 [MINOR] values-night/pieces.xml:3 - the blanket UnusedResources ignore stays there after it was removed from the day file - Static - Open
+- R4-5 [MINOR] pieces.xml motion_setting_check_ms - comment does not say it is the app's own choice, unlike the header's rule that each value names its source - Static - Open
+- R4-6 [MINOR] SegmentFitTest.kt:25 - comment arithmetic: without gaps the text width is 72, not 71; the test name aWordExactlyAsWideAsItsShareFits does not match 70.6 (NIT merged) - Static - Open
+- R4-7 [MINOR] DotSphereView.kt start() KDoc - does not say it re-checks the setting while still and resumes by itself - Static - Open
+- R4-8 [MINOR] ConsoleUi.kt motionCheck - while animations are off it calls startTicker() every second, which redraws every loop's first frame (the spinner invalidates) instead of only re-checking the setting - Static - Open
+- R4-9 [MINOR] MainActivity.kt:303 / page_server.xml:57 - at 1024dp the working dots keep their status_line_gap start margin after the light and word are hidden, so they sit offset from the line start - Static - Open
+- R4-10 [NIT] ConsoleUi.kt setDotsWorking - the interpolator and dot constants are loaded on every call (render() calls it on every status event) - Static - Open
+- R4-11 [NIT] page_server.xml log box - the FrameLayout clips to its rectangle, not the code box's rounded corners; the comment says it clips to the box - Static - Open
+- R4-12 [NIT] SegmentFit.kt:7 - "[segmentPadding] a segment's own side padding added up" is ambiguous (one segment's left plus right) - Static - Open
+Dismissed:
+- testing-on-device.md: `ui` would print "Ready" not "READY": disproved on the emulator (V43, re-run 5: `ui` shows text="READY" for tv_status_word).
+- DotSphereView motionCheck redraws once a second with animations off: wrong; it calls start() only when animations are back on, otherwise it only reposts the check (DotSphereView.kt motionCheck.run).
+- testing-on-device.md:18 API 26 port note: outside the round-4 scope (line not changed since round 2).
+
 ## Log
 - 2026-11-24: created from the approved architecture
 - 2026-11-25: plan drafted, unresolved issues (5 validation rounds plus 2 after owner decisions; last-round fixes not re-validated)
@@ -773,3 +793,4 @@ Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTes
 - 2026-11-25: review round 3 resolved: 12 fixed; 283 tests, lint and docs pass; review loop clean
 - 2026-11-25: re-verify (re-run 4): 2 FAIL (V42 log box text drawn outside the box, V43 test doc says Ready), 1 BLOCKED (V33), rest PASS
 - 2026-11-25: fix round 4 (V42 log box clip, V43 doc); re-run 5: all PASS except V33 BLOCKED
+- 2026-11-25: review round 4 (fixes only): Approve with comments (9 MINOR, 3 NIT open)
