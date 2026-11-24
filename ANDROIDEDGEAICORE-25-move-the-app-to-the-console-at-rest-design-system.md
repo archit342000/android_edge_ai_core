@@ -580,6 +580,59 @@ Added for the review fixes (Rounds 1-3), before re-run 4. Every earlier scenario
 | V40 | AC10 (R2-5, R3-2, R3-3) | With the app showing: animations off, two shots 1 s apart; animations on again, two shots 1 s apart; no leaving the app | edge | settings + screenshots | DotSphereView, ConsoleUi | off: identical; on again: frames differ (the sphere moves) | diffs |
 | V41 | AC8 (R1-5) | Delete-token sheet open, rotate | edge | UI + rotation + logcat | ConsoleUi.dismissSheet, MainActivity.onDestroy | no crash, no WindowLeaked in the log; sheet closed, token kept | screenshot, logcat |
 
+Added during re-run 4 (seen while running V17/V27):
+
+| ID | Requirement / success criterion | Scenario | Type | Method | Files | Expected result | Evidence |
+|----|--------------------------------|----------|------|--------|-------|-----------------|----------|
+| V42 | AC11/AC12 (nothing spills, long text) | Diagnostics open with a long log: the log box | edge | screenshots | page_server.xml (scroll_logs and its parents) | the log text stays inside the dark code box; nothing drawn over the buttons or below the box | screenshot |
+| V43 | AC16 (docs match the UI) | docs/testing-on-device.md UI flow: poll `ui` for the status word | regression | v.sh text | docs/testing-on-device.md | the word the doc names is the one `ui` shows | ui dump |
+
+### Results (re-run 4, 2026-11-25)
+Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted work; per-file hashes (app files and the 3 console-at-rest files) in `ANDROIDEDGEAICORE-25-evidence/verify/hashes-results-5.txt`. Build after review rounds 1-3. Emulators: claude_edgeaicore_api34 (Gemma 4 E2B, CPU), claude_edgeaicore_api26 for solid. Evidence: `verify/R4-*`; scripts added: `scripts/r4status.sh`, `scripts/r4tests.sh`. Every scenario was re-run (the review fixes touched MainActivity, ConsoleUi, styles, layouts and frames) except V25 (superseded), V31 (brief and sheet elevations unchanged) and V33.
+
+| ID | Status | Evidence and notes |
+|----|--------|--------------------|
+| V1 | PASS | raw-value check clean (R4-V1-rawcheck.txt empty, exit 0); ConsoleTokensTest in the 283 |
+| V2, V3, V4 | PASS | 18 matrix shots (R4-V7-*): square bottom-left corners on panels, buttons, segments, card; fonts and labels unchanged; blue only on pressable or selected things |
+| V5 | PASS | open vs reading strength: ink 1.85M on Server top vs 0.69M on Backend (R4-V5-top, R4-V5-backend); a held touch pulls the dots (centroid 853,1124), released they drift back (R4-V5-holding, R4-V5-released) |
+| V6 | PASS | fade patches behind the headline and address, no visible edge (R4-V5-top, R4-V34-phone-ready) |
+| V7 | PASS | bottom bar, rail and navigation panel, day and night, three pages (R4-V7-*) |
+| V8 | PASS | Escape on Backend -> Server; Back on Tokens -> Server; Back on Server leaves the app; context box above the keyboard; landscape rail frame clear of the cutout (R4-V8-grid); targets at least 48 dp (only partly scrolled-out segments measured smaller) |
+| V9 | PASS | forced solid on API 34: opaque panels (250,249,246) at phone and tablet (R4-V9-grid); API 26 three pages day and Tokens night (R4-V9-api26-grid) |
+| V10 | PASS | animations off, two frames 1 s apart while starting: 0 changed pixels |
+| V11 | PASS | Tab rings on segments and buttons (R4-V11-grid) |
+| V12 | PASS | reasons (select a model, wait for the copy, start the server, generate a token), busy spinner (Running…), error strip, path ellipsis, empty apps line, copy progress (R4-V38-burst-grid) |
+| V13 | PASS | no appendLog literal, no layout literal text |
+| V14 | PASS | generate without a sheet; Token copied; delete sheet confirms (R4-V14-V18.txt) |
+| V15 | PASS (light) | notifications card at READY; Not now persists across a restart |
+| V16 | PASS | device.sh up ready in 6 s; health ok; chat 200 (R4-V16-api.txt) |
+| V17 | PASS | the six tests from Diagnostics: chat, two turns, health, load, vision (red image described as solid red), audio (R4-V17-tests.txt) |
+| V18 | PASS | back up written, delete, restore (row back), revoke (R4-V14-V18.txt) |
+| V19 | PASS | 283 unit tests, lint 2 old warnings, check_docs OK, baseline 770 deletions only |
+| V20 | PASS | tokens.json androidElevation 3/8, tokens.css and RULEBOOK lines |
+| V21, V22, V23, V24 | PASS | background start READY; rotation READY; OFF kept after Home; stop mid-load OFF (R4-status-scenarios.txt) |
+| V25 | superseded by V32 | |
+| V26 | PASS | missing model: COULDN'T START, notice with Try again; restored file and Try again -> READY |
+| V27 | PASS | vision through the picker shows Running… with the spinner (R4-V27-vision-busy) |
+| V28 | PASS | copy from the picker: progress bar, Copying…, switch reason "Wait for the model to finish copying." (R4-V38-burst-grid) |
+| V29 | PASS | backend change -> SAVED, prefs backend CPU; context 0 -> red edge and reason; 4096 -> reason gone, saved |
+| V30 | PASS | foreground 17.4-17.5 chunks/s (background 20.1 in re-run 2) (R4-V30-speed.txt) |
+| V31 | PASS (carried) | brief and sheet elevations unchanged |
+| V32 | PASS | stop then start at once: OFF with health unreachable |
+| V33 | BLOCKED | as re-run 1: the pulse cannot be told apart on screen; unit-tested |
+| V34 | PASS | ready: the detail is the first line of the server panel (R4-V34-phone-ready, R4-V7-computer-night-server); error: only the notice shows it (R4-V34-error) |
+| V35 | PASS | wide-frame panels, rail and navigation panel with a faint resting shadow, panel colour unchanged inside, day and night (R4-V7-*) |
+| V36 | PASS | font scale 2: the speculative track stacks (Off, On, Adaptive whole), the others stay side by side; font scale 1: all side by side (R4-V36-grid) |
+| V37 | PASS | computer frame: STARTING then READY in the header with padding, once; working dots on the page while starting (R4-V37-computer-starting) |
+| V38 | PASS | during the copy the notice's Try again is switched off (greyed) and comes back after (R4-V38-burst-grid); ControlsPolicyTest.theErrorActionWaitsForAModelCopy |
+| V39 | PASS | log: "Checking that the model answers…", "Model answered the check"; no attempt number, no exception text, no bare "Status:" line (R4-V39-log.txt) |
+| V40 | PASS | animations off while showing: 0 changed pixels in 1 s; back on: 59,593 changed pixels (the sphere moves again) without leaving the app |
+| V41 | PASS | delete sheet open, rotate: no crash, no leaked window in the log, sheet closed, token kept (R4-V41-grid) |
+| V42 | FAIL | with Diagnostics open the log text is drawn outside the code box: faint lines over the test buttons and below the box (R4-V27-vision-busy; also visible in R1-V17-vision-busy). Repro: start the server, open Diagnostics, run Test chat and Test two turns, look above and below the dark box. Cause: fold_diagnostics_body has clipChildren=false (for the buttons' focus rings), so it does not clip scroll_logs to its bounds |
+| V43 | FAIL | the doc says to poll `ui` until tv_status_word shows `Ready`; `ui` shows `READY` (the label's capitals are in the text uiautomator reads), so the poll never matches. Wrong doc change from review round 1 (R1-11) |
+
+Verdict: failed (2 FAIL: V42 log box overflow, V43 test doc wording); 1 BLOCKED (V33); all others PASS.
+
 ## Review history
 
 ### Round 1 - 2026-11-25
@@ -704,3 +757,4 @@ Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTes
 - 2026-11-25: review round 2 resolved: 13 fixed; 277 tests, lint and docs pass
 - 2026-11-25: review round 3 (fixes only): Approve with comments (8 MINOR, 4 NIT open)
 - 2026-11-25: review round 3 resolved: 12 fixed; 283 tests, lint and docs pass; review loop clean
+- 2026-11-25: re-verify (re-run 4): 2 FAIL (V42 log box text drawn outside the box, V43 test doc says Ready), 1 BLOCKED (V33), rest PASS
