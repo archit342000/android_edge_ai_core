@@ -355,7 +355,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
-- Counters: fix 3/10, review 2/5, plan amendments 0/3, re-verify 0
+- Counters: fix 3/10, review 3/5, plan amendments 0/3, re-verify 0
 - Last completed stage: 5 review iteration 2 (resolved)  Next: 5 review round 3 (fixes only), then re-verify
 - Hard blocker: none
 - WIP commit: none
@@ -654,6 +654,24 @@ Dismissed:
 - strings.xml quotes around "Model: ": they keep the trailing space; punctuation and the Main button style name are preferences.
 Resolution: 13 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTest lintDebug (277 tests pass; lint 2 warnings, both already there), scripts/check_docs.sh OK; R2-2, R2-3, R2-4 re-checked on claude_edgeaicore_api34. Runtime behaviour changed: ConsoleUi.kt, LoopFrames.kt, DotSphereView.kt, MainActivity.kt, styles.xml, pieces.xml, row_authorized_app.xml, layout-w1024dp/activity_main.xml.
 
+### Round 3 - 2026-11-25
+Verdict: Approve with comments. Scope: round 3, only the places the Round 2 fixes changed (styles.xml Row/BottomBar/NavPanel, row_authorized_app.xml, ConsoleUi.kt fitSegments/stackIfCramped/ticker/Loop, MainActivity.kt onCreate, layout-w1024dp header row, DotSphereView.kt doFrame, LoopFrames.dotBounce and its test, pieces.xml new values, DotSphereModelTest, the five doc edits); no Open findings carried. Two Haiku reviewers (correctness; requirement, standards, tests, docs).
+
+- R3-1 [MINOR] MainActivity.kt:302 - hiding status_line at 1024dp also hides working_dots (its child), so a load or test shows no working dots there (the header light still pulses); downgraded from MAJOR - Static - Open
+- R3-2 [MINOR] ConsoleUi.kt ticker - once stopped because animations were turned off, nothing restarts it when they are turned back on while showing; setBusy/setLightPulsing/setDotsWorking skip loops already present - Static - Open
+- R3-3 [MINOR] DotSphereView.kt doFrame - same for the sphere: start() stops the loop with animations off and nothing restarts it before the next onResume - Static - Open
+- R3-4 [MINOR] ConsoleUi.kt stackIfCramped - the share ignores the 2dp segment_gap margins, so a word within about 1dp of the limit still breaks - Static - Open
+- R3-5 [MINOR] pieces.xml:7 - a blanket tools:ignore UnusedResources hides unused values (button_hover_lift, switch_thumb_size, input_padding_horizontal, row_padding_horizontal, top_bar_padding, bottom_bar_height, corner_square, move_greet_in_rise) - Static - Open
+- R3-6 [MINOR] LoopFrames.kt dotBounce - straight lines between stops; the reference animates dotBounce with ease-in-out - Static - Open
+- R3-7 [MINOR] LoopFramesTest.kt - every case passes 0.4 and 0.8, so the new peakAt/restFrom parameters are not proven used - Static - Open
+- R3-8 [MINOR] ConsoleUi.kt stackIfCramped - the stacking decision is arithmetic with no test; testing.md: keep logic in plain Kotlin where possible - Static - Open
+- R3-9 [NIT] ConsoleUi.kt:26 - class KDoc says loops are not started with animations off; they draw their first frame - Static - Open
+- R3-10 [NIT] ConsoleUi.kt ticker - property declared after the functions (kotlin.md member order) - Static - Open
+- R3-11 [NIT] DotSphereView.kt:3-4 - androidx import before android.animation - Static - Open
+- R3-12 [NIT] pieces.xml elevation_none comment - names the phone panel; the value is used by the bottom bar - Static - Open
+Dismissed:
+- Row has no 16dp side padding (.lrow padding 8px 16px): the reference's .lrow sits inside a bordered .lrows box (reference line 817); the app's rows sit in the page column and line up with the section labels, so side padding would indent them. Its unused value is covered by R3-5.
+
 ## Log
 - 2026-11-24: created from the approved architecture
 - 2026-11-25: plan drafted, unresolved issues (5 validation rounds plus 2 after owner decisions; last-round fixes not re-validated)
@@ -667,3 +685,4 @@ Resolution: 13 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTes
 - 2026-11-25: review round 1 resolved: 16 fixed, 1 deferred, 0 rejected; 277 tests, lint and docs pass
 - 2026-11-25: review round 2: Request changes (1 MAJOR, 11 MINOR, 1 NIT open)
 - 2026-11-25: review round 2 resolved: 13 fixed; 277 tests, lint and docs pass
+- 2026-11-25: review round 3 (fixes only): Approve with comments (8 MINOR, 4 NIT open)
