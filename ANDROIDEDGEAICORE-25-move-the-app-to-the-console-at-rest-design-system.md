@@ -355,7 +355,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
-- Counters: fix 0/10, review 0/5, plan amendments 0/3, re-verify 0
+- Counters: fix 1/10, review 0/5, plan amendments 0/3, re-verify 0
 - Last completed stage: 3 verify  Next: 4 fix loop (round 1)
 - Hard blocker: none
 - WIP commit: none
@@ -396,6 +396,16 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Raw-value check (colour, dp/sp/px, ms literals and bare alphas outside the token and piece files): clean.
 - Emulator claude_edgeaicore_api34, phone width, day: Server, Backend and Tokens render; Diagnostics opens; Qwen3-0.6B start goes STARTING then READY (GPU falls back to CPU); evidence ANDROIDEDGEAICORE-25-evidence/step6-*, step7-*, step8-*.
 - Not run yet (verify stage): wide frames, night, solid, API 26, font scale 2, keyboard, reduced motion, permission cards, sheets, the device.sh flows.
+
+### Fix loop
+- Round 1 (2026-11-25). Triage:
+  - V5 product defect: DotSphereModel followed the last touch and never came back (the script's aim on pointerdown). Fix: DotSphereModel.release() returns the target to the middle and stops the lean; DotSphereView.release(); MainActivity.dispatchTouchEvent calls it on ACTION_UP/CANCEL. Regression test DotSphereModelTest.releasingATouchBringsTheSphereBackToTheMiddle.
+  - V30/V17 product defect: the frosted sphere copies (RenderEffect blur behind the toolbar and every content panel) used a full core on the emulator and the sphere's 60 fps loop most of the rest; decode fell from 20.3 to 6.7 chunks/s and the streamed vision test passed 10 s to its first byte. Fix (the plan's own risk mitigations): frost only the floating navigation piece (rail, navigation panel); content panels keep the glass tint alone (rule book 2.1: their blur is 'almost none'); the sphere draws 10 times a second at rest and 30 for 2 s after a touch or while a ripple runs (pieces.xml sphere_frame_interval_ms, sphere_frame_interval_active_ms, sphere_active_after_touch_ms). Measured during the fix: 20 fps no panel frost 14.5, 10 fps 16.8-16.9 chunks/s. Content-panel SphereFrostViews removed from the layouts; the now single-child wrappers flattened (lint UselessParent); fillToBottom uses the panel's own top.
+  - V8 product defect: Escape did nothing on Backend or Tokens. Fix: MainActivity.onKeyUp maps Escape to the Back-to-Server step when it is enabled (on Server Escape does nothing; it never leaves the app).
+  - V11 product defect: no ring on bottom bar, rail and navigation panel items (they had none) or on segments (the track clipped it). Fix: nav_item_background.xml (ripple well + inner focus ring) for bar and rail, nav_panel_item_background.xml (selected tint + inner focus ring) for the panel; Widget.Console.SegmentTrack does not clip children; console_nav_fill.xml removed.
+  - V25 wrong expectation: the plan expected READY after an adb stop then start; Android destroyed the instance after the start reached it (stopSelf from the stop), cancelling the load, as develop does too. The plan's Approach asks the store to show the true state, and it did (OFF). Superseded by V32. The service race is a pre-existing follow-up.
+  - Docs finding: docs/testing-on-device.md now names system-images;android-26;default;x86_64.
+- Round 1 checks: 271 unit tests pass, lint only the 2 warnings that were already there, check_docs OK, raw-value check clean.
 
 ## Verification
 ### Verification plan (2026-11-25)
@@ -488,6 +498,13 @@ Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted w
 Other findings: docs/testing-on-device.md names `system-images;android-26;google_apis;x86`, which cannot install the APK (it has only x86_64 and arm64-v8a libraries); the working image is `default;x86_64`. Notes (not failures): the busy spinner sits at the button's start edge, not beside the word; the open block shows only the top of the sphere at rest; the status line and the notice strip repeat the same error text; the bottom bar shows faintly through the 97% sheet.
 
 Verdict: partly verified. PASS 25, FAIL 6 (V5, V8, V11, V17, V25, V30), BLOCKED 0; plus the docs finding above.
+
+### Note (2026-11-25): V25 superseded by V32
+V25 expected READY after `device.sh stop-service` and an immediate `start`. Android destroys the instance after the start reaches it (the stop's `stopSelf`), cancelling the load; develop behaves the same. The requirement only asks that "Server start, the six tests, ... still work", and the plan's Approach says the store shows the true state. Added:
+
+| ID | Requirement / success criterion | Scenario | Type | Method | Files | Expected result | Evidence |
+|----|--------------------------------|----------|------|--------|-------|-----------------|----------|
+| V32 | step 4 (store shows the true state) | adb stop then start at once; then `GET /v1/health` | edge | adb, API | ServerStatusStore, InferenceService, MainActivity | the page ends in the state the service is in (OFF with health unreachable, or READY with health 200), never stuck at STARTING | screenshot, health output |
 
 ## Review history
 
