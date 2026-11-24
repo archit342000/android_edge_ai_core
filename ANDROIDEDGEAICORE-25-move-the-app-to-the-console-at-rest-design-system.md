@@ -355,8 +355,8 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
-- Counters: fix 2/10, review 0/5, plan amendments 0/3, re-verify 0
-- Last completed stage: 3 verify  Next: 4 fix loop (round 1)
+- Counters: fix 3/10, review 0/5, plan amendments 0/3, re-verify 0
+- Last completed stage: 4 fix loop (3 rounds)  Next: 5 review
 - Hard blocker: none
 - WIP commit: none
 
@@ -408,6 +408,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Round 1 checks: 271 unit tests pass, lint only the 2 warnings that were already there, check_docs OK, raw-value check clean.
 - Round 1 re-run (on the round-1 build): V5, V8, V11, V16, V30 (17.2-17.5 vs 20.0 background), V17 API path PASS; Test vision from the UI still FAILED (unexpected end of stream): during the app's own tests the busy spinner, working dots and light pulse ran at the display rate and the RenderThread took 88% of a core, pushing the streamed image request past Ktor Netty's 10 s write timeout (pre-existing server limit, develop under the same 10 s).
 - Round 2 (2026-11-25). Product defect (V17 UI). Fix: ConsoleUi drives the three looping movements from one Choreographer ticker at the sphere's rest interval (10 a second) instead of full-rate ObjectAnimators and Material's IndeterminateDrawable; the busy spinner is ConsoleUi.SpinnerDrawable (.spin: 14, stroke 2, three quarters of a ring); the keyframe maths is LoopFrames.kt (plain Kotlin) with LoopFramesTest (3 tests); MainActivity pauses and resumes the ticker in onPause/onResume. RenderThread during a test: 27% (was 88%). 274 unit tests pass, lint clean, check_docs OK, raw-value check clean.
+- Round 3 (2026-11-25). Product defect (V8, landscape): the window did not draw into the display cutout. Fix: setUpEdgeToEdge sets layoutInDisplayCutoutMode SHORT_EDGES on API 28+; the existing insets (system bars plus cutout) keep the content clear. Re-run V8/V22: background fills the cutout strip, rail padded clear, portrait unchanged. 274 unit tests pass, lint clean.
 
 ## Verification
 ### Verification plan (2026-11-25)
@@ -554,6 +555,17 @@ Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted w
 
 Verdict: partly verified. FAIL 1 (V8 landscape cutout), BLOCKED 1 (V33), all others PASS.
 
+### Results (re-run 3, 2026-11-25)
+Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted work; hashes in `ANDROIDEDGEAICORE-25-evidence/verify/hashes-results-4.txt`. Round-3 build (one line in MainActivity.setUpEdgeToEdge).
+
+| ID | Status | Evidence and notes |
+|----|--------|--------------------|
+| V8 | PASS | landscape: the left cutout strip is the page colour (244,242,238) and the rail sits clear of it (R3-V8-landscape, R3-V8-landscape-backend); portrait top bar unchanged (R3-V8-portrait) |
+| V22 | PASS | landscape frame renders, no crash |
+| all others | as re-run 2 | no other code changed |
+
+Verdict: verified except V33 (BLOCKED: the sphere's pulse while working cannot be told apart in screenshots; unit-tested only). PASS for every other scenario; V25 superseded by V32.
+
 ## Review history
 
 ## Log
@@ -564,3 +576,4 @@ Verdict: partly verified. FAIL 1 (V8 landscape cutout), BLOCKED 1 (V33), all oth
 - 2026-11-25: implemented (stage 2), smoke tests pass: 270 unit tests, lint and docs checks clean
 - 2026-11-25: verification: partly verified, 25 PASS, 6 FAIL (V5 sphere follows taps, V8 Escape, V11 focus rings on bar and segments, V17 vision in foreground, V25 stop+start race, V30 decode speed with sphere running), 0 BLOCKED
 - 2026-11-25: fix rounds 1-2; re-run 2: 1 FAIL (V8 landscape cutout), 1 BLOCKED (V33 pulse), rest PASS
+- 2026-11-25: fix round 3; re-run 3: all PASS except V33 BLOCKED (pulse not measurable on screen)
