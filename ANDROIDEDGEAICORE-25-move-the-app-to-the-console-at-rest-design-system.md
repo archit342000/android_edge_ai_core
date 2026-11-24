@@ -356,7 +356,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
 - Counters: fix 4/10, review 4/5, plan amendments 0/3, re-verify 2
-- Last completed stage: 5 review (4 iterations, clean) and re-verify  Next: 6 ship
+- Last completed stage: 6 ship  Next: none (owner closes the ticket)
 - Hard blocker: none
 - WIP commit: none
 
@@ -410,6 +410,10 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Round 2 (2026-11-25). Product defect (V17 UI). Fix: ConsoleUi drives the three looping movements from one Choreographer ticker at the sphere's rest interval (10 a second) instead of full-rate ObjectAnimators and Material's IndeterminateDrawable; the busy spinner is ConsoleUi.SpinnerDrawable (.spin: 14, stroke 2, three quarters of a ring); the keyframe maths is LoopFrames.kt (plain Kotlin) with LoopFramesTest (3 tests); MainActivity pauses and resumes the ticker in onPause/onResume. RenderThread during a test: 27% (was 88%). 274 unit tests pass, lint clean, check_docs OK, raw-value check clean.
 - Round 3 (2026-11-25). Product defect (V8, landscape): the window did not draw into the display cutout. Fix: setUpEdgeToEdge sets layoutInDisplayCutoutMode SHORT_EDGES on API 28+; the existing insets (system bars plus cutout) keep the content clear. Re-run V8/V22: background fills the cutout strip, rail padded clear, portrait unchanged. 274 unit tests pass, lint clean.
 - Round 4 (after re-run 4): V42 product defect: fold_diagnostics_body keeps clipChildren=false so focus rings can spill, which also let the scrolled log draw outside its box. Fix: page_server.xml wraps scroll_logs in a FrameLayout that carries the code box background and clips (the scroll view lost its own background and margin). No unit test possible (layout only); checked live. V43 wrong doc from review round 1 (R1-11): docs/testing-on-device.md says READY again; uiautomator reads the label in capitals. Checks: 283 unit tests, lint 2 old warnings, check_docs OK.
+
+- Stage 6 decisions: two commits in the app (feature, docs) because the resource and code changes cannot build apart; console-at-rest committed on feature/android-shadows with its own PR; the backend preference key is new (no existing key changed).
+- Design-system PR: https://github.com/archit342000/console-at-rest/pull/2, branch feature/android-shadows, base main
+PR: https://github.com/archit342000/android_edge_ai_core/pull/59, branch feature/console-at-rest-design-system, base develop
 
 ## Verification
 ### Verification plan (2026-11-25)
@@ -812,3 +816,4 @@ Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTes
 - 2026-11-25: review round 4 (fixes only): Approve with comments (9 MINOR, 3 NIT open)
 - 2026-11-25: review round 4 resolved: 12 fixed; 283 tests, lint and docs pass; review loop clean
 - 2026-11-25: re-verify after review round 4 (re-run 6): all PASS except V33 BLOCKED
+- 2026-11-25: shipped: PR #59 into develop (app), console-at-rest PR #2 into main; status left in-progress
