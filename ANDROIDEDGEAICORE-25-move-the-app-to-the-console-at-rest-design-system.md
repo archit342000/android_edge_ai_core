@@ -757,24 +757,27 @@ Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTes
 - Verification fix (fix round 4, after re-run 4): app/src/main/res/layout/page_server.xml - the log box: scroll_logs now sits in a FrameLayout that carries the code_box background and clips the scrolled log. docs/testing-on-device.md - UI flow poll string back to READY (reverts part of the R1-11 fix).
 
 ### Round 4 - 2026-11-25
+Triage (resolve-review): R4-1..R4-12 all Valid (checked against the code). R4-11: a rounded clip is not possible on most API levels here (the code box's corners differ, and Android clips only to a uniform rounded rectangle before API 33), so the comment is corrected instead. Plan: fixing 12, rejecting 0, deferring 0.
+
 Verdict: Approve with comments. Scope: round 4, only what changed since round 3 (the Round 3 Fixed entries and the Verification fix: MainActivity onCreate status hide, ConsoleUi ticker/motionCheck/stackIfCramped/setDotsWorking, DotSphereView start/stop/motionCheck, SegmentFit and its test, LoopFrames.dotBounce and its test, dot_bounce_ease.xml, pieces.xml, the page_server.xml log box, docs/testing-on-device.md). Two Haiku reviewers.
 
-- R4-1 [MINOR] docs/architecture.md:25, docs/standards/testing.md:6 - the new SegmentFit and SegmentFitTest are not listed (also found by me) - Static - Open
-- R4-2 [MINOR] docs/testing-on-device.md:51 - the UI flow polls tv_status_word, which is hidden at 1024dp and over (the header word shows the status there) - Static - Open
-- R4-3 [MINOR] interpolator/dot_bounce_ease.xml - the dot's ease-in-out control points are a piece movement number outside pieces.xml (the three token curves are a different case) - Static - Open
-- R4-4 [MINOR] values-night/pieces.xml:3 - the blanket UnusedResources ignore stays there after it was removed from the day file - Static - Open
-- R4-5 [MINOR] pieces.xml motion_setting_check_ms - comment does not say it is the app's own choice, unlike the header's rule that each value names its source - Static - Open
-- R4-6 [MINOR] SegmentFitTest.kt:25 - comment arithmetic: without gaps the text width is 72, not 71; the test name aWordExactlyAsWideAsItsShareFits does not match 70.6 (NIT merged) - Static - Open
-- R4-7 [MINOR] DotSphereView.kt start() KDoc - does not say it re-checks the setting while still and resumes by itself - Static - Open
-- R4-8 [MINOR] ConsoleUi.kt motionCheck - while animations are off it calls startTicker() every second, which redraws every loop's first frame (the spinner invalidates) instead of only re-checking the setting - Static - Open
-- R4-9 [MINOR] MainActivity.kt:303 / page_server.xml:57 - at 1024dp the working dots keep their status_line_gap start margin after the light and word are hidden, so they sit offset from the line start - Static - Open
-- R4-10 [NIT] ConsoleUi.kt setDotsWorking - the interpolator and dot constants are loaded on every call (render() calls it on every status event) - Static - Open
-- R4-11 [NIT] page_server.xml log box - the FrameLayout clips to its rectangle, not the code box's rounded corners; the comment says it clips to the box - Static - Open
-- R4-12 [NIT] SegmentFit.kt:7 - "[segmentPadding] a segment's own side padding added up" is ambiguous (one segment's left plus right) - Static - Open
+- R4-1 [MINOR] docs/architecture.md:25, docs/standards/testing.md:6 - the new SegmentFit and SegmentFitTest are not listed (also found by me) - Static - Fixed - docs/architecture.md UI pieces row, docs/standards/testing.md test list
+- R4-2 [MINOR] docs/testing-on-device.md:51 - the UI flow polls tv_status_word, which is hidden at 1024dp and over (the header word shows the status there) - Static - Fixed - docs/testing-on-device.md UI flow (tv_header_status_word at 1024 dp and wider)
+- R4-3 [MINOR] interpolator/dot_bounce_ease.xml - the dot's ease-in-out control points are a piece movement number outside pieces.xml (the three token curves are a different case) - Static - Fixed - pieces.xml working_dot_ease_x1..y2 (.dots i ease-in-out); ConsoleUi.kt builds the PathInterpolator from them; interpolator/dot_bounce_ease.xml removed
+- R4-4 [MINOR] values-night/pieces.xml:3 - the blanket UnusedResources ignore stays there after it was removed from the day file - Static - Fixed - values-night/pieces.xml ignore removed; lint shows only the two old warnings
+- R4-5 [MINOR] pieces.xml motion_setting_check_ms - comment does not say it is the app's own choice, unlike the header's rule that each value names its source - Static - Fixed - pieces.xml motion_setting_check_ms comment
+- R4-6 [MINOR] SegmentFitTest.kt:25 - comment arithmetic: without gaps the text width is 72, not 71; the test name aWordExactlyAsWideAsItsShareFits does not match 70.6 (NIT merged) - Static - Fixed - SegmentFitTest.kt comment and test name
+- R4-7 [MINOR] DotSphereView.kt start() KDoc - does not say it re-checks the setting while still and resumes by itself - Static - Fixed - DotSphereView.kt start() KDoc
+- R4-8 [MINOR] ConsoleUi.kt motionCheck - while animations are off it calls startTicker() every second, which redraws every loop's first frame (the spinner invalidates) instead of only re-checking the setting - Static - Fixed - ConsoleUi.kt motionCheck (only re-checks the setting while still; starts the ticker when animations are back)
+- R4-9 [MINOR] MainActivity.kt:303 / page_server.xml:57 - at 1024dp the working dots keep their status_line_gap start margin after the light and word are hidden, so they sit offset from the line start - Static - Fixed - MainActivity.kt onCreate (working_dots marginStart 0 when the light and word are hidden)
+- R4-10 [NIT] ConsoleUi.kt setDotsWorking - the interpolator and dot constants are loaded on every call (render() calls it on every status event) - Static - Fixed - ConsoleUi.kt dot numbers and easing read once as properties; setDotsWorking() uses them
+- R4-11 [NIT] page_server.xml log box - the FrameLayout clips to its rectangle, not the code box's rounded corners; the comment says it clips to the box - Static - Fixed - page_server.xml log box comment (rectangular clip; padding keeps the log off the corners)
+- R4-12 [NIT] SegmentFit.kt:7 - "[segmentPadding] a segment's own side padding added up" is ambiguous (one segment's left plus right) - Static - Fixed - SegmentFit.kt KDoc
 Dismissed:
 - testing-on-device.md: `ui` would print "Ready" not "READY": disproved on the emulator (V43, re-run 5: `ui` shows text="READY" for tv_status_word).
 - DotSphereView motionCheck redraws once a second with animations off: wrong; it calls start() only when animations are back on, otherwise it only reposts the check (DotSphereView.kt motionCheck.run).
 - testing-on-device.md:18 API 26 port note: outside the round-4 scope (line not changed since round 2).
+Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTest lintDebug (283 tests pass; lint 2 old warnings), scripts/check_docs.sh OK. Runtime behaviour changed: ConsoleUi.kt, MainActivity.kt, pieces.xml (interpolator file removed). No BLOCKER or MAJOR: the review loop ends clean (4 of 5 iterations); re-verify of V10, V12, V28, V37, V40 next.
 
 ## Log
 - 2026-11-24: created from the approved architecture
@@ -794,3 +797,4 @@ Dismissed:
 - 2026-11-25: re-verify (re-run 4): 2 FAIL (V42 log box text drawn outside the box, V43 test doc says Ready), 1 BLOCKED (V33), rest PASS
 - 2026-11-25: fix round 4 (V42 log box clip, V43 doc); re-run 5: all PASS except V33 BLOCKED
 - 2026-11-25: review round 4 (fixes only): Approve with comments (9 MINOR, 3 NIT open)
+- 2026-11-25: review round 4 resolved: 12 fixed; 283 tests, lint and docs pass; review loop clean
