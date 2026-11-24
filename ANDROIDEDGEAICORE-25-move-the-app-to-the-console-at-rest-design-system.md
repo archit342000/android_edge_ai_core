@@ -566,6 +566,20 @@ Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted w
 
 Verdict: verified except V33 (BLOCKED: the sphere's pulse while working cannot be told apart in screenshots; unit-tested only). PASS for every other scenario; V25 superseded by V32.
 
+### Scenarios added after review (2026-11-25)
+Added for the review fixes (Rounds 1-3), before re-run 4. Every earlier scenario except V25 (superseded) is re-run, because the review fixes changed MainActivity, ConsoleUi, the styles, the layouts and the frames.
+
+| ID | Requirement / success criterion | Scenario | Type | Method | Files | Expected result | Evidence |
+|----|--------------------------------|----------|------|--------|-------|-----------------|----------|
+| V34 | AC6 (R1-2) | Phone, server ready: where the status detail sits; then an error | happy/failure | screenshots, ui dump | page_server.xml, MainActivity.render | detail is the first line of the server panel, not on the sphere; in error only the notice shows it | screenshots |
+| V35 | AC1/2.5 (R1-4) | Tablet and computer frames, day and night: panels, rail, navigation panel | happy | screenshots, pixel samples | frames.xml, styles.xml, layouts | soft resting shadow outside the panels; inside a panel no grey haze (panel colour as before) | screenshots, samples |
+| V36 | AC11 (R1-12, R2-2, R3-4) | Phone at font scale 2: the four segment tracks on Backend; then font scale 1 | edge | settings + screenshots | ConsoleUi.fitSegments, SegmentFit, styles.xml | at 2.0 a track whose word does not fit stacks and no word breaks; at 1.0 all side by side | screenshots |
+| V37 | AC7 (R2-3, R2-4, R3-1) | Computer frame: header status, Server page status line, start the server | happy | screenshots | layout-w1024dp, MainActivity.onCreate | status word inside the header with padding, shown once; working dots visible on the page while starting | screenshots |
+| V38 | AC12 (R1-1) | Error strip during a model copy | edge | ControlsPolicyTest; live if a copy can be held long enough | ControlsPolicy, MainActivity.render | action switched off while copying; on after | test output, screenshot |
+| V39 | AC13 (R1-3) | Status wording while the model is checked | happy | logs pane / logcat | InferenceService, strings.xml | "Model answered the check"; no attempt number or exception text | log excerpt |
+| V40 | AC10 (R2-5, R3-2, R3-3) | With the app showing: animations off, two shots 1 s apart; animations on again, two shots 1 s apart; no leaving the app | edge | settings + screenshots | DotSphereView, ConsoleUi | off: identical; on again: frames differ (the sphere moves) | diffs |
+| V41 | AC8 (R1-5) | Delete-token sheet open, rotate | edge | UI + rotation + logcat | ConsoleUi.dismissSheet, MainActivity.onDestroy | no crash, no WindowLeaked in the log; sheet closed, token kept | screenshot, logcat |
+
 ## Review history
 
 ### Round 1 - 2026-11-25
