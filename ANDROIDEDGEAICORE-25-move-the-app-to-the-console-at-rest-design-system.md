@@ -355,8 +355,8 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
-- Counters: fix 4/10, review 4/5, plan amendments 0/3, re-verify 1
-- Last completed stage: 4 fix round 4 after re-verify  Next: 5 review round 4 (verification fixes only), then 6 ship
+- Counters: fix 4/10, review 4/5, plan amendments 0/3, re-verify 2
+- Last completed stage: 5 review (4 iterations, clean) and re-verify  Next: 6 ship
 - Hard blocker: none
 - WIP commit: none
 
@@ -646,6 +646,19 @@ Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted w
 
 Verdict: verified except V33 (BLOCKED: the sphere's pulse while working cannot be told apart in screenshots; unit-tested only). V25 superseded by V32.
 
+### Results (re-run 6, 2026-11-25)
+Commit verified: a26f8674a47ccbf08f15c3a65da91c42fa3f066e plus the uncommitted work; hashes in `ANDROIDEDGEAICORE-25-evidence/verify/hashes-results-7.txt`. Review round 4 fixes changed ConsoleUi.kt (dot curve from pieces.xml, motion check), MainActivity.kt (wide-frame dots margin), pieces.xml, docs. Re-run: the scenarios whose behaviour those touch (V10, V12, V37, V40); V28's copy path is unchanged apart from the shared dot numbers covered by V12.
+
+| ID | Status | Evidence and notes |
+|----|--------|--------------------|
+| V10 | PASS | animations off, STARTING: two frames 1 s apart, 0 changed pixels (R6-V10-a/b) |
+| V12 | PASS | Test two turns shows Running… with the spinner; working dots and pulsing light beside READY (R6-check right) |
+| V37 | PASS | computer frame while starting: working dots start the line, aligned with the headline; status once in the header (R6-check left, R6-V37-computer-starting) |
+| V40 | PASS | animations off while showing: 0 changed pixels; back on: 60,795 (the sphere moves again) |
+| all others | as re-run 5 | |
+
+Verdict: verified except V33 (BLOCKED: the sphere's pulse while working cannot be told apart in screenshots; unit-tested only). V25 superseded by V32.
+
 ## Review history
 
 ### Round 1 - 2026-11-25
@@ -798,3 +811,4 @@ Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTes
 - 2026-11-25: fix round 4 (V42 log box clip, V43 doc); re-run 5: all PASS except V33 BLOCKED
 - 2026-11-25: review round 4 (fixes only): Approve with comments (9 MINOR, 3 NIT open)
 - 2026-11-25: review round 4 resolved: 12 fixed; 283 tests, lint and docs pass; review loop clean
+- 2026-11-25: re-verify after review round 4 (re-run 6): all PASS except V33 BLOCKED
