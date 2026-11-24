@@ -355,7 +355,7 @@ Path: pair (two Haiku validators per round: requirement and standards; failure s
 - Branch: feature/console-at-rest-design-system  PR base: develop  Starting commit: a26f8674a47ccbf08f15c3a65da91c42fa3f066e
 - Dirty before start: none
 - Work files: app resources and layouts, 13 new Kotlin classes, MainActivity, InferenceService, manifest, build.gradle.kts, 7 new test classes, docs; console-at-rest: tokens.json, tokens.css, RULEBOOK.md
-- Counters: fix 3/10, review 0/5, plan amendments 0/3, re-verify 0
+- Counters: fix 3/10, review 1/5, plan amendments 0/3, re-verify 0
 - Last completed stage: 4 fix loop (3 rounds)  Next: 5 review
 - Hard blocker: none
 - WIP commit: none
@@ -568,6 +568,43 @@ Verdict: verified except V33 (BLOCKED: the sphere's pulse while working cannot b
 
 ## Review history
 
+### Round 1 - 2026-11-25
+Verdict: Request changes. Scope: round 1, whole change against a26f8674 (working tree, all changed files) plus console-at-rest tokens.json, tokens.css, RULEBOOK.md; requirement: Description, Acceptance criteria, Reviewer brief. Reviewers: two lenses split by file group (Kotlin, resources/docs), four Haiku reviewers in all.
+
+- R1-1 [MAJOR] ControlsPolicy.kt:82 - errorAction ignores MODEL_COPY: with the server in error and a copy running, the notice's "Try again" calls requestStart() on a model still being written, which the switch forbids (WAIT_FOR_COPY) - Static - Open
+- R1-2 [MAJOR] page_server.xml:101 - tv_status (up to 3 lines of detail, plus the address) sits on the sphere; rule book 3.3 allows a status line, headline and up to three short lines, longer goes on a panel; at font scale 2 it fills the top block (V11-font2-server.png) and is cut at 3 lines - Static - Open
+- R1-3 [MINOR] strings.xml:71 / InferenceService.kt:247 - ping failure status shows the attempt number and the raw exception message (Part 9: say what happened and what to do) - Static - Open
+- R1-4 [MINOR] tokens_dimens.xml:61 - elevation_rest is never used: the glass panels (rail, navigation panel, wide content panel) have no resting shadow, unlike the reference's .glass (box-shadow: var(--shadow)) - Static - Open
+- R1-5 [MINOR] ConsoleUi.kt:64 - the confirm BottomSheetDialog is not dismissed when the activity is destroyed; rotation with the sheet open leaks the window - Not reproduced (not attempted) - Open
+- R1-6 [MINOR] DotSphereModel.kt:190,196 - now and spin grow without bound as Float; after hours of uptime sin(now * rate) loses precision and the drift steps - Static - Open
+- R1-7 [MINOR] MainActivity.kt:143 - busy set (model copy, tests) is lost on recreation, so Select model and the switch re-enable mid-copy after rotation - Static - Open
+- R1-8 [MINOR] ServerStatus.kt:4 - the enum's order must match status_light.xml levels but no test pins it (requirement 9: an enum with a unit test) - Static - Open
+- R1-9 [MINOR] docs/pitfalls.md:42, docs/standards/api.md:51 - still name the old "Backend Settings" tab - Static - Open
+- R1-10 [MINOR] docs/architecture.md:24, docs/standards/testing.md:6 - LoopFrames and LoopFramesTest not listed - Static - Open
+- R1-11 [MINOR] docs/testing-on-device.md:51,53 - polls for `READY` but uiautomator reads "Ready"; look commands give only the 1024dp+ width, not a 600-1023dp one - Static - Open
+- R1-12 [MINOR] styles.xml:95 - segment labels capped at 2 lines with ellipsis; at font scale 2 on a 360dp phone "Adaptive" may break mid-word or be cut - Not reproduced (the font-2 screenshots do not show the Speculative row) - Open
+- R1-13 [NIT] MainActivity.kt:170 - an OFF status with an empty detail logs a bare "Status: " - Static - Open
+- R1-14 [NIT] DotSphereView.kt:278 - DOT_COLOURS hard-codes 5 instead of the colour list's size - Static - Open
+- R1-15 [NIT] RULEBOOK.md:5 - header still reads 11 November 2026 after the 25 Nov change-log row - Static - Open
+- R1-16 [NIT] activity_main.xml:52, layout-w1024dp/activity_main.xml:82,90, page_server.xml:146,193,367 - stray indentation of tools:ignore - Static - Open
+- R1-17 [NIT] README.md:28 - "side panel" where the UI calls it the navigation panel - Static - Open
+- R1-18 [MINOR] InferenceService.kt / picker - Select model is enabled while the server runs, so a copy can overwrite the model in use - Pre-existing
+- R1-19 [MINOR] MainActivity.kt model copy - a null input stream counts as a successful copy - Pre-existing
+- R1-20 [MINOR] InferenceService - stop followed at once by start reaches the instance Android then destroys (reporter identity sees one instance) - Pre-existing
+- R1-21 [MINOR] the switch cannot stop a server that is STARTING - Pre-existing (base also locked it)
+- R1-22 [NIT] MainActivity.kt:918 - unused Intent built before restoreTokensLauncher.launch - Pre-existing
+- R1-23 [NIT] README.md:32 - lists .bin and .tflite models - Pre-existing
+Dismissed:
+- No status-kind extra on the broadcast: the plan rejected a new extra (status reached in the background would be lost); ServerStatusStore carries the kind and MainActivity switches on it.
+- Content panel not blurred: fix-loop decision for V30/V17 (blur cost decode speed 20 -> 6.7 chunks/s); rule book 2.1 gives content panels almost no blur; listed in PR notes.
+- Nav item focus ring drawn inside the item: the bar edge clips anything outside; documented in nav_item_background.xml; V11 passed.
+- "Saving" lacks an ellipsis: rule book 7 settings rule says "Saving" then "Saved".
+- Raw strokeWidth 2 in nav icons: viewport units of a 24 grid, icon geometry like pathData.
+- Two bundled fonts unused: the approved design lists all seven weights.
+- Outline button and switch-off edge contrast: the reference's .btn-outline and .switch use --edge-strong as written; a design-system question, not this app's.
+- Bottom bar labels clipped at 200%: V11-font2 screenshots show them whole.
+- MainActivity growth, several types in ControlsPolicy.kt, KDoc wording, letterSpacing 0, move_rest name, test-prompt punctuation, licence wording, weak-test claims: style preferences with no rule broken, or tests already assert the behaviour.
+
 ## Log
 - 2026-11-24: created from the approved architecture
 - 2026-11-25: plan drafted, unresolved issues (5 validation rounds plus 2 after owner decisions; last-round fixes not re-validated)
@@ -577,3 +614,4 @@ Verdict: verified except V33 (BLOCKED: the sphere's pulse while working cannot b
 - 2026-11-25: verification: partly verified, 25 PASS, 6 FAIL (V5 sphere follows taps, V8 Escape, V11 focus rings on bar and segments, V17 vision in foreground, V25 stop+start race, V30 decode speed with sphere running), 0 BLOCKED
 - 2026-11-25: fix rounds 1-2; re-run 2: 1 FAIL (V8 landscape cutout), 1 BLOCKED (V33 pulse), rest PASS
 - 2026-11-25: fix round 3; re-run 3: all PASS except V33 BLOCKED (pulse not measurable on screen)
+- 2026-11-25: review round 1: Request changes (2 MAJOR, 10 MINOR, 5 NIT open; 6 pre-existing)
