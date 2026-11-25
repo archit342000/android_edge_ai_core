@@ -269,7 +269,7 @@ class OpenAIServer(
                                 }
                             }
                             if (clientGone.get()) {
-                                Log.i(TAG, "Generation cancelled (client disconnected)")
+                                Log.i(TAG, CLIENT_GONE_LOG)
                                 return@post
                             }
 
@@ -439,6 +439,9 @@ class OpenAIServer(
         /** The only text a client sees when the request body cannot be read. */
         const val INVALID_BODY_MESSAGE = "Invalid request body"
 
+        /** Logged when a client disconnect cancels a generation. */
+        private const val CLIENT_GONE_LOG = "Generation cancelled (client disconnected)"
+
         /** What a client sees for an unexpected failure outside generation (outer 400). */
         const val BAD_REQUEST_MESSAGE = "Bad request"
 
@@ -480,7 +483,7 @@ class OpenAIServer(
          */
         internal fun stopForGoneClient(channel: SendChannel<String>, job: Job): Boolean {
             if (!channel.close()) return false
-            Log.i(TAG, "Generation cancelled (client disconnected)")
+            Log.i(TAG, CLIENT_GONE_LOG)
             job.cancel()
             return true
         }
@@ -493,11 +496,11 @@ class OpenAIServer(
             try {
                 for (msg in channel) write(msg)
             } catch (e: IOException) {
-                Log.i(TAG, "Generation cancelled (client disconnected)")
+                Log.i(TAG, CLIENT_GONE_LOG)
                 job.cancel()
             } catch (e: CancellationException) {
                 // Ktor reports a write to an already closed channel this way too.
-                Log.i(TAG, "Generation cancelled (client disconnected)")
+                Log.i(TAG, CLIENT_GONE_LOG)
                 job.cancel()
                 throw e
             }

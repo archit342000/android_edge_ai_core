@@ -674,17 +674,14 @@ class OpenAIServerTest {
     private class GoneAfterPrompt {
         private var onGone: (() -> Unit)? = null
         private var promptSent = false
-        private var fired = false
         val fireCount = java.util.concurrent.atomic.AtomicInteger()
 
-        @Synchronized fun watched(callback: () -> Unit) { if (onGone == null && fireCount.get() == 0) onGone = callback; fireIfReady() }
+        /** Only the first request's watcher is kept. */
+        @Synchronized fun watched(callback: () -> Unit) { if (onGone == null) onGone = callback; fireIfReady() }
         @Synchronized fun promptSent() { promptSent = true; fireIfReady() }
         private fun fireIfReady() {
             val callback = onGone ?: return
-            if (!promptSent || fired) return
-            fired = true
-            fireCount.incrementAndGet()
-            callback()
+            if (promptSent && fireCount.get() == 0) { fireCount.incrementAndGet(); callback() }
         }
     }
 
@@ -722,7 +719,8 @@ class OpenAIServerTest {
             assertFalse(text, text.contains("Generation timed out"))
             assertEquals(1, seam.disposed.get())
             awaitLoadZero()
-            // a conversation exists only if the generation got that far; then it was cancelled and closed
+            // a conversation exists only if the generation got that far (at most one); then it was cancelled and closed
+            assertTrue(factory.engine.conversations.size <= 1)
             for (conversation in factory.engine.conversations) {
                 assertTrue(conversation.cancelCount >= 1)
                 assertTrue(conversation.closed)
@@ -846,8 +844,9 @@ class OpenAIServerTest {
     }
 
     @Test
-    fun anUnexpectedFailureBeforeGenerationGetsTheFixedBadRequest() {
-        // Any exception the chat handler does not expect reaches the outer catch; here the disconnect watcher throws.
+    fun anUnexpectedFailureInTheChatHandlerGetsTheFixedBadRequest() {
+        // Any exception the chat handler does not expect reaches the outer catch; here the disconnect watcher throws
+        // (the generation has just been launched and is cancelled with it).
         val failingWatch: (io.ktor.server.application.ApplicationCall, () -> Unit) -> kotlinx.coroutines.DisposableHandle? =
             { _, _ -> throw IllegalStateException("secret detail /data/x") }
         val server = OpenAIServer(loadedManager(), failingWatch) { it == validToken }

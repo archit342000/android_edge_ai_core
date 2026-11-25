@@ -159,7 +159,7 @@ for line in response.iter_lines():
 3.  **Reuse**: send the assistant's reply back exactly as received (unchanged text); an edited or trimmed reply, a changed earlier message or different settings make the server rebuild the context (correct, just slower).
 4.  **Streaming**: Use `stream: true` for the best user experience, as Large Language Models can take time to generate full responses. Closing a connection, streaming or not, cancels the request at once: a request still waiting for the engine gives up its place, and a running one stops before generating any more text. The engine does not interrupt the initial prompt processing, so a request dropped during it keeps the engine busy until that part ends.
 5.  **Token usage**: responses carry real `usage` (prompt, completion, total and cached prompt tokens). For streams, send `"stream_options": {"include_usage": true}` to get a final usage chunk before `data: [DONE]`.
-6.  **Error Handling**: Check for HTTP status codes (401 for Unauthorized, 503 for Model Not Loaded).
+6.  **Error Handling**: Check for HTTP status codes: 401 for an invalid token; with no model loaded, chat answers 400 `Model not loaded` and `/health`, `/v1/health` and `/v1/load` answer 503.
 
 ---
 
