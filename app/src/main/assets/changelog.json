@@ -1,6 +1,20 @@
 {
   "versions": [
     {
+      "version": "2.1.0",
+      "changes": [
+        "New look: Server, Backend and Tokens tabs in the Console at Rest design, in light and dark, with layouts for tablets",
+        "New app icon, a themed icon for Android 13 and later, and a clearer notification icon",
+        "Chat API: tool calling, JSON and JSON-schema responses, reasoning effort, stop sequences, max_tokens, seed and penalties",
+        "System messages now set the model's system instruction instead of a fixed prompt",
+        "Responses report real token usage, also at the end of a stream when asked for",
+        "Requests are checked before generation with clear 400 errors, and a busy server answers 503 with Retry-After",
+        "Generation stops when the client disconnects",
+        "Engine upgraded to LiteRT-LM 0.19.1, with a context size setting, speculative decoding and a choice of backend for the vision and audio encoders",
+        "If the GPU cannot load a model, the server falls back to CPU instead of crashing"
+      ]
+    },
+    {
       "version": "2.0.0",
       "changes": [
         "Migrated from AIDL to OpenAI-style REST API server",

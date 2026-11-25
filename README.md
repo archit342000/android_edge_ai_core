@@ -6,7 +6,7 @@
 
 ## 📥 Download
 
-> **[Download Latest APK (v2.0.0)](app/release/app-release.apk)**
+> **[Download Latest APK (v2.1.0)](app/release/app-release.apk)**
 
 
 ## ✨ Features
