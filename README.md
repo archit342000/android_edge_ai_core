@@ -83,7 +83,7 @@ Also supported: `max_tokens` / `max_completion_tokens`, `top_p`, `top_k`, `prese
 
 Limits: at most 4 chat requests are held at once (the next gets `503 Server busy` with `Retry-After`), a request waits at most 2 minutes for the engine (`503`), and one generation may run 10 minutes (`504`). `finish_reason` is `length` when the reply reached the token cap and `tool_calls` after a tool call. `stop` (a string or up to 4 strings) ends the answer before the first match. Ignored: `logit_bias`, `parallel_tool_calls`. Not supported: `n` above 1 (400), a named `tool_choice` (400), `reasoning_tokens` in `usage`. With `json_schema`, set `additionalProperties: false` to forbid extra properties.
 
-**Tool calling, JSON output and thinking** (supported by models such as Gemma 4):
+**Tool calling, JSON output and thinking** (supported by models such as Gemma 4; the app does not check support up front, see `docs/standards/api.md`):
 ```json
 {
   "messages": [{"role": "user", "content": "Weather in Paris?"}],

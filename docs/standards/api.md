@@ -98,7 +98,7 @@ If the client disconnects (noticed through the closed connection, even before th
 Accepted but ignored (clients such as the OpenAI SDKs send them by default): `logit_bias`, `parallel_tool_calls` (the server returns every call the model emits).
 Not supported: `n` other than 1 (400), `tool_choice` naming a function (400: the engine cannot force a call), `regex` response formats, `reasoning_tokens` in `usage` (the engine gives no thinking count), user-configurable limits.
 `json_schema` output may contain properties the schema does not list unless the schema sets `additionalProperties: false`.
-The context size set in the app is clamped to the model's maximum when the model reports a fixed one (the status line says so).
+The context size set in the app is clamped to the model's maximum when the model reports a fixed one (the status line says so). Not yet observed on a device: Gemma 4 reports a dynamic context, so no clamp applies to it.
 
 ## Errors
 
