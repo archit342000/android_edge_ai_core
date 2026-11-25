@@ -318,7 +318,7 @@ class InferenceService : Service() {
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(getString(R.string.notification_content))
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_brain)
             .setOngoing(true)
             .build()
     }

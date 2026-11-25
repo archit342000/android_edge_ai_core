@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notification (status bar) icon: the launcher brain reduced to one colour. The system uses only its alpha. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group
+        android:scaleX="0.36522"
+        android:scaleY="0.36522"
+        android:translateX="-7.6304"
+        android:translateY="-7.4478">
+        <path
+            android:pathData="M41.5,62 C39.1,65.6 27.1,57.6 29.5,54 C24.25,53.5 25.25,43 30.5,43.5 C26.25,39.5 34.25,31 38.5,35 C36.82,29.72 47.82,26.22 49.5,31.5 C49.74,25.98 61.24,26.48 61,32 C63.16,26.96 73.66,31.46 71.5,36.5 C76,33 83,42 78.5,45.5 C84.48,46.02 83.48,57.52 77.5,57 C83,63.5 70,74.5 64.5,68 L67.5,77.5 L60,77.5 L56.5,67.8 C57.08,70.86 48.08,72.56 47.5,69.5 C43.38,72.8 37.38,65.3 41.5,62 Z"
+            android:strokeWidth="4.6"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeColor="#FFFFFFFF" />
+        <path
+            android:pathData="M51.1,43.8 L51.1,39.6 M51.1,56.2 L51.1,60.4 M47.8,47.1 L43.6,47.1 M60.2,47.1 L64.4,47.1 M56.9,43.8 L56.9,39.6 M56.9,56.2 L56.9,60.4 M47.8,52.9 L43.6,52.9 M60.2,52.9 L64.4,52.9"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeColor="#FFFFFFFF" />
+        <path
+            android:pathData="M49.2,43.8 L58.8,43.8 Q60.2,43.8 60.2,45.2 L60.2,54.8 Q60.2,56.2 58.8,56.2 L49.2,56.2 Q47.8,56.2 47.8,54.8 L47.8,45.2 Q47.8,43.8 49.2,43.8 Z"
+            android:fillColor="#FFFFFFFF" />
+    </group>
+</vector>
