@@ -1,7 +1,7 @@
 ---
 id: ANDROIDEDGEAICORE-25
 title: "Move the app to the Console at Rest design system"
-status: in-progress
+status: done
 created: 2026-11-24
 updated: 2026-11-25
 ---
@@ -817,3 +817,4 @@ Resolution: 12 fixed, 0 rejected, 0 deferred. Checks: ./gradlew testDebugUnitTes
 - 2026-11-25: review round 4 resolved: 12 fixed; 283 tests, lint and docs pass; review loop clean
 - 2026-11-25: re-verify after review round 4 (re-run 6): all PASS except V33 BLOCKED
 - 2026-11-25: shipped: PR #59 into develop (app), console-at-rest PR #2 into main; status left in-progress
+- 2026-11-25: merged: PR #59 into develop (6ad92c2), console-at-rest PR #2 into main (f6dd369); debug APK as pre-release pr-59-debug; closed (AC5 sphere criterion unticked: pulse while working verified by unit test only)
