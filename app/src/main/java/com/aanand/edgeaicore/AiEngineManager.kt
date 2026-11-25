@@ -229,6 +229,7 @@ class AiEngineManager(
             onErrorCallback(e)
             throw e
         }
+        GenerationTracker.begin()
         try {
             // Read under the lock: loadModel replaces the engine under it too.
             if (engine == null) throw IllegalStateException("Model not loaded")
@@ -442,6 +443,7 @@ class AiEngineManager(
                 conversation?.let { closeQuietly(it) }
             }
         } finally {
+            GenerationTracker.end()
             inferenceMutex.unlock()
         }
     }
