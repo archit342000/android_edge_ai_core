@@ -27,6 +27,7 @@ import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
@@ -213,10 +214,17 @@ class OpenAIServer(
                                             }
                                         }
 
-                                        // Write to the response stream
-                                        OpenAIServer.forwardChunks(channel, job) { msg ->
-                                            write(msg)
-                                            flush()
+                                        // A client that leaves before the first token (queued or in prefill) is noticed
+                                        // through the closed connection, not only through a failed write.
+                                        val watcher = onClientGone(call) { stopForGoneClient(channel, job) }
+                                        try {
+                                            // Write to the response stream
+                                            OpenAIServer.forwardChunks(channel, job) { msg ->
+                                                write(msg)
+                                                flush()
+                                            }
+                                        } finally {
+                                            watcher?.dispose()
                                         }
                                     }
                                 }
@@ -462,6 +470,19 @@ class OpenAIServer(
         const val GENERATION_TIMEOUT_MS = 600_000L
 
         private const val RETRY_AFTER_SECONDS = "5"
+
+        /**
+         * Ends a stream whose client has gone: closes [channel] so the writer stops and, only if this call closed it,
+         * cancels the generation [job]. A channel already closed by the reply's end or an error means the stream had
+         * finished, so the job is left alone (a finished reply can still go into the conversation cache).
+         * Returns true when it cancelled the job.
+         */
+        internal fun stopForGoneClient(channel: SendChannel<String>, job: Job): Boolean {
+            if (!channel.close()) return false
+            Log.i(TAG, "Generation cancelled (client disconnected)")
+            job.cancel()
+            return true
+        }
 
         /**
          * Copies [channel] to the client with [write]. If a write fails because the client disconnected, cancels the

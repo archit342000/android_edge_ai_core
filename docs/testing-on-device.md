@@ -115,7 +115,7 @@ Checked on 2026-11-10 on the engine upgrade branches (the stacked PRs from the i
 | Cached tokens on a reused conversation | `cached_tokens` 320 then 339 (usage run) | 17 on turn 2 (GPU) |
 | `enableBenchmark` latency cost | no measurable overhead (measured earlier) | not repeated |
 | Non-streaming client disconnect | generation stopped in 46 to 88 ms, load 0 | stopped in 81 ms, load 0 |
-| Client drops during a long prefill (5 times) | no cancel logged, load 0, next request 200 (the drop is noticed only at the first token write, pitfall 27) | same; the cancel wait expiry (2 s) was never reached |
+| Client drops during a long prefill (5 times) | no cancel logged, load 0, next request 200 (measured before the stream watched its connection: the drop was then noticed only at the first token write) | same; the cancel wait expiry (2 s) was never reached |
 | Memory, 2 cached conversations, MTP adaptive | 1.8 GB PSS (CPU) | 3.67 GB PSS (2.6 GB graphics), GPU |
 | GPU to CPU fallback | triggered, 12 to 27 s | not reachable: the phone GPU works |
 | Gemma 3n image request with vision on GPU, main CPU | answered; the log shows only the XNNPACK (CPU) delegate and no OpenCL error | not run |

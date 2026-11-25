@@ -32,7 +32,7 @@ All sources are in `app/src/main/java/com/aanand/edgeaicore/`.
 | `SpeculativeDecodingOption` | The user's speculative decoding (MTP) setting (Off, On, Adaptive; default Adaptive) and its mapping to the LiteRT-LM mode; `AiEngineManager.loadModel` configures it only for models whose `ModelCapabilities.speculativeDecoding` is true (they ship a drafter). |
 | `EncoderBackendSelector` | Pure choice of the vision and audio encoder backends from what the model supports, the main backend and the user's Auto/CPU/GPU option (`EncoderBackendOption`); `AiEngineManager.activeEncoders` records the result, and `OpenAIServer` rejects image or audio input for a model without that encoder. |
 | `StopSequenceMatcher` | Pure matcher for the `stop` field: finds the earliest stop sequence in streamed answer text and holds back text that could still become one. |
-| `NettyDisconnect` | Tells a non-streaming route when the client's connection closes (a Netty `closeFuture` listener), so the generation can be cancelled. |
+| `NettyDisconnect` | Tells the chat route when the client's connection closes (a Netty `closeFuture` listener), so the generation can be cancelled, streaming or not. |
 | `LlmEngine` | `LlmEngine` and `LlmConversation` interfaces over the LiteRT-LM `Engine` and `Conversation`, plus the thin adapters and `createLiteRtEngine`. The seam that lets `AiEngineManager` be tested with a fake engine. |
 | `OpenAIServer` | Ktor `embeddedServer(Netty, port = 8080)` with the `/v1` routes and a root `/health`. Authenticates every request through an `isValidToken` function (`TokenManager.isValidToken`); `module()` installs JSON and the routes so route tests can host it. |
 | `OpenAIModels` | Gson data classes for requests, responses and `ErrorResponse`. The streaming chunk and model-list classes live at the bottom of `OpenAIServer.kt`. |
@@ -53,7 +53,7 @@ client app ──HTTP :8080──> OpenAIServer
       (usage = prompt/completion/cached token counts read from the engine; if they cannot be read the request fails with "Token usage unavailable")
    5. stream=true  -> SSE chunks "data: {...}\n\n" ... "data: [DONE]"
       stream=false -> one ChatCompletionResponse (JSON)
-      a client that disconnects (a failed stream write, or the closed connection for a non-streaming request, `NettyDisconnect`) cancels the generation (cancelProcess) and frees the inference lock
+      a client that disconnects (the closed connection, `NettyDisconnect`, even before the first token; or a failed stream write) cancels the generation (cancelProcess) and frees the inference lock
 ```
 
 `OpenAIServer` does not use `ConversationManager`. The REST API stays stateless: a request carries the whole history. `AiEngineManager` keeps the engine

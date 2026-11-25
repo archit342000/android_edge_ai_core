@@ -647,6 +647,111 @@ class OpenAIServerTest {
         }
     }
 
+    /** A seam that records disposes and lets the test decide when the client goes away. */
+    private class GoneSeam(private val fire: (onGone: () -> Unit) -> Unit) {
+        val disposed = java.util.concurrent.atomic.AtomicInteger()
+        val watched = java.util.concurrent.atomic.AtomicInteger()
+        val watch: (io.ktor.server.application.ApplicationCall, () -> Unit) -> kotlinx.coroutines.DisposableHandle? = { _, onGone ->
+            watched.incrementAndGet()
+            fire(onGone)
+            kotlinx.coroutines.DisposableHandle { disposed.incrementAndGet() }
+        }
+    }
+
+    private fun withGoneSeam(manager: AiEngineManager, seam: GoneSeam, block: suspend ApplicationTestBuilder.() -> Unit) {
+        // A long generation timeout: only the disconnect may end a hanging generation within the test's bound
+        val server = OpenAIServer(manager, seam.watch) { it == validToken }.also { it.generationTimeoutMs = 30_000 }
+        testApplication {
+            application { with(server) { module() } }
+            block()
+        }
+    }
+
+    @Test
+    fun aStreamingClientThatLeavesDuringPrefillCancelsTheGenerationAndFreesTheLock() {
+        val (manager, factory) = hangingManager()
+        val fired = java.util.concurrent.atomic.AtomicInteger()
+        val seam = GoneSeam { onGone ->
+            // only the first request's client goes away, once the prompt was sent (prefill, no token yet)
+            if (fired.get() == 0) Thread {
+                val deadline = System.currentTimeMillis() + 5_000
+                while (factory.engine.conversations.firstOrNull()?.sent != 1 && System.currentTimeMillis() < deadline) Thread.sleep(5)
+                fired.incrementAndGet()
+                onGone()
+            }.start()
+        }
+        withGoneSeam(manager, seam) {
+            val started = System.nanoTime()
+            val text = post(streamBody).bodyAsText()
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000
+            assertTrue("took $elapsedMs ms", elapsedMs < 10_000)
+            assertEquals(1, fired.get())
+            assertFalse(text, text.contains("Generation timed out"))
+            assertFalse(text, text.contains("[DONE]"))
+            assertTrue(factory.engine.conversations[0].cancelCount >= 1)
+            assertTrue(factory.engine.conversations[0].closed)
+            assertEquals(1, seam.disposed.get())
+            awaitLoadZero()
+            factory.engine.hangUntilCancelled = false
+            assertEquals(HttpStatusCode.OK, post(streamBody).status)
+        }
+    }
+
+    @Test
+    fun aStreamingClientGoneBeforeTheGenerationStartsEndsTheRequest() {
+        val (manager, factory) = hangingManager()
+        val first = java.util.concurrent.atomic.AtomicBoolean(true)
+        // the connection is already closed when the watcher is registered
+        val seam = GoneSeam { onGone -> if (first.getAndSet(false)) onGone() }
+        withGoneSeam(manager, seam) {
+            val started = System.nanoTime()
+            val text = post(streamBody).bodyAsText()
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000
+            assertTrue("took $elapsedMs ms", elapsedMs < 10_000)
+            assertFalse(text, text.contains("Generation timed out"))
+            assertEquals(1, seam.disposed.get())
+            awaitLoadZero()
+            factory.engine.hangUntilCancelled = false
+            assertEquals(HttpStatusCode.OK, post(streamBody).status)
+        }
+    }
+
+    @Test
+    fun aCloseAfterAFinishedStreamChangesNothing() {
+        val factory = FakeEngineFactory(chunks = listOf("po", "ng"))
+        val manager = newManager(factory)
+        runBlocking { manager.loadModel(tmp.newFile("m-done.litertlm").absolutePath, "CPU") }
+        var gone: (() -> Unit)? = null
+        val seam = GoneSeam { onGone -> gone = onGone }
+        withGoneSeam(manager, seam) {
+            val text = post(streamBody).bodyAsText()
+            assertTrue(text, text.trimEnd().endsWith("data: [DONE]"))
+            // the connection closes after the reply was sent
+            gone!!.invoke()
+            assertEquals(1, seam.watched.get())
+            assertEquals(0, factory.engine.conversations[0].cancelCount)
+            // not closed: the finished conversation went into the cache
+            assertFalse(factory.engine.conversations[0].closed)
+            awaitLoadZero()
+        }
+    }
+
+    @Test
+    fun stopForGoneClientCancelsOnlyWhenItEndsTheStream() {
+        val open = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val job = kotlinx.coroutines.Job()
+        assertTrue(OpenAIServer.stopForGoneClient(open, job))
+        assertTrue(open.isClosedForSend)
+        assertTrue(job.isCancelled)
+
+        // the reply's end (or an error) already closed the channel: the job is left alone
+        val finished = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        finished.close()
+        val running = kotlinx.coroutines.Job()
+        assertFalse(OpenAIServer.stopForGoneClient(finished, running))
+        assertFalse(running.isCancelled)
+    }
+
     @Test
     fun everyExitOfTheChatHandlerLeavesTheLoadCounterAtZero() {
         // engine error (500 non-streaming, SSE error event streaming)
