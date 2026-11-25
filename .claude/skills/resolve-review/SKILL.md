@@ -48,12 +48,12 @@ Then present the triage report to the user in chat before changing anything: a t
 
 ## Ticket mode
 
-Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
-- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
-- **Epic IDs:** if the ID is an epic (`type: epic`), do not run on it. List its unfinished children (as `/ticket list epic <ID>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
-- **Step 1:** unless the user pasted a different review, the findings are the Open items in the latest round of the ticket's Review history (`R<N>-<k>` ids). Read the Plan and Implementation notes for context.
-- **Step 2:** the triage table goes into that round of Review history (above the findings), which is where it is shown in automatic mode.
-- **Steps 2 to 5:** as each finding is decided, update its status in that round in place: `Fixed`, `Rejected` or `Deferred`, with a one-line reason or evidence and the files changed (and the function, component or section in each). Write as you go.
+Applies when the user gives a ticket key such as `MA-12` (see the `ticket` skill, "Use from other skills"). Differences:
+- **Jira:** read the whole issue first (`ticket` skill, "Reading a ticket") and write to it as you go. There is nothing to pull, commit or push: a Jira write is the save, and it is not a code commit, so this skill's "do not commit or push" rules do not cover it. Fields are replaced whole (read, then send the complete value), one write at a time. Say in the report if a write failed and what is missing (`ticket` skill, "Failed writes").
+- **Epic keys:** if the key is an epic (issue type `Epic`), do not run on it. List its unfinished children (as `/ticket list epic <KEY>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
+- **Step 1:** unless the user pasted a different review, the findings are the Open items in the latest round of the ticket's `## Review history` comments (`R<N>-<k>` ids). Read the Plan and Implementation Notes for context.
+- **Step 2:** the triage table goes into that round, in its Review history comment (above the findings; edit the comment), which is where it is shown in automatic mode.
+- **Steps 2 to 5:** as each finding is decided, update its status in that round in place (edit the comment; one edit per finding is fine, or batch several decisions into one edit): `Fixed`, `Rejected` or `Deferred`, with a one-line reason or evidence and the files changed (and the function, component or section in each). Write as you go.
 - **Step 6:** add a `Resolution:` summary to the round (counts, checks run and results, remaining failures) and a Log line. Deferred findings stay visible in the round with what is needed to resolve them.
 
 ## Constraints & Rules

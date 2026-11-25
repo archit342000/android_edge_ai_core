@@ -13,7 +13,7 @@ The moderator should be a strong model (Opus or better). If this session runs on
 
 ### 1. Understand the requirement
 - Restate the requirement in one or two sentences with its constraints (team, time, hosting, budget).
-- If the user gives an epic or ticket ID, read it first (`ticket` skill); its Description is the requirement.
+- If the user gives an epic or ticket key, read it first (`ticket` skill); its Description is the requirement.
 - Ask (AskUserQuestion) only if the requirement cannot be understood at all. Otherwise record assumptions; challenging the requirement is part of the output.
 
 ### 2. Choose the path
@@ -63,14 +63,14 @@ Handle feedback alone; do not restart the panel unless the user changes the requ
 
 ### 9. Record the approved design as an epic
 Only when the user explicitly approves the design. Approval of the design is the request to create the epic; say so in one line as you do it.
-- Create one epic for the feature with the `ticket` skill (`create epic <title>`), following its format, storage and sync rules. If the user started from an existing epic, update that one instead of creating another.
-- Fill it so the planner needs nothing from this conversation:
+- Create one epic for the feature with the `ticket` skill (`create epic <title>`), following its epic and writing rules. If the user started from an existing epic, update that one instead of creating another.
+- Fill it so the planner needs nothing from this conversation. An epic has only a Description, so all of this goes in the epic's Description as `##` sections (`## Scope`, `## Acceptance criteria`, `## Breakdown`, `## Notes`), with the goal and the approved recommendation first:
   - **Description:** the goal and why, then the approved recommendation.
   - **Scope:** in scope and out of scope, including the rejected alternatives in one line each.
   - **Acceptance criteria:** what must be true when the feature is done, derived from the requirement and the design.
   - **Breakdown:** leave empty for the `plan` skill.
   - **Notes:** a dated `### Architecture` note with the findings and their file references, the decisions the user made during feedback, and the unverified claims.
-- Never create child tickets and never write the Breakdown. Report the epic ID and suggest `/plan <ID>` as the next step.
+- Never create child tickets and never write the Breakdown. Report the epic key and suggest `/plan <KEY>` as the next step.
 
 ## Rules
 - **No source changes.** The only write this skill makes is the epic, after approval.

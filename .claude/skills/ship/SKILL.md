@@ -50,11 +50,11 @@ Turn the working-tree changes into well-formed commits and a pull request. Follo
 
 ## Ticket mode
 
-Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
-- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
-- **Epic IDs:** if the ID is an epic (`type: epic`), do not run on it. List its unfinished children (as `/ticket list epic <ID>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
-- The ticket's Plan, Verification results and unresolved review findings feed the PR's Summary, Testing and Notes. The ticket ID may go in commits, the branch name and the PR where the repo's conventions allow, and the PR may link the ticket on the repo's `tickets` branch (`https://github.com/<owner>/<repo>/blob/tickets/<file>`). Never put local paths (`~/.claude/tickets/...`, evidence folders) in any of them.
-- After the PR is open (or already existed), append `PR: <url>, branch <name>, base <base>` as the last line of Implementation notes and add a Log line. Do not change the ticket status; the user closes it.
+Applies when the user gives a ticket key such as `MA-12` (see the `ticket` skill, "Use from other skills"). Differences:
+- **Jira:** read the whole issue first (`ticket` skill, "Reading a ticket") and write to it as you go. There is nothing to pull, commit or push: a Jira write is the save, and it is not a code commit, so this skill's "do not commit or push" rules do not cover it. Fields are replaced whole (read, then send the complete value), one write at a time. Say in the report if a write failed and what is missing (`ticket` skill, "Failed writes").
+- **Epic keys:** if the key is an epic (issue type `Epic`), do not run on it. List its unfinished children (as `/ticket list epic <KEY>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
+- The ticket's Plan, Verification comments and unresolved review findings feed the PR's Summary, Testing and Notes. The ticket key may go in commits, the branch name and the PR where the repo's conventions allow, and the PR may link the ticket (`https://archit342000.atlassian.net/browse/<KEY>`). Never put local paths (`~/.claude/ticket-evidence/...`, evidence folders) in any of them.
+- After the PR is open (or already existed), append `PR: <url>, branch <name>, base <base>` as the last line of the Implementation Notes field, set the `Branch` field if it is empty, and add a Log line. Do not change the ticket status (not even to `In Review`); the user closes it.
 
 ## Constraints & Rules
 
