@@ -35,7 +35,7 @@ class DotSphereView @JvmOverloads constructor(context: Context, attrs: Attribute
     private val phoneFactor = ResourcesCompat.getFloat(resources, R.dimen.sphere_phone_factor)
     private val starReadingDim = ResourcesCompat.getFloat(resources, R.dimen.sphere_star_reading_dim)
     private val tabletMinWidth = resources.getInteger(R.integer.breakpoint_tablet)
-    private val restIntervalMs = resources.getInteger(R.integer.sphere_frame_interval_ms)
+    private val generatingIntervalMs = resources.getInteger(R.integer.sphere_frame_interval_ms)
     private val activeIntervalMs = resources.getInteger(R.integer.sphere_frame_interval_active_ms)
     private val activeAfterTouchMs = resources.getInteger(R.integer.sphere_active_after_touch_ms)
     private var lastTouchMs = 0L
@@ -146,11 +146,11 @@ class DotSphereView @JvmOverloads constructor(context: Context, attrs: Attribute
             start()
             return
         }
-        // The drift is slow, so a low frame rate at rest looks the same and leaves the CPU to the model; a touch or a
-        // ripple gets the smoother rate for a moment.
-        val active = model.rippleLevel > 0f || SystemClock.uptimeMillis() - lastTouchMs < activeAfterTouchMs
-        val interval = if (active) activeIntervalMs else restIntervalMs
-        if (lastFrameNanos != 0L && (frameTimeNanos - lastFrameNanos) / NANOS_PER_MS < interval) {
+        // Every frame, as in the script, except while a reply is generated: then the model gets the CPU and the sphere
+        // draws slowly, with a smoother rate for a moment after a touch or while a ripple runs.
+        val touched = model.rippleLevel > 0f || SystemClock.uptimeMillis() - lastTouchMs < activeAfterTouchMs
+        val interval = GenerationTracker.sphereFrameIntervalMs(GenerationTracker.active, touched, generatingIntervalMs, activeIntervalMs)
+        if (interval > 0 && lastFrameNanos != 0L && (frameTimeNanos - lastFrameNanos) / NANOS_PER_MS < interval) {
             Choreographer.getInstance().postFrameCallback(this)
             return
         }

@@ -199,8 +199,9 @@
     <item name="sphere_lean_y" format="float" type="dimen">0.3</item>
     <item name="sphere_ease" format="float" type="dimen">0.04</item>
     <item name="sphere_frame_cap_ms" format="float" type="dimen">64</item>
-    <!-- How often the app draws the sphere (ms). The script draws every frame; here the model shares the CPU, so at rest the
-         sphere draws 10 times a second and only a touch or a ripple gets 30 for a moment (measured: decode speed). -->
+    <!-- How often the app draws the sphere (ms). Every frame, as in the script, except while a reply is generated: the model
+         then shares the CPU, so the sphere draws 10 times a second and a touch or a ripple gets 30 for a moment (measured:
+         decode speed). The small loops (working dots, pulses) also tick at the slower rate. -->
     <integer name="sphere_frame_interval_ms">100</integer>
     <integer name="sphere_frame_interval_active_ms">33</integer>
     <integer name="sphere_active_after_touch_ms">2000</integer>
