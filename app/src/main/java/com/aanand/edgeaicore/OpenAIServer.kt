@@ -474,8 +474,9 @@ class OpenAIServer(
         /**
          * Ends a stream whose client has gone: closes [channel] so the writer stops and, only if this call closed it,
          * cancels the generation [job]. A channel already closed by the reply's end or an error means the stream had
-         * finished, so the job is left alone (a finished reply can still go into the conversation cache).
-         * Returns true when it cancelled the job.
+         * finished, so the job is left alone (a finished reply can still go into the conversation cache). A client that
+         * leaves after the engine finished but before the reply's end reached the channel still cancels the job, so that
+         * conversation is closed instead of cached. Returns true when it cancelled the job.
          */
         internal fun stopForGoneClient(channel: SendChannel<String>, job: Job): Boolean {
             if (!channel.close()) return false

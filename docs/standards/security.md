@@ -25,7 +25,7 @@ beyond the device while it binds all interfaces (`docs/pitfalls.md`). Treat ever
 - Validate request bodies before use: required fields, sensible numeric ranges for `temperature`, `top_p`, `top_k`, and a bounded `messages` list.
   Return `400` with a fixed short message for bad input.
 - Image and audio content in messages is base64 from the client; decode defensively and cap sizes.
-- Error bodies use `ErrorResponse` with a short message. Do not return exception messages or stack traces (existing ones are a known trap).
+- Error bodies use `ErrorResponse` with a short message. Do not return exception messages or stack traces.
 - Do not log prompts, message content or model output, even at debug level.
 
 ## Files and storage

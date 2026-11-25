@@ -7,8 +7,9 @@ import io.netty.channel.ChannelFutureListener
 import kotlinx.coroutines.DisposableHandle
 
 /**
- * Tells a route when the client's connection closes. Ktor 2.3.12 on Netty does not cancel an HTTP/1.1 call by itself
- * when the connection drops, so a non-streaming request would otherwise run its generation to the end for nobody.
+ * Tells the chat route (streaming or not) when the client's connection closes. Ktor 2.3.12 on Netty does not cancel an
+ * HTTP/1.1 call by itself when the connection drops, so a request would otherwise keep its generation running for nobody:
+ * a non-streaming one to the end, a streaming one until its first token write fails.
  */
 object NettyDisconnect {
     /**

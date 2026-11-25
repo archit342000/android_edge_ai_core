@@ -6,7 +6,7 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 
 1. **The server listens on all interfaces.** `embeddedServer(Netty, port = 8080)` in `OpenAIServer.start` sets no `host`, so Netty binds `0.0.0.0`.
    The README says localhost, but other devices on the same network can reach the port. Only the token protects it.
-2. *(Removed.)* Error bodies and SSE error events no longer carry exception text: `OpenAIServer.clientMessage` gives the fixed message of a known exception or a fixed fallback (`Bad request`, `Inference failed`), and the detail goes to the log. The number is kept because docs and tickets cite later entries.
+2. *(Removed.)* Error bodies and SSE error events carry only fixed messages: request checks (`ChatRequestValidator`, `OpenAIToolMapper`) throw fixed, documented texts, and for anything else `OpenAIServer.clientMessage` gives the fixed message of a known exception or a fixed fallback (`Bad request`, `Inference failed`); the detail goes to the log. The number is kept because docs and tickets cite later entries.
 3. **"Model not loaded" on chat becomes 400.** `generateConversationResponseAsync` throws `ModelNotLoadedException` (an `IllegalStateException`) when no engine is loaded.
    For a non-streaming request the outer `catch` turns it into `400 Bad Request`, not `503`.
 4. **`/v1/health` and root `/health` duplicate the same handler.** Change both or neither.
@@ -61,4 +61,5 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
     without the pin such requests fail with `NoSuchMethodError`, reported as HTTP 400 `Invalid request body` (the `NoSuchMethodError` is only in logcat). Route tests do not show it (the Ktor test host
     reads bodies in memory); `CoroutinesPinTest` only guards the pin, so check large bodies on a device after touching Ktor, coroutines or LiteRT-LM versions. Remove the pin when Ktor is upgraded.
 27. **A cancelled generation may outlive the inference lock.** A client that disconnects is noticed through the closed connection (a Netty `closeFuture` listener, `NettyDisconnect`) for streaming and non-streaming requests alike, even before the first token, and a stream also through a failed write; either way the generation is cancelled (`cancelProcess()`). After a cancel `AiEngineManager` waits up to `CANCEL_WAIT_MS` (2 s) for the native terminal callback while holding `inferenceMutex`; if it
-    never arrives it logs a warning, closes the conversation and releases the lock anyway, so native decoding could then overlap the next request. The 2 s expiry was not seen on a device (a cancel completed in about 50 to 90 ms).
+    never arrives it logs a warning, closes the conversation and releases the lock anyway, so native decoding could then overlap the next request. The 2 s expiry was not seen on a device (a cancel completed in about 50 to 90 ms), but how fast a cancel stops native prompt processing (prefill) was never measured.
+    A stream whose client leaves after the engine finished but before the reply's end was handed to the server is cancelled like any other, so that conversation is closed instead of cached.
