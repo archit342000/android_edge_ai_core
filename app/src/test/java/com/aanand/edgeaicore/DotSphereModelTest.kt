@@ -89,15 +89,13 @@ class DotSphereModelTest {
     }
 
     @Test
-    fun releasingATouchBringsTheSphereBackToTheMiddle() {
+    fun aTapLeavesTheSphereSettlingWhereItWasTouched() {
         val m = model(400f, 800f)
-        m.leanToward(380f, 780f)
-        repeat(120) { m.advance(16.667f) }
-        assertTrue(m.centreY > 600f)
-        m.release()
+        m.leanToward(300f, 600f)
+        repeat(6) { m.advance(16.667f) } // a tap lasts about 100 ms
         repeat(240) { m.advance(16.667f) }
-        assertEquals(200f, m.centreX, 2f)
-        assertEquals(400f, m.centreY, 2f)
+        assertEquals(300f, m.centreX, 2f)
+        assertEquals(600f, m.centreY, 2f)
     }
 
     @Test
