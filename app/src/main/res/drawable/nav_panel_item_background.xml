@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Navigation panel items: the tint when selected, the well when pressed, and the keyboard focus ring inside the item. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/console_well">
+    <item android:id="@android:id/mask">
+        <shape>
+            <corners android:topLeftRadius="@dimen/radius_small_top_left" android:topRightRadius="@dimen/radius_small_top_right" android:bottomRightRadius="@dimen/radius_small_bottom_right" android:bottomLeftRadius="@dimen/radius_small_bottom_left" />
+            <solid android:color="@color/console_fg" />
+        </shape>
+    </item>
+    <item>
+        <selector>
+            <item android:state_focused="true" android:state_checked="true">
+                <layer-list>
+                    <item>
+                <shape>
+                    <corners android:topLeftRadius="@dimen/radius_small_top_left" android:topRightRadius="@dimen/radius_small_top_right" android:bottomRightRadius="@dimen/radius_small_bottom_right" android:bottomLeftRadius="@dimen/radius_small_bottom_left" />
+                    <solid android:color="@color/console_accent_soft" />
+                </shape>
+                    </item>
+                    <item>
+            <inset android:inset="@dimen/focus_ring_offset">
+                <shape>
+                    <corners android:topLeftRadius="@dimen/radius_small_top_left" android:topRightRadius="@dimen/radius_small_top_right" android:bottomRightRadius="@dimen/radius_small_bottom_right" android:bottomLeftRadius="@dimen/radius_small_bottom_left" />
+                    <stroke android:width="@dimen/focus_ring_width" android:color="@color/console_accent" />
+                </shape>
+            </inset>
+                    </item>
+                </layer-list>
+            </item>
+            <item android:state_focused="true">
+            <inset android:inset="@dimen/focus_ring_offset">
+                <shape>
+                    <corners android:topLeftRadius="@dimen/radius_small_top_left" android:topRightRadius="@dimen/radius_small_top_right" android:bottomRightRadius="@dimen/radius_small_bottom_right" android:bottomLeftRadius="@dimen/radius_small_bottom_left" />
+                    <stroke android:width="@dimen/focus_ring_width" android:color="@color/console_accent" />
+                </shape>
+            </inset>
+            </item>
+            <item android:state_checked="true">
+                <shape>
+                    <corners android:topLeftRadius="@dimen/radius_small_top_left" android:topRightRadius="@dimen/radius_small_top_right" android:bottomRightRadius="@dimen/radius_small_bottom_right" android:bottomLeftRadius="@dimen/radius_small_bottom_left" />
+                    <solid android:color="@color/console_accent_soft" />
+                </shape>
+            </item>
+        </selector>
+    </item>
+</ripple>

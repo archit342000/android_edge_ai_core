@@ -38,8 +38,8 @@ beyond the device while it binds all interfaces (`docs/pitfalls.md`). Treat ever
 
 - Export a component only when another app must reach it, and protect it with a permission when possible.
   `InferenceService` is currently exported with no permission (known trap); do not add more such components.
-- Request only the runtime permissions a feature needs (`checkAndRequestPermissions` in `MainActivity`). New permissions need a stated reason in the PR.
-- Broadcasts stay inside the app: `sendStatusBroadcast` sets `setPackage(packageName)`; keep that for any new broadcast.
+- Request only the runtime permissions a feature needs, at its point of use (`docs/standards/android.md`). New permissions need a stated reason in the PR.
+- Broadcasts stay inside the app: `broadcastStatus` sets `setPackage(packageName)`; keep that for any new broadcast.
 
 ## Secrets and build
 

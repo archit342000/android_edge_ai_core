@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Filled buttons (rule book Part 4): lift 1 with the lifted shadow on hover, shrink to 96% when pressed. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="true" android:state_pressed="true">
+        <set>
+            <objectAnimator android:propertyName="scaleX" android:valueTo="@dimen/button_press_scale" android:valueType="floatType" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+            <objectAnimator android:propertyName="scaleY" android:valueTo="@dimen/button_press_scale" android:valueType="floatType" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+            <objectAnimator android:propertyName="translationY" android:valueTo="@dimen/move_rest" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+            <objectAnimator android:propertyName="translationZ" android:valueTo="@dimen/move_rest" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+        </set>
+    </item>
+    <item android:state_enabled="true" android:state_hovered="true">
+        <set>
+            <objectAnimator android:propertyName="scaleX" android:valueTo="1" android:valueType="floatType" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+            <objectAnimator android:propertyName="scaleY" android:valueTo="1" android:valueType="floatType" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+            <objectAnimator android:propertyName="translationY" android:valueTo="@dimen/button_hover_rise" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+            <objectAnimator android:propertyName="translationZ" android:valueTo="@dimen/elevation_lift" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+        </set>
+    </item>
+    <item>
+        <set>
+            <objectAnimator android:propertyName="scaleX" android:valueTo="1" android:valueType="floatType" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+            <objectAnimator android:propertyName="scaleY" android:valueTo="1" android:valueType="floatType" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+            <objectAnimator android:propertyName="translationY" android:valueTo="@dimen/move_rest" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+            <objectAnimator android:propertyName="translationZ" android:valueTo="@dimen/move_rest" android:duration="@integer/duration_fast" android:interpolator="@interpolator/ease_spring" />
+        </set>
+    </item>
+</selector>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The content panel on a phone: edge to edge, square, no side borders (rule book 3.3) -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+        <solid android:color="?attr/consoleGlassOpen" />
+    </shape>

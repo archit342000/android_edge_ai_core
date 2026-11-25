@@ -1,7 +1,29 @@
 package com.aanand.edgeaicore
 
 import androidx.core.content.ContextCompat
+import android.animation.AnimatorInflater
+import android.animation.ValueAnimator
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.pm.ApplicationInfo
+import android.content.res.Configuration
+import android.os.Build
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.animation.AnimationUtils
+import android.view.inputmethod.EditorInfo
+import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.widget.TooltipCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.navigation.NavigationView
+import com.google.android.material.navigationrail.NavigationRailView
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -14,14 +36,19 @@ import android.view.View
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.EditText
+import android.widget.ImageView
+import android.view.ViewGroup
 import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.edit
+import androidx.core.net.toUri
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -38,7 +65,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import android.content.ClipboardManager
 import android.content.ClipData
-import android.widget.Toast
 import android.media.AudioRecord
 import android.media.AudioFormat
 import android.media.MediaRecorder
@@ -78,8 +104,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnBackupTokens: MaterialButton
     private lateinit var btnRestoreTokens: MaterialButton
     private lateinit var llAuthorizedApps: android.widget.LinearLayout
-    private lateinit var tvAuthorizedLabel: TextView
-    private lateinit var bottomNav: com.google.android.material.bottomnavigation.BottomNavigationView
+    private lateinit var tvNoAuthorizedApps: TextView
+    // One of the three navigation pieces exists, depending on the width frame.
+    private var bottomNav: BottomNavigationView? = null
+    private var navRail: NavigationRailView? = null
+    private var navPanel: NavigationView? = null
+    private lateinit var toolbar: MaterialToolbar
+    private var currentPage = R.id.nav_server
+    private var serverScrolledPastOpen = false
+    private var solid = false
     private lateinit var pageServer: android.view.View
     private lateinit var pageBackend: android.view.View
     private lateinit var pageTokens: android.view.View
@@ -89,14 +122,55 @@ class MainActivity : AppCompatActivity() {
     private var selectedModelPath: String? = null
     private val gson = Gson()
 
+    // Console at Rest UI. Control state is decided by ControlsPolicy and applied only in render().
+    private lateinit var sphere: DotSphereView
+    private lateinit var ui: ConsoleUi
+    private lateinit var ivStatusLight: ImageView
+    private lateinit var tvStatusWord: TextView
+    private lateinit var workingDots: ViewGroup
+    private var ivHeaderStatusLight: ImageView? = null
+    private var tvHeaderStatusWord: TextView? = null
+    private lateinit var tvSwitchReason: TextView
+    private lateinit var tvTestsReason: TextView
+    private lateinit var tvTokenReason: TextView
+    private lateinit var tvContextSizeReason: TextView
+    private lateinit var progressModelCopy: LinearProgressIndicator
+    private lateinit var noticeError: View
+    private lateinit var tvNoticeText: TextView
+    private lateinit var btnNoticeAction: MaterialButton
+    private lateinit var testButtons: Map<BusyTask, MaterialButton>
+    private val labels = HashMap<MaterialButton, CharSequence>()
+    private var pendingAction = PendingAction.NONE
+    private val busy = mutableSetOf<BusyTask>()
+    private var contextSizeInvalid = false
+    private var errorAction: ErrorAction? = null
+    private lateinit var foldHeader: View
+    private lateinit var foldBody: View
+    private lateinit var foldChevron: View
+    private lateinit var cardExplain: View
+    private lateinit var cardExplainMic: View
+    private lateinit var tvSettingsState: TextView
+    private lateinit var tvSettingsNote: TextView
+    private var awaitingCard: ExplainCard? = null
+    private var micCardShown = false
+    private var micAwaiting = false
+
+    /** Back returns to Server from the other pages; on Server it is off, so Back leaves the app. */
+    private val backToServer = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            showPage(R.id.nav_server)
+        }
+    }
+
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             Log.d(TAG, "Broadcast received: ${intent.action}")
             if (intent.action == InferenceService.ACTION_STATUS_UPDATE) {
-                val status = intent.getStringExtra(InferenceService.EXTRA_STATUS)
-                Log.d(TAG, "Received STATUS_UPDATE: $status")
-                appendLog("Status Update: $status")
-                updateUIForStatus(status ?: "")
+                val status = ServerStatusStore.current
+                Log.d(TAG, "Received STATUS_UPDATE: ${status.kind}")
+                if (status.detail.isNotEmpty()) appendLog(getString(R.string.log_status, status.detail))
+                pendingAction = PendingAction.NONE
+                render()
             }
         }
     }
@@ -126,17 +200,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        micAwaiting = false
+        micCardShown = false
         if (isGranted) {
             startAudioRecording()
         } else {
-            appendLog("Audio permission denied")
+            appendLog(getString(R.string.log_mic_denied))
+            ui.brief(getString(R.string.microphone_off))
         }
+        render()
     }
 
-    private val requestMultiplePermissionsLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-        permissions.entries.forEach {
-            appendLog("Permission ${it.key}: ${if (it.value) "Granted" else "Denied"}")
-        }
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        answerCard(ExplainCard.NOTIFICATIONS)
+    }
+
+    private val batteryExemptionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        answerCard(ExplainCard.BATTERY)
     }
 
     override fun onResume() {
@@ -145,15 +225,55 @@ class MainActivity : AppCompatActivity() {
             addAction(InferenceService.ACTION_STATUS_UPDATE)
         }
         ContextCompat.registerReceiver(this, statusReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        // A status reached while the activity was in the background did not arrive as a broadcast; read it now.
+        pendingAction = PendingAction.NONE
+        render()
+        sphere.start()
+        ui.resume()
     }
 
     override fun onPause() {
         super.onPause()
         unregisterReceiver(statusReceiver)
+        sphere.stop()
+        ui.pause()
+    }
+
+    override fun onDestroy() {
+        if (::ui.isInitialized) ui.dismissSheet()
+        super.onDestroy()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_PAGE, currentPage)
+        outState.putBoolean(STATE_FOLD_OPEN, foldBody.isVisible)
+    }
+
+    /** The sphere leans toward a touch and returns to the middle when it ends; the touch goes on to the views as usual. */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> sphere.leanToward(ev.x, ev.y)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> sphere.release()
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    /** Escape closes the top layer (rule book 7.14): on Backend or Tokens that is the page, so it returns to Server. */
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_ESCAPE && backToServer.isEnabled) {
+            showPage(R.id.nav_server)
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Frosted glass needs API 31; below it, or when a debug build is asked to, every surface uses its solid colour.
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        solid = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || (debuggable && intent.getBooleanExtra(EXTRA_FORCE_SOLID, false))
+        if (solid) theme.applyStyle(R.style.ThemeOverlay_Console_Solid, true)
         setContentView(R.layout.activity_main)
 
         btnSelectModel = findViewById(R.id.btn_select_model)
@@ -172,44 +292,74 @@ class MainActivity : AppCompatActivity() {
         btnTestHealth = findViewById(R.id.btn_test_health)
         btnTestLoad = findViewById(R.id.btn_test_load)
         tvLogs = findViewById(R.id.tv_logs)
-        
+        sphere = findViewById(R.id.sphere)
+        ui = ConsoleUi(this, findViewById(R.id.brief_host))
+        ivStatusLight = findViewById(R.id.iv_status_light)
+        tvStatusWord = findViewById(R.id.tv_status_word)
+        workingDots = findViewById(R.id.working_dots)
+        ivHeaderStatusLight = findViewById(R.id.iv_header_status_light)
+        tvHeaderStatusWord = findViewById(R.id.tv_header_status_word)
+        // At 1024 and over the content header carries the status, so the Server page does not show its light and word again.
+        // The working dots stay: the header has none of its own.
+        if (tvHeaderStatusWord != null) {
+            listOf(ivStatusLight, tvStatusWord).forEach { it.visibility = View.GONE }
+            // With the light and word gone the dots start the line, so they drop the gap that followed the word.
+            workingDots.updateLayoutParams<ViewGroup.MarginLayoutParams> { marginStart = 0 }
+        }
+        listOf(rgBackend, rgSpeculative, rgVisionBackend, rgAudioBackend).forEach(ui::fitSegments)
+        tvSwitchReason = findViewById(R.id.tv_switch_reason)
+        tvTestsReason = findViewById(R.id.tv_tests_reason)
+        tvTokenReason = findViewById(R.id.tv_token_reason)
+        tvContextSizeReason = findViewById(R.id.tv_context_size_reason)
+        progressModelCopy = findViewById(R.id.progress_model_copy)
+        noticeError = findViewById(R.id.notice_error)
+        tvNoticeText = noticeError.findViewById(R.id.tv_notice_text)
+        btnNoticeAction = noticeError.findViewById(R.id.btn_notice_action)
+        noticeError.findViewById<ImageView>(R.id.iv_notice_light).setImageLevel(ServerStatus.ERROR.ordinal)
+        findViewById<TextView>(R.id.tv_server_address).text = SERVER_ADDRESS
+        testButtons = mapOf(
+            BusyTask.TEST_INFERENCE to btnTestInference, BusyTask.TEST_MULTI_TURN to btnTestMultiTurn,
+            BusyTask.TEST_VISION to btnTestVision, BusyTask.TEST_AUDIO to btnTestAudio,
+            BusyTask.TEST_HEALTH to btnTestHealth, BusyTask.TEST_LOAD to btnTestLoad,
+        )
+        foldHeader = findViewById(R.id.fold_diagnostics)
+        foldBody = findViewById(R.id.fold_diagnostics_body)
+        foldChevron = findViewById(R.id.iv_fold_chevron)
+        cardExplain = findViewById(R.id.card_explain)
+        cardExplainMic = findViewById(R.id.card_explain_mic)
+        tvSettingsState = findViewById(R.id.tv_settings_state)
+        tvSettingsNote = findViewById(R.id.tv_settings_note)
+
         // Navigation UI
-        val toolbar: com.google.android.material.appbar.MaterialToolbar = findViewById(R.id.toolbar)
+        toolbar = findViewById(R.id.toolbar)
         bottomNav = findViewById(R.id.bottom_navigation)
+        navRail = findViewById(R.id.nav_rail)
+        navPanel = findViewById(R.id.nav_panel)
         pageServer = findViewById(R.id.page_server)
         pageBackend = findViewById(R.id.page_backend)
         pageTokens = findViewById(R.id.page_tokens)
-        
-        bottomNav.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_server -> {
-                    pageServer.visibility = android.view.View.VISIBLE
-                    pageBackend.visibility = android.view.View.GONE
-                    pageTokens.visibility = android.view.View.GONE
-                    toolbar.title = "Edge AI Server"
-                    true
-                }
-                R.id.nav_backend -> {
-                    pageServer.visibility = android.view.View.GONE
-                    pageBackend.visibility = android.view.View.VISIBLE
-                    pageTokens.visibility = android.view.View.GONE
-                    toolbar.title = "Backend Settings"
-                    true
-                }
-                R.id.nav_tokens -> {
-                    pageServer.visibility = android.view.View.GONE
-                    pageBackend.visibility = android.view.View.GONE
-                    pageTokens.visibility = android.view.View.VISIBLE
-                    toolbar.title = "API Token Management"
-                    updateAuthorizedAppsUI()
-                    true
-                }
-                else -> false
+        bottomNav?.setOnItemSelectedListener { showPage(it.itemId) }
+        navRail?.setOnItemSelectedListener { showPage(it.itemId) }
+        navPanel?.setNavigationItemSelectedListener { showPage(it.itemId) }
+        navRail?.let { rail ->
+            // Icons only: each keeps its title as its spoken name and gets it as a tip.
+            for (i in 0 until rail.menu.size()) {
+                val item = rail.menu.getItem(i)
+                rail.findViewById<View>(item.itemId)?.let { TooltipCompat.setTooltipText(it, item.title) }
             }
         }
-        
-        // Default title
-        toolbar.title = "Edge AI Server"
+        onBackPressedDispatcher.addCallback(this, backToServer)
+        val openUntilScroll = resources.getDimensionPixelSize(R.dimen.sphere_open_until_scroll)
+        (pageServer as androidx.core.widget.NestedScrollView).setOnScrollChangeListener { _: androidx.core.widget.NestedScrollView, _: Int, y: Int, _: Int, _: Int ->
+            serverScrolledPastOpen = y > openUntilScroll
+            updateSphereStrength()
+        }
+        foldHeader.setOnClickListener { setFoldOpen(!foldBody.isVisible, animate = true) }
+        fillToBottom(pageServer, R.id.server_panel)
+        fillToBottom(pageBackend, R.id.backend_panel)
+        fillToBottom(pageTokens, R.id.tokens_panel)
+        setUpEdgeToEdge()
+        attachFrosts()
         
         // API Token UI
         tvApiToken = findViewById(R.id.tv_api_token)
@@ -218,12 +368,10 @@ class MainActivity : AppCompatActivity() {
         btnDeleteToken = findViewById(R.id.btn_delete_token)
         btnBackupTokens = findViewById(R.id.btn_backup_tokens)
         btnRestoreTokens = findViewById(R.id.btn_restore_tokens)
-        // llPendingRequests & tvPendingLabel removed
-        findViewById<android.view.View>(R.id.ll_pending_requests)?.visibility = View.GONE
-        findViewById<android.view.View>(R.id.tv_pending_label)?.visibility = View.GONE
+        (testButtons.values + listOf(btnSelectModel, btnBackupTokens, btnRestoreTokens)).forEach { labels[it] = it.text }
 
         llAuthorizedApps = findViewById(R.id.ll_authorized_apps)
-        tvAuthorizedLabel = findViewById(R.id.tv_authorized_label)
+        tvNoAuthorizedApps = findViewById(R.id.tv_no_authorized_apps)
         
         // Initialize TokenManager
         tokenManager = TokenManager.getInstance(this)
@@ -236,7 +384,7 @@ class MainActivity : AppCompatActivity() {
         if (existingTokens.isNotEmpty()) {
             currentToken = existingTokens.first()
             updateTokenUI()
-            appendLog("Restored existing API token")
+            appendLog(getString(R.string.log_token_restored))
         }
         
         // Token button listeners
@@ -253,46 +401,39 @@ class MainActivity : AppCompatActivity() {
         )
         rgVisionBackend.check(encoderRadioId(EncoderBackendOption.fromStored(prefs.getString(KEY_VISION_BACKEND, null)), R.id.rb_vision_auto, R.id.rb_vision_cpu, R.id.rb_vision_gpu))
         rgAudioBackend.check(encoderRadioId(EncoderBackendOption.fromStored(prefs.getString(KEY_AUDIO_BACKEND, null)), R.id.rb_audio_auto, R.id.rb_audio_cpu, R.id.rb_audio_gpu))
+        rgBackend.check(
+            when (prefs.getString(KEY_BACKEND, null)) {
+                BACKEND_CPU -> R.id.rb_cpu
+                BACKEND_NPU -> R.id.rb_npu
+                else -> R.id.rb_gpu
+            }
+        )
         val savedContextSize = prefs.getInt(KEY_CONTEXT_SIZE, 0)
         if (savedContextSize > 0) etContextSize.setText(String.format(Locale.ROOT, "%d", savedContextSize)) // lint SetTextI18n: no bare number text
+        setUpSettingsListeners()
         val savedPath = prefs.getString(KEY_MODEL_PATH, null)
         if (savedPath != null) {
             val file = File(savedPath)
             if (file.exists()) {
                 selectedModelPath = savedPath
                 tvModelPath.text = savedPath
-                switchEnableServer.isEnabled = true
-                appendLog("Restored model path: $savedPath")
+                appendLog(getString(R.string.log_model_restored, savedPath))
             }
         }
 
-        btnSelectModel.setOnClickListener {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "*/*"
-            }
-            selectModelLauncher.launch(intent)
-        }
+        btnSelectModel.setOnClickListener { openModelPicker() }
 
+        // A click, not a checked-change listener: the switch shows what the person chose until render() shows the state.
         switchEnableServer.setOnClickListener {
-             // We handle logic here instead of OnCheckedChangeListener to have better control over user interaction vs programmatic changes
-             if (switchEnableServer.isChecked) {
-                 if (selectedModelPath == null) {
-                     switchEnableServer.isChecked = false
-                     appendLog("Error: No model selected")
-                 } else {
-                     // Start server
-                     switchEnableServer.isEnabled = false // Disable until loaded
-                     startInferenceService()
-                     // Status will be updated by Broadcast
-                     appendLog("Starting server...")
-                 }
-             } else {
-                 // Stop server
-                 stopInferenceService()
-                 updateUIForStatus("Idle")
-                 appendLog("Stopping server...")
-             }
+            if (switchEnableServer.isChecked) requestStart() else requestStop()
+        }
+
+        btnNoticeAction.setOnClickListener {
+            when (errorAction) {
+                ErrorAction.TRY_AGAIN -> requestStart()
+                ErrorAction.SELECT_MODEL -> openModelPicker()
+                null -> Unit
+            }
         }
 
         btnTestInference.setOnClickListener {
@@ -311,7 +452,9 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                 startAudioRecording()
             } else {
-                requestPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                // Explain first; the system prompt comes only from the card's allow button.
+                micCardShown = true
+                render()
             }
         }
         
@@ -319,90 +462,466 @@ class MainActivity : AppCompatActivity() {
         
         btnTestHealth.setOnClickListener {
             val token = getOrGenerateToken()
+            startBusy(BusyTask.TEST_HEALTH)
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val result = performGetRequest("http://localhost:8080/v1/health", token)
+                    val result = performGetRequest("$SERVER_ADDRESS/v1/health", token)
                     withContext(Dispatchers.Main) {
-                        appendLog("Health Check: $result")
+                        appendLog(getString(R.string.log_health, result))
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
-                        appendLog("Health Check Failed: ${e.message}")
+                        appendLog(getString(R.string.log_health_failed, e.message))
                     }
+                } finally {
+                    endBusy(BusyTask.TEST_HEALTH)
                 }
             }
         }
-        
+
         btnTestLoad.setOnClickListener {
             val token = getOrGenerateToken()
+            startBusy(BusyTask.TEST_LOAD)
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val result = performGetRequest("http://localhost:8080/v1/load", token)
+                    val result = performGetRequest("$SERVER_ADDRESS/v1/load", token)
                     val json = JSONObject(result)
                     val load = json.optInt("load", -1)
                     withContext(Dispatchers.Main) {
-                        appendLog("Current Server Load: $load")
+                        appendLog(getString(R.string.log_load, load))
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
-                        appendLog("Get Load Failed: ${e.message}")
+                        appendLog(getString(R.string.log_load_failed, e.message))
                     }
+                } finally {
+                    endBusy(BusyTask.TEST_LOAD)
                 }
             }
         }
         
-        checkAndRequestPermissions()
-        requestIgnoreBatteryOptimizations()
+        setFoldOpen(savedInstanceState?.getBoolean(STATE_FOLD_OPEN) == true, animate = false)
+        showPage(savedInstanceState?.getInt(STATE_PAGE, R.id.nav_server) ?: R.id.nav_server, animate = false)
+        render()
     }
 
-    private fun getOrGenerateToken(): String {
-        if (currentToken != null) return currentToken!!
-        generateNewToken()
-        return currentToken!!
+    /** Shows one page: its visibility, the top bar title, the selected navigation item, Back and the sphere's strength. */
+    private fun showPage(itemId: Int, animate: Boolean = true): Boolean {
+        val (page, title) = when (itemId) {
+            R.id.nav_server -> pageServer to R.string.nav_server
+            R.id.nav_backend -> pageBackend to R.string.nav_backend
+            R.id.nav_tokens -> pageTokens to R.string.nav_tokens
+            else -> return false
+        }
+        val changed = currentPage != itemId || page.visibility != View.VISIBLE
+        currentPage = itemId
+        for (p in listOf(pageServer, pageBackend, pageTokens)) p.visibility = if (p === page) View.VISIBLE else View.GONE
+        toolbar.title = getString(title)
+        bottomNav?.menu?.findItem(itemId)?.isChecked = true
+        navRail?.menu?.findItem(itemId)?.isChecked = true
+        navPanel?.setCheckedItem(itemId)
+        if (itemId == R.id.nav_tokens) updateAuthorizedAppsUI()
+        backToServer.isEnabled = itemId != R.id.nav_server
+        updateSphereStrength()
+        if (animate && changed && ValueAnimator.areAnimatorsEnabled()) {
+            AnimatorInflater.loadAnimator(this, R.animator.fade_scale).apply { setTarget(page) }.start()
+        }
+        return true
+    }
+
+    /** Keeps a page's reading panel reaching the bottom of the screen when its content is shorter than the page. */
+    private fun fillToBottom(page: View, panelId: Int) {
+        val panel = page.findViewById<View>(panelId)
+        page.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
+            val offset = panel.top
+            val min = maxOf(0, bottom - top - offset)
+            if (panel.minimumHeight != min) panel.post { panel.minimumHeight = min }
+        }
+    }
+
+    /** Open at the top of Server; reading strength once its headline has scrolled away, and on every other page. */
+    private fun updateSphereStrength() {
+        sphere.setOpen(currentPage == R.id.nav_server && !serverScrolledPastOpen)
+    }
+
+    private fun setFoldOpen(open: Boolean, animate: Boolean) {
+        foldBody.visibility = if (open) View.VISIBLE else View.GONE
+        val angle = if (open) resources.getInteger(R.integer.fold_chevron_open_degrees).toFloat() else 0f
+        foldChevron.animate().cancel()
+        if (animate && ValueAnimator.areAnimatorsEnabled()) {
+            foldChevron.animate().rotation(angle)
+                .setDuration(resources.getInteger(R.integer.duration_base).toLong())
+                .setInterpolator(AnimationUtils.loadInterpolator(this, R.interpolator.ease_spring))
+                .start()
+        } else {
+            foldChevron.rotation = angle
+        }
+        ViewCompat.setStateDescription(foldHeader, getString(if (open) R.string.state_expanded else R.string.state_collapsed))
+    }
+
+    /**
+     * Draws behind the system bars and keeps content clear of them and of the keyboard (rule book Part 6). Bar icons follow
+     * day and night here, for every API level.
+     */
+    private fun setUpEdgeToEdge() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !night
+            isAppearanceLightNavigationBars = !night
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
+        // The background also fills a camera cutout on a short edge (landscape); the insets below keep content clear of it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        val gap = resources.getDimensionPixelSize(R.dimen.floating_gap)
+        val topBarHeight = resources.getDimensionPixelSize(R.dimen.top_bar_height)
+        val briefHost = findViewById<View>(R.id.brief_host)
+        val frameRow = findViewById<View?>(R.id.frame_row)
+        val column = findViewById<View>(R.id.content_column)
+        val bars = WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+        val phoneNav = bottomNav
+        if (frameRow == null && phoneNav != null) {
+            ViewCompat.setOnApplyWindowInsetsListener(column) { _, insets ->
+                val b = insets.getInsets(bars)
+                val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+                val typing = insets.isVisible(WindowInsetsCompat.Type.ime())
+                // The bar reaches under the status bar; its own height stays clear of it.
+                toolbar.updatePadding(top = b.top)
+                toolbar.minimumHeight = topBarHeight + b.top
+                column.updatePadding(left = b.left, right = b.right, bottom = if (typing) ime.bottom else 0)
+                // While typing, the field rides above the keyboard and the bottom bar steps aside.
+                phoneNav.visibility = if (typing) View.GONE else View.VISIBLE
+                briefHost.updatePadding(bottom = if (typing) ime.bottom else b.bottom + phoneNav.height)
+                insets
+            }
+            phoneNav.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+                if (bottom - top != oldBottom - oldTop) ViewCompat.requestApplyInsets(column)
+            }
+        } else if (frameRow != null) {
+            ViewCompat.setOnApplyWindowInsetsListener(frameRow) { _, insets ->
+                val b = insets.getInsets(bars)
+                val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+                val bottom = maxOf(b.bottom, ime.bottom)
+                frameRow.updatePadding(left = gap + b.left, top = gap + b.top, right = gap + b.right, bottom = gap + bottom)
+                briefHost.updatePadding(bottom = gap + bottom)
+                // The frame has made room; the rail and the navigation panel must not pad again.
+                WindowInsetsCompat.CONSUMED
+            }
+        }
+    }
+
+    /**
+     * On API 31 and later in glass mode, frosts the floating navigation piece (rail or navigation panel) with a blurred
+     * copy of the sphere. Content panels use the light glass tint alone: rule book 2.1 keeps their blur "almost none", and a
+     * blurred copy behind every panel cost about two thirds of CPU decode speed on the test emulator.
+     */
+    private fun attachFrosts() {
+        if (solid || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val r = resources
+        val panel = floatArrayOf(
+            r.getDimension(R.dimen.radius_panel_top_left), r.getDimension(R.dimen.radius_panel_top_right),
+            r.getDimension(R.dimen.radius_panel_bottom_right), r.getDimension(R.dimen.radius_panel_bottom_left),
+        )
+        findViewById<SphereFrostView?>(R.id.frost_nav)?.attach(sphere, r.getDimension(R.dimen.glass_float_blur), panel)
+    }
+
+    /** Settings apply at once (rule book 7.7): each change is saved as it is made, with "Saving" then "Saved". */
+    private fun setUpSettingsListeners() {
+        rgBackend.setOnCheckedChangeListener { _, id -> saveSetting { putString(KEY_BACKEND, backendName(id)) } }
+        rgSpeculative.setOnCheckedChangeListener { _, id -> saveSetting { putString(KEY_SPECULATIVE, speculativeOption(id).name) } }
+        rgVisionBackend.setOnCheckedChangeListener { _, id ->
+            saveSetting { putString(KEY_VISION_BACKEND, encoderOption(id, R.id.rb_vision_cpu, R.id.rb_vision_gpu).name) }
+        }
+        rgAudioBackend.setOnCheckedChangeListener { _, id ->
+            saveSetting { putString(KEY_AUDIO_BACKEND, encoderOption(id, R.id.rb_audio_cpu, R.id.rb_audio_gpu).name) }
+        }
+        // Checked when the person leaves the box or presses Done, never while they type.
+        etContextSize.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) commitContextSize() }
+        etContextSize.setOnEditorActionListener { view, actionId, _ ->
+            if (actionId != EditorInfo.IME_ACTION_DONE) return@setOnEditorActionListener false
+            view.clearFocus()
+            WindowCompat.getInsetsController(window, view).hide(WindowInsetsCompat.Type.ime())
+            true
+        }
+    }
+
+    private fun commitContextSize() {
+        val stored = ContextSizeInput.toStored(ContextSizeInput.parse(etContextSize.text.toString()))
+        contextSizeInvalid = stored == null
+        render()
+        if (stored != null) saveSetting { putInt(KEY_CONTEXT_SIZE, stored) }
+    }
+
+    /**
+     * Writes one setting. "Saving" shows while the write is made; "Saved" once SharedPreferences holds it (the disk write
+     * finishes before the activity pauses). A running server reads settings when it starts, so the page says so.
+     */
+    private fun saveSetting(write: android.content.SharedPreferences.Editor.() -> Unit) {
+        tvSettingsState.text = getString(R.string.settings_saving)
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit { write() }
+        val running = ServerStatusStore.current.kind.let { it == ServerStatus.STARTING || it == ServerStatus.READY }
+        tvSettingsState.post {
+            tvSettingsState.text = getString(R.string.settings_saved)
+            tvSettingsNote.visibility = if (running) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun backendName(checkedId: Int) = when (checkedId) {
+        R.id.rb_cpu -> BACKEND_CPU
+        R.id.rb_npu -> BACKEND_NPU
+        else -> BACKEND_GPU
+    }
+
+    private fun speculativeOption(checkedId: Int) = when (checkedId) {
+        R.id.rb_spec_off -> SpeculativeDecodingOption.OFF
+        R.id.rb_spec_on -> SpeculativeDecodingOption.ON
+        else -> SpeculativeDecodingOption.ADAPTIVE
+    }
+
+    /** Records an answer to an explain card ("Not now", the system's answer, or a failed launch); it is not shown again. */
+    private fun answerCard(card: ExplainCard) {
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
+            putBoolean(if (card == ExplainCard.NOTIFICATIONS) KEY_ANSWERED_NOTIFICATIONS else KEY_ANSWERED_BATTERY, true)
+        }
+        if (awaitingCard == card) awaitingCard = null
+        render()
+    }
+
+    private fun askNotifications() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return answerCard(ExplainCard.NOTIFICATIONS)
+        awaitingCard = ExplainCard.NOTIFICATIONS
+        render()
+        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    // The exemption keeps the foreground service alive (docs/standards/android.md); it is asked for only from its card.
+    @android.annotation.SuppressLint("BatteryLife")
+    private fun askBatteryExemption() {
+        awaitingCard = ExplainCard.BATTERY
+        render()
+        try {
+            batteryExemptionLauncher.launch(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:$packageName".toUri()))
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "No screen for the battery exemption", e)
+            answerCard(ExplainCard.BATTERY)
+        }
+    }
+
+    private fun renderExplainCards(kind: ServerStatus) {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val notificationsMissing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        val batteryMissing = !(getSystemService(Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
+        val choice = ExplainCardPolicy.next(
+            ExplainCardState(
+                kind, notificationsMissing, batteryMissing,
+                prefs.getBoolean(KEY_ANSWERED_NOTIFICATIONS, false), prefs.getBoolean(KEY_ANSWERED_BATTERY, false), awaitingCard,
+            )
+        )
+        when (choice.card) {
+            null -> cardExplain.visibility = View.GONE
+            ExplainCard.NOTIFICATIONS -> ui.bindExplainCard(
+                cardExplain, getString(R.string.explain_notifications_title), getString(R.string.explain_notifications_body),
+                getString(R.string.explain_notifications_allow), choice.buttonsEnabled,
+                onAllow = { askNotifications() }, onNotNow = { answerCard(ExplainCard.NOTIFICATIONS) },
+            )
+            ExplainCard.BATTERY -> ui.bindExplainCard(
+                cardExplain, getString(R.string.explain_battery_title), getString(R.string.explain_battery_body),
+                getString(R.string.explain_battery_allow), choice.buttonsEnabled,
+                onAllow = { askBatteryExemption() }, onNotNow = { answerCard(ExplainCard.BATTERY) },
+            )
+        }
+        if (!micCardShown) {
+            cardExplainMic.visibility = View.GONE
+            return
+        }
+        ui.bindExplainCard(
+            cardExplainMic, getString(R.string.explain_microphone_title), getString(R.string.explain_microphone_body),
+            getString(R.string.explain_microphone_allow), !micAwaiting,
+            onAllow = {
+                micAwaiting = true
+                render()
+                requestPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+            },
+            onNotNow = {
+                micCardShown = false
+                render()
+            },
+        )
+    }
+
+    private fun getOrGenerateToken(): String = currentToken ?: tokenManager.generateToken().also {
+        currentToken = it
+        updateTokenUI()
+    }
+
+    private fun openModelPicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        selectModelLauncher.launch(intent)
+    }
+
+    /** Switching the server on (or "Try again"): checks the context size, then asks the service to start. */
+    private fun requestStart() {
+        val contextTokens = ContextSizeInput.toStored(ContextSizeInput.parse(etContextSize.text.toString()))
+        if (contextTokens == null) {
+            contextSizeInvalid = true
+            ui.brief(getString(R.string.context_size_check_backend))
+            render()
+            return
+        }
+        contextSizeInvalid = false
+        pendingAction = PendingAction.START
+        try {
+            startInferenceService(contextTokens)
+            appendLog(getString(R.string.log_starting))
+            sphere.ripple()
+        } catch (e: IllegalStateException) {
+            couldNotReachService(e)
+        } catch (e: SecurityException) {
+            couldNotReachService(e)
+        }
+        render()
+    }
+
+    private fun requestStop() {
+        pendingAction = PendingAction.STOP
+        try {
+            stopInferenceService()
+            appendLog(getString(R.string.log_stopping))
+        } catch (e: IllegalStateException) {
+            couldNotReachService(e)
+        } catch (e: SecurityException) {
+            couldNotReachService(e)
+        }
+        render()
+    }
+
+    private fun couldNotReachService(e: Exception) {
+        pendingAction = PendingAction.NONE
+        Log.e(TAG, "Could not reach the inference service", e)
+        ui.brief(getString(R.string.service_unreachable))
+    }
+
+    /** Marks [task] busy and redraws. Main thread. */
+    private fun startBusy(task: BusyTask) {
+        busy.add(task)
+        render()
+    }
+
+    /** Ends [task] from any thread (called from `finally` blocks). */
+    private fun endBusy(task: BusyTask) {
+        runOnUiThread {
+            busy.remove(task)
+            render()
+        }
+    }
+
+    /**
+     * The only code that sets a control's enabled or checked state, the status light, word and detail, reason lines,
+     * busy labels, the working movements and the error strip. Every event ends here.
+     */
+    private fun render() {
+        val status = ServerStatusStore.current
+        val c = ControlsPolicy.compute(ControlsState(status, pendingAction, selectedModelPath != null, currentToken != null, busy))
+        val word = getString(statusWordRes(c.kind))
+        listOf(ivStatusLight to tvStatusWord, ivHeaderStatusLight to tvHeaderStatusWord).forEach { (light, label) ->
+            light?.setImageLevel(c.kind.ordinal)
+            light?.let { ui.setLightPulsing(it, c.working) }
+            label?.text = word
+        }
+        // An error's detail is in the notice strip, so it is not repeated above it.
+        tvStatus.text = if (c.kind == status.kind && c.kind != ServerStatus.ERROR) status.detail else ""
+        tvStatus.visibility = if (tvStatus.text.isEmpty()) View.GONE else View.VISIBLE
+        ui.setDotsWorking(workingDots, c.working)
+        sphere.setWorking(c.working)
+
+        switchEnableServer.isChecked = c.switchChecked
+        switchEnableServer.isEnabled = c.switchEnabled
+        showReason(tvSwitchReason, c.switchReason)
+        for ((task, button) in testButtons) {
+            val state = c.tests.getValue(task)
+            button.isEnabled = state.enabled
+            val busyLabel = if (task == BusyTask.TEST_AUDIO && isRecording) R.string.busy_recording else R.string.busy_running
+            ui.setBusy(button, state.busy, labels.getValue(button), getString(busyLabel))
+        }
+        showReason(tvTestsReason, c.testsReason)
+        btnSelectModel.isEnabled = c.selectModel.enabled
+        ui.setBusy(btnSelectModel, c.selectModel.busy, labels.getValue(btnSelectModel), getString(R.string.busy_copying))
+        progressModelCopy.visibility = if (c.selectModel.busy) View.VISIBLE else View.GONE
+
+        btnCopyToken.isEnabled = c.copyToken.enabled
+        btnDeleteToken.isEnabled = c.deleteToken.enabled
+        showReason(tvTokenReason, c.tokenReason)
+        btnBackupTokens.isEnabled = c.backup.enabled
+        ui.setBusy(btnBackupTokens, c.backup.busy, labels.getValue(btnBackupTokens), getString(R.string.busy_backing_up))
+        btnRestoreTokens.isEnabled = c.restore.enabled
+        ui.setBusy(btnRestoreTokens, c.restore.busy, labels.getValue(btnRestoreTokens), getString(R.string.busy_restoring))
+
+        etContextSize.isActivated = contextSizeInvalid
+        tvContextSizeReason.text = getString(R.string.context_size_invalid)
+        tvContextSizeReason.visibility = if (contextSizeInvalid) View.VISIBLE else View.GONE
+
+        errorAction = c.errorAction
+        val noticeArriving = c.errorAction != null && noticeError.visibility != View.VISIBLE
+        noticeError.visibility = if (c.errorAction == null) View.GONE else View.VISIBLE
+        if (noticeArriving) ui.arrive(noticeError)
+        tvNoticeText.text = status.detail
+        btnNoticeAction.text = getString(if (c.errorAction == ErrorAction.SELECT_MODEL) R.string.select_model else R.string.try_again)
+        btnNoticeAction.isEnabled = c.errorActionEnabled
+
+        renderExplainCards(status.kind)
+    }
+
+    private fun showReason(view: TextView, reason: OffReason?) {
+        view.visibility = if (reason == null) View.GONE else View.VISIBLE
+        if (reason != null) view.text = getString(reasonRes(reason))
+    }
+
+    private fun reasonRes(reason: OffReason) = when (reason) {
+        OffReason.SELECT_MODEL_FIRST -> R.string.reason_select_model_first
+        OffReason.WAIT_FOR_COPY -> R.string.reason_wait_for_copy
+        OffReason.START_SERVER_FIRST -> R.string.reason_start_server_first
+        OffReason.GENERATE_TOKEN_FIRST -> R.string.reason_generate_token_first
+    }
+
+    private fun statusWordRes(kind: ServerStatus) = when (kind) {
+        ServerStatus.OFF -> R.string.status_word_off
+        ServerStatus.STARTING -> R.string.status_word_starting
+        ServerStatus.READY -> R.string.status_word_ready
+        ServerStatus.ERROR -> R.string.status_word_error
     }
 
     private fun setupTokenListeners() {
-        btnGenerateToken.setOnClickListener {
-            // Generate new token (or regenerate if one exists)
-            if (currentToken != null) {
-                // Ask user for confirmation before regenerating
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Generate New Token?")
-                    .setMessage("This will create a new token. The old token will still be valid. Continue?")
-                    .setPositiveButton("Generate") { _, _ ->
-                        generateNewToken()
-                    }
-                    .setNegativeButton("Cancel", null)
-                    .show()
-            } else {
-                generateNewToken()
-            }
-        }
-        
+        // Generating is not confirmed: it can be undone by generating again (only the irreversible asks first).
+        btnGenerateToken.setOnClickListener { generateNewToken() }
+
         btnCopyToken.setOnClickListener {
             currentToken?.let { token ->
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("API Token", token)
+                val clip = ClipData.newPlainText(getString(R.string.section_api_token), token)
                 clipboard.setPrimaryClip(clip)
-                Toast.makeText(this, getString(R.string.token_copied), Toast.LENGTH_SHORT).show()
-                appendLog("Token copied to clipboard")
+                ui.brief(getString(R.string.token_copied))
+                appendLog(getString(R.string.token_copied))
             }
         }
-        
+
         btnDeleteToken.setOnClickListener {
             currentToken?.let { token ->
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Delete Token?")
-                    .setMessage("This will revoke the token. Any client using this token will lose access. Continue?")
-                    .setPositiveButton("Delete") { _, _ ->
-                        tokenManager.revokeToken(token)
-                        currentToken = null
-                        updateTokenUI()
-                        Toast.makeText(this, getString(R.string.token_deleted), Toast.LENGTH_SHORT).show()
-                        appendLog("Token deleted")
-                    }
-                    .setNegativeButton("Cancel", null)
-                    .show()
+                ui.confirm(getString(R.string.delete_token_title), getString(R.string.delete_token_body), getString(R.string.delete_token)) {
+                    tokenManager.revokeToken(token)
+                    currentToken = null
+                    updateTokenUI()
+                    updateAuthorizedAppsUI()
+                    ui.brief(getString(R.string.token_deleted))
+                    appendLog(getString(R.string.token_deleted))
+                }
             }
         }
 
@@ -421,6 +940,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performBackup(uri: Uri) {
+        startBusy(BusyTask.BACKUP)
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val tokens = tokenManager.getAllTokens()
@@ -429,20 +949,23 @@ class MainActivity : AppCompatActivity() {
                     outputStream.write(json.toByteArray())
                 }
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, getString(R.string.tokens_backed_up), Toast.LENGTH_SHORT).show()
-                    appendLog("Tokens backed up to: $uri")
+                    ui.brief(getString(R.string.tokens_backed_up))
+                    appendLog(getString(R.string.log_backed_up, uri.toString()))
                 }
             } catch (e: Exception) {
-                Log.e("MainActivity", "Backup failed", e)
+                Log.e(TAG, "Backup failed", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, getString(R.string.backup_error), Toast.LENGTH_SHORT).show()
-                    appendLog("Backup failed: ${e.message}")
+                    ui.brief(getString(R.string.backup_error))
+                    appendLog(getString(R.string.log_backup_failed, e.message))
                 }
+            } finally {
+                endBusy(BusyTask.BACKUP)
             }
         }
     }
 
     private fun performRestore(uri: Uri) {
+        startBusy(BusyTask.RESTORE)
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 contentResolver.openInputStream(uri)?.use { inputStream ->
@@ -457,16 +980,19 @@ class MainActivity : AppCompatActivity() {
                             currentToken = tokens.first()
                             updateTokenUI()
                         }
-                        Toast.makeText(this@MainActivity, getString(R.string.tokens_restored), Toast.LENGTH_SHORT).show()
-                        appendLog("Tokens restored from: $uri")
+                        updateAuthorizedAppsUI()
+                        ui.brief(getString(R.string.tokens_restored))
+                        appendLog(getString(R.string.log_restored, uri.toString()))
                     }
                 }
             } catch (e: Exception) {
-                Log.e("MainActivity", "Restore failed", e)
+                Log.e(TAG, "Restore failed", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, getString(R.string.restore_error), Toast.LENGTH_SHORT).show()
-                    appendLog("Restore failed: ${e.message}")
+                    ui.brief(getString(R.string.restore_error))
+                    appendLog(getString(R.string.log_restore_failed, e.message))
                 }
+            } finally {
+                endBusy(BusyTask.RESTORE)
             }
         }
     }
@@ -474,100 +1000,37 @@ class MainActivity : AppCompatActivity() {
     private fun generateNewToken() {
         currentToken = tokenManager.generateToken()
         updateTokenUI()
-        Toast.makeText(this, getString(R.string.token_generated), Toast.LENGTH_SHORT).show()
-        appendLog("New API token generated: ${currentToken?.take(8)}...")
+        updateAuthorizedAppsUI()
+        ui.brief(getString(R.string.token_generated))
+        appendLog(getString(R.string.token_generated))
+        sphere.ripple()
     }
     
     private fun updateTokenUI() {
-        if (currentToken != null) {
-            tvApiToken.text = currentToken
-            btnCopyToken.isEnabled = true
-            btnDeleteToken.isEnabled = true
-        } else {
-            tvApiToken.text = getString(R.string.no_token_generated)
-            btnCopyToken.isEnabled = false
-            btnDeleteToken.isEnabled = false
-        }
+        tvApiToken.text = currentToken ?: getString(R.string.no_token_generated)
+        render()
     }
 
     private fun updateAuthorizedAppsUI() {
         val mappings = tokenManager.getTokenMappings()
         llAuthorizedApps.removeAllViews()
-        
-        if (mappings.isEmpty()) {
-            tvAuthorizedLabel.visibility = View.GONE
-            return
-        }
-        
-        tvAuthorizedLabel.visibility = View.VISIBLE
+        tvNoAuthorizedApps.visibility = if (mappings.isEmpty()) View.VISIBLE else View.GONE
         mappings.forEach { (pkgName, token) ->
-            val itemView = layoutInflater.inflate(android.R.layout.simple_list_item_2, llAuthorizedApps, false)
-            itemView.setPadding(32, 16, 32, 16)
-            val text1 = itemView.findViewById<TextView>(android.R.id.text1)
-            val text2 = itemView.findViewById<TextView>(android.R.id.text2)
-            
-            text1.text = pkgName
-            text2.text = "Token: ${token.take(8)}... (Tap to Revoke)"
-            
-            itemView.setOnClickListener {
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Revoke Access")
-                    .setMessage("Revoke API access for '$pkgName'? All active conversations for this token will be closed.")
-                    .setPositiveButton("Revoke") { _, _ ->
-                        val tokenToRevoke = mappings[pkgName]
-                        if (tokenToRevoke != null) {
-                            tokenManager.revokeToken(tokenToRevoke)
-                            if (currentToken == tokenToRevoke) {
-                                currentToken = null
-                                updateTokenUI()
-                            }
-                            updateAuthorizedAppsUI()
-                            appendLog("Revoked access for $pkgName")
-                        }
+            val row = layoutInflater.inflate(R.layout.row_authorized_app, llAuthorizedApps, false)
+            row.findViewById<TextView>(R.id.tv_app_package).text = pkgName
+            row.findViewById<TextView>(R.id.tv_app_detail).text = getString(R.string.app_has_token)
+            row.findViewById<MaterialButton>(R.id.btn_revoke_app).setOnClickListener {
+                ui.confirm(getString(R.string.revoke_title, pkgName), getString(R.string.revoke_body), getString(R.string.revoke_access)) {
+                    tokenManager.revokeToken(token)
+                    if (currentToken == token) {
+                        currentToken = null
+                        updateTokenUI()
                     }
-                    .setNegativeButton("Cancel", null)
-                    .show()
-            }
-            llAuthorizedApps.addView(itemView)
-        }
-    }
-
-    private fun checkAndRequestPermissions() {
-        val permissions = mutableListOf<String>()
-        
-        permissions.add(android.Manifest.permission.RECORD_AUDIO)
-        
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
-            permissions.add(android.Manifest.permission.READ_MEDIA_AUDIO)
-            permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        
-        val permissionsToRequest = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        
-        if (permissionsToRequest.isNotEmpty()) {
-            requestMultiplePermissionsLauncher.launch(permissionsToRequest.toTypedArray())
-        }
-    }
-
-    private fun requestIgnoreBatteryOptimizations() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                appendLog("Requesting battery optimization exclusion...")
-                try {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    appendLog("Error requesting battery optimization: ${e.message}")
+                    updateAuthorizedAppsUI()
+                    appendLog(getString(R.string.log_revoked, pkgName))
                 }
             }
+            llAuthorizedApps.addView(row)
         }
     }
 
@@ -582,53 +1045,68 @@ class MainActivity : AppCompatActivity() {
     private fun startAudioRecording() {
         if (isRecording) return
         isRecording = true
-
-        tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_recording)
-        appendLog("Recording for 5 seconds...")
+        // The audio test stays busy through the recording and the request; every exit below ends it.
+        startBusy(BusyTask.TEST_AUDIO)
+        appendLog(getString(R.string.log_recording))
 
         try {
-            audioFile = File(cacheDir, "test_audio.wav")
+            val file = File(cacheDir, "test_audio.wav")
+            audioFile = file
             val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-            
+
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                appendLog("Permission missing")
+                appendLog(getString(R.string.log_mic_missing))
+                isRecording = false
+                endBusy(BusyTask.TEST_AUDIO)
                 return
             }
-            
+
             val recorder = AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, bufferSize)
-            
+
             recordingJob = CoroutineScope(Dispatchers.IO).launch {
-                val data = ByteArray(bufferSize)
-                FileOutputStream(audioFile).use { output ->
-                    // Leave space for 44-byte WAV header
-                    output.write(ByteArray(44)) 
-                    
-                    recorder.startRecording()
-                    val startTime = System.currentTimeMillis()
-                    
-                    while (isRecording && System.currentTimeMillis() - startTime < 5000) {
-                        val read = recorder.read(data, 0, data.size)
-                        if (read > 0) {
-                            output.write(data, 0, read)
+                try {
+                    val data = ByteArray(bufferSize)
+                    FileOutputStream(file).use { output ->
+                        // Leave space for 44-byte WAV header
+                        output.write(ByteArray(44))
+
+                        recorder.startRecording()
+                        val startTime = System.currentTimeMillis()
+
+                        while (isRecording && System.currentTimeMillis() - startTime < 5000) {
+                            val read = recorder.read(data, 0, data.size)
+                            if (read > 0) {
+                                output.write(data, 0, read)
+                            }
                         }
+
+                        recorder.stop()
                     }
-                    
-                    recorder.stop()
+
+                    // Add WAV header
+                    addWavHeader(file)
+
+                    withContext(Dispatchers.Main) {
+                        stopAudioRecording()
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Recording failed", e)
+                    withContext(Dispatchers.Main) {
+                        isRecording = false
+                        appendLog(getString(R.string.log_recording_failed, e.message))
+                        endBusy(BusyTask.TEST_AUDIO)
+                    }
+                } finally {
                     recorder.release()
-                }
-
-                // Add WAV header
-                addWavHeader(audioFile!!)
-
-                withContext(Dispatchers.Main) {
-                    stopAudioRecording()
                 }
             }
 
         } catch (e: Exception) {
             isRecording = false
-            appendLog("Recording Failed: ${e.message}")
-            tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+            appendLog(getString(R.string.log_recording_failed, e.message))
+            endBusy(BusyTask.TEST_AUDIO)
         }
     }
 
@@ -694,15 +1172,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopAudioRecording() {
         isRecording = false
-        appendLog("Recording finished.")
+        appendLog(getString(R.string.log_recording_done))
         runTestAudio()
     }
 
     private fun runTestAudio() {
-        val file = audioFile ?: return
+        val file = audioFile ?: run {
+            endBusy(BusyTask.TEST_AUDIO)
+            return
+        }
         val token = getOrGenerateToken()
+        render()
         
-        appendLog("=== Starting Audio Test (Streaming) ===")
+        appendLog(getString(R.string.log_test_started, getString(R.string.test_audio)))
         CoroutineScope(Dispatchers.IO).launch {
              try {
                 // Step 3: Encode audio
@@ -711,7 +1193,7 @@ class MainActivity : AppCompatActivity() {
                 
                 val messages = listOf(
                     ChatMessage("user", gson.toJsonTree(listOf(
-                        mapOf("type" to "text", "text" to "What is in this audio?"),
+                        mapOf("type" to "text", "text" to getString(R.string.test_prompt_audio)),
                         mapOf("type" to "audio_url", "audio_url" to mapOf("url" to "data:audio/wav;base64,$base64Audio"))
                     )))
                 )
@@ -719,7 +1201,7 @@ class MainActivity : AppCompatActivity() {
                 val req = ChatCompletionRequest(model = "gemma-audio", messages = messages, stream = true)
 
                 withContext(Dispatchers.Main) {
-                    appendLog("Assistant: ", newLine = false)
+                    appendLog(getString(R.string.log_assistant))
                 }
 
                 performStreamingChatRequest(req, token) { chunk ->
@@ -727,24 +1209,23 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 withContext(Dispatchers.Main) {
-                    appendLog("\n=== Audio Test Complete ===")
-                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                    appendLog(getString(R.string.log_test_finished, getString(R.string.test_audio)))
                 }
              } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("\n❌ Audio Test Failed: ${e.message}")
-                     tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                     appendLog(getString(R.string.log_test_failed, getString(R.string.test_audio), e.message))
                  }
              } finally {
                  file.delete()
+                 endBusy(BusyTask.TEST_AUDIO)
              }
         }
     }
 
     private fun runTestVision(imageUri: Uri) {
         val token = getOrGenerateToken()
-        tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_selecting_image)
-        appendLog("=== Starting Vision Test (Streaming) ===")
+        startBusy(BusyTask.TEST_VISION)
+        appendLog(getString(R.string.log_test_started, getString(R.string.test_vision)))
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -752,14 +1233,14 @@ class MainActivity : AppCompatActivity() {
                 val base64Image = getBase64EncodedImage(imageUri)
                 if (base64Image == null) {
                     withContext(Dispatchers.Main) {
-                         appendLog("❌ Could not encode image")
+                         appendLog(getString(R.string.log_image_unreadable))
                     }
                     return@launch
                 }
 
                 val messages = listOf(
                     ChatMessage("user", gson.toJsonTree(listOf(
-                        mapOf("type" to "text", "text" to "What is in this image?"),
+                        mapOf("type" to "text", "text" to getString(R.string.test_prompt_image)),
                         mapOf("type" to "image_url", "image_url" to mapOf("url" to "data:image/jpeg;base64,$base64Image"))
                     )))
                 )
@@ -767,7 +1248,7 @@ class MainActivity : AppCompatActivity() {
                 val req = ChatCompletionRequest(model = "gemma-vision", messages = messages, stream = true)
 
                 withContext(Dispatchers.Main) {
-                    appendLog("Assistant: ", newLine = false)
+                    appendLog(getString(R.string.log_assistant))
                 }
 
                 performStreamingChatRequest(req, token) { chunk ->
@@ -775,14 +1256,14 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 withContext(Dispatchers.Main) {
-                    appendLog("\n=== Vision Test Complete ===")
-                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                    appendLog(getString(R.string.log_test_finished, getString(R.string.test_vision)))
                 }
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("\n❌ Vision Test Failed: ${e.message}")
-                     tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                     appendLog(getString(R.string.log_test_failed, getString(R.string.test_vision), e.message))
                  }
+            } finally {
+                endBusy(BusyTask.TEST_VISION)
             }
         }
     }
@@ -800,11 +1281,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun copyModelFile(uri: Uri) {
-        tvStatus.text = getString(R.string.status_label) + " Copying..."
-        appendLog("Copying model file...")
+        appendLog(getString(R.string.log_copying_model))
+        // A known size gives a progress bar with an amount; otherwise it moves without one. Set while it is hidden.
+        progressModelCopy.isIndeterminate = true
+        startBusy(BusyTask.MODEL_COPY)
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val size = getFileSize(uri)
+                if (size > 0) {
+                    withContext(Dispatchers.Main) {
+                        progressModelCopy.max = PROGRESS_MAX
+                        progressModelCopy.setProgressCompat(0, false)
+                    }
+                }
                 val fileName = getFileName(uri) ?: "model.litertlm"
                 // Ensure it ends with a valid extension, or append .litertlm as default
                 val validFileName = if (fileName.endsWith(".litertlm") || fileName.endsWith(".bin") || fileName.endsWith(".tflite")) {
@@ -817,7 +1307,21 @@ class MainActivity : AppCompatActivity() {
 
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(destinationFile).use { output ->
-                        input.copyTo(output)
+                        val buffer = ByteArray(COPY_BUFFER_BYTES)
+                        var copied = 0L
+                        var lastPost = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            output.write(buffer, 0, read)
+                            copied += read
+                            val now = System.currentTimeMillis()
+                            if (size > 0 && now - lastPost >= PROGRESS_INTERVAL_MS) {
+                                lastPost = now
+                                val progress = (copied * PROGRESS_MAX / size).toInt()
+                                runOnUiThread { progressModelCopy.setProgressCompat(progress, true) }
+                            }
+                        }
                     }
                 }
 
@@ -830,18 +1334,29 @@ class MainActivity : AppCompatActivity() {
 
                 withContext(Dispatchers.Main) {
                     tvModelPath.text = selectedModelPath
-                    switchEnableServer.isEnabled = true
-                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_idle)
-                    appendLog("Model copied to: $selectedModelPath")
+                    appendLog(getString(R.string.log_model_copied, selectedModelPath))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error copying file", e)
                 withContext(Dispatchers.Main) {
-                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
-                    appendLog("Error copying file: ${e.message}")
+                    appendLog(getString(R.string.log_copy_failed, e.message))
                 }
+            } finally {
+                endBusy(BusyTask.MODEL_COPY)
             }
         }
+    }
+
+    /** The picked file's size in bytes, or -1 when the provider does not say. */
+    private fun getFileSize(uri: Uri): Long {
+        if (uri.scheme != "content") return -1
+        contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use {
+            if (it.moveToFirst()) {
+                val index = it.getColumnIndex(OpenableColumns.SIZE)
+                if (index != -1 && !it.isNull(index)) return it.getLong(index)
+            }
+        }
+        return -1
     }
 
     private fun getFileName(uri: Uri): String? {
@@ -879,28 +1394,12 @@ class MainActivity : AppCompatActivity() {
         else -> EncoderBackendOption.AUTO
     }
 
-    private fun startInferenceService() {
-        val selectedBackend = when(rgBackend.checkedRadioButtonId) {
-            R.id.rb_cpu -> "CPU"
-            R.id.rb_gpu -> "GPU"
-            R.id.rb_npu -> "NPU"
-            else -> "GPU"
-        }
+    /** Starts the service with the settings on screen; [contextTokens] is the checked context size (0 = model default). */
+    private fun startInferenceService(contextTokens: Int) {
+        val selectedBackend = backendName(rgBackend.checkedRadioButtonId)
 
-        // Empty means the model's default; anything else must be a positive whole number.
-        val contextText = etContextSize.text.toString().trim()
-        val contextSize = if (contextText.isEmpty()) 0 else contextText.toIntOrNull() ?: -1
-        if (contextSize < 0 || (contextText.isNotEmpty() && contextSize == 0)) {
-            etContextSize.error = getString(R.string.context_size_invalid)
-            switchEnableServer.isChecked = false
-            switchEnableServer.isEnabled = true
-            return
-        }
-        val speculative = when (rgSpeculative.checkedRadioButtonId) {
-            R.id.rb_spec_off -> SpeculativeDecodingOption.OFF
-            R.id.rb_spec_on -> SpeculativeDecodingOption.ON
-            else -> SpeculativeDecodingOption.ADAPTIVE
-        }
+        val contextSize = contextTokens
+        val speculative = speculativeOption(rgSpeculative.checkedRadioButtonId)
         val vision = encoderOption(rgVisionBackend.checkedRadioButtonId, R.id.rb_vision_cpu, R.id.rb_vision_gpu)
         val audio = encoderOption(rgAudioBackend.checkedRadioButtonId, R.id.rb_audio_cpu, R.id.rb_audio_gpu)
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit {
@@ -932,60 +1431,22 @@ class MainActivity : AppCompatActivity() {
         startService(intent)
     }
 
-    private fun updateUIForStatus(status: String) {
-        val baseStatus = getString(R.string.status_label) + " " + status
-        
-        if (status.contains("loaded", ignoreCase = true)) {
-            switchEnableServer.isEnabled = true
-            switchEnableServer.isChecked = true
-            btnTestInference.isEnabled = true
-            btnTestVision.isEnabled = true
-            btnTestAudio.isEnabled = true
-            btnTestMultiTurn.isEnabled = true
-            btnTestHealth.isEnabled = true
-            btnTestLoad.isEnabled = true
-            tvStatus.text = "$baseStatus (http://localhost:8080)"
-        } else if (status.contains("Error", ignoreCase = true)) {
-            switchEnableServer.isEnabled = true
-            switchEnableServer.isChecked = false
-            btnTestInference.isEnabled = false
-            btnTestVision.isEnabled = false
-            btnTestAudio.isEnabled = false
-            btnTestMultiTurn.isEnabled = false
-            btnTestHealth.isEnabled = false
-            btnTestLoad.isEnabled = false
-            tvStatus.text = baseStatus
-        } else if (status.contains("Initializing", ignoreCase = true) || 
-                   status.contains("Loading", ignoreCase = true) ||
-                   status.contains("Verifying", ignoreCase = true) ||
-                   status.contains("Restoring", ignoreCase = true) ||
-                   status.contains("Service starting", ignoreCase = true)) {
-            switchEnableServer.isEnabled = false
-            switchEnableServer.isChecked = true
-            tvStatus.text = baseStatus
-        } else if (status.contains("Idle", ignoreCase = true)) {
-            switchEnableServer.isEnabled = (selectedModelPath != null)
-            switchEnableServer.isChecked = false
-            btnTestInference.isEnabled = false
-            tvStatus.text = baseStatus
-        } else {
-            tvStatus.text = baseStatus
-        }
-    }
 
     private fun runTestInference() {
         val token = getOrGenerateToken()
-        appendLog("=== Starting Inference Test (Streaming) ===")
+        startBusy(BusyTask.TEST_INFERENCE)
+        appendLog(getString(R.string.log_test_started, getString(R.string.test_inference)))
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val messages = listOf(ChatMessage("user", JsonPrimitive("Hello!")))
+                val prompt = getString(R.string.test_prompt_hello)
+                val messages = listOf(ChatMessage("user", JsonPrimitive(prompt)))
                 // Enable streaming
                 val req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
 
                 withContext(Dispatchers.Main) {
-                    appendLog("User: Hello!")
-                    appendLog("Assistant: ", newLine = false)
+                    appendLog(getString(R.string.log_user, prompt))
+                    appendLog(getString(R.string.log_assistant))
                 }
 
                 performStreamingChatRequest(req, token) { chunk ->
@@ -995,31 +1456,33 @@ class MainActivity : AppCompatActivity() {
                 }
                 
                 withContext(Dispatchers.Main) {
-                    appendLog("\n=== Test Complete ===")
-                    tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_ready)
+                    appendLog(getString(R.string.log_test_finished, getString(R.string.test_inference)))
                 }
             } catch (e: Exception) {
                  withContext(Dispatchers.Main) {
-                     appendLog("\n❌ Test Failed: ${e.message}")
-                     tvStatus.text = getString(R.string.status_label) + " " + getString(R.string.status_error)
+                     appendLog(getString(R.string.log_test_failed, getString(R.string.test_inference), e.message))
                  }
+            } finally {
+                endBusy(BusyTask.TEST_INFERENCE)
             }
         }
     }
 
     private fun runTestMultiTurn() {
         val token = getOrGenerateToken()
-        appendLog("=== Starting Multi-Turn Test (Streaming) ===")
+        startBusy(BusyTask.TEST_MULTI_TURN)
+        appendLog(getString(R.string.log_test_started, getString(R.string.test_multiturn)))
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 // Turn 1
-                val messages = mutableListOf(ChatMessage("user", JsonPrimitive("Hello! Who are you?")))
+                val firstPrompt = getString(R.string.test_prompt_first)
+                val messages = mutableListOf(ChatMessage("user", JsonPrimitive(firstPrompt)))
                 var req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
 
                 withContext(Dispatchers.Main) {
-                    appendLog("User: Hello! Who are you?")
-                    appendLog("Assistant: ", newLine = false)
+                    appendLog(getString(R.string.log_user, firstPrompt))
+                    appendLog(getString(R.string.log_assistant))
                 }
                 
                 var reply1 = ""
@@ -1028,17 +1491,16 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { appendLog(chunk, newLine = false) }
                 }
                 messages.add(ChatMessage("assistant", JsonPrimitive(reply1)))
-                withContext(Dispatchers.Main) { appendLog("\n") }
                 
                 // Turn 2
                 delay(1000)
                 // Ask about the first message explicitly: "What did I just ask?" is read by
                 // small models (Gemma 4 E2B) as the current question.
-                val turn2Prompt = "What was my first message to you? Quote it."
+                val turn2Prompt = getString(R.string.test_prompt_second)
                 messages.add(ChatMessage("user", JsonPrimitive(turn2Prompt)))
                 withContext(Dispatchers.Main) {
-                    appendLog("User: $turn2Prompt")
-                    appendLog("Assistant: ", newLine = false)
+                    appendLog(getString(R.string.log_user, turn2Prompt))
+                    appendLog(getString(R.string.log_assistant))
                 }
 
                 req = ChatCompletionRequest(model = "gemma", messages = messages, stream = true)
@@ -1049,17 +1511,19 @@ class MainActivity : AppCompatActivity() {
                 }
                 
                 withContext(Dispatchers.Main) {
-                    appendLog("\n=== Multi-Turn Test Complete ===")
+                    appendLog(getString(R.string.log_test_finished, getString(R.string.test_multiturn)))
                 }
 
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { appendLog("\n❌ Error: ${e.message}") }
+                withContext(Dispatchers.Main) { appendLog(getString(R.string.log_test_failed, getString(R.string.test_multiturn), e.message)) }
+            } finally {
+                endBusy(BusyTask.TEST_MULTI_TURN)
             }
         }
     }
 
     private fun performChatRequest(req: ChatCompletionRequest, token: String): ChatCompletionResponse {
-        val url = URL("http://localhost:8080/v1/chat/completions")
+        val url = URL("$SERVER_ADDRESS/v1/chat/completions")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.setRequestProperty("Content-Type", "application/json")
@@ -1076,13 +1540,13 @@ class MainActivity : AppCompatActivity() {
         } else {
             val errorString = try {
                  BufferedReader(InputStreamReader(conn.errorStream)).readText()
-            } catch (e: Exception) { "Unknown error" }
+            } catch (e: Exception) { getString(R.string.log_error_unreadable) }
             throw Exception("HTTP $responseCode: $errorString")
         }
     }
 
     private fun performStreamingChatRequest(req: ChatCompletionRequest, token: String, onChunk: (String) -> Unit) {
-        val url = URL("http://localhost:8080/v1/chat/completions")
+        val url = URL("$SERVER_ADDRESS/v1/chat/completions")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.setRequestProperty("Content-Type", "application/json")
@@ -1117,7 +1581,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             val errorString = try {
                  BufferedReader(InputStreamReader(conn.errorStream)).readText()
-            } catch (e: Exception) { "Unknown error" }
+            } catch (e: Exception) { getString(R.string.log_error_unreadable) }
             throw Exception("HTTP $responseCode: $errorString")
         }
     }
@@ -1137,21 +1601,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun appendLog(msg: String, newLine: Boolean = true) {
-        val current = tvLogs.text.toString()
-        if (newLine) {
-            tvLogs.text = "$current\n$msg"
-        } else {
-            tvLogs.text = "$current$msg"
-        }
+        if (newLine && tvLogs.text.isNotEmpty()) tvLogs.append(System.lineSeparator())
+        tvLogs.append(msg)
     }
 
     companion object {
         private const val TAG = "MainActivity"
+        /** Where the app's own server listens; the diagnostics tests call it and the Server page shows it. */
+        private const val SERVER_ADDRESS = "http://localhost:8080"
+        private const val COPY_BUFFER_BYTES = 1 shl 16
+        private const val PROGRESS_MAX = 1000
+        private const val PROGRESS_INTERVAL_MS = 250L
         private const val PREFS_NAME = "litertlm_prefs"
         private const val KEY_MODEL_PATH = "model_path"
         private const val KEY_CONTEXT_SIZE = "context_size"
         private const val KEY_SPECULATIVE = "speculative_decoding"
         private const val KEY_VISION_BACKEND = "vision_backend"
         private const val KEY_AUDIO_BACKEND = "audio_backend"
+        private const val KEY_BACKEND = "backend"
+        private const val KEY_ANSWERED_NOTIFICATIONS = "explain_notifications_answered"
+        private const val KEY_ANSWERED_BATTERY = "explain_battery_answered"
+        private const val BACKEND_CPU = "CPU"
+        private const val BACKEND_GPU = "GPU"
+        private const val BACKEND_NPU = "NPU"
+        private const val STATE_PAGE = "page"
+        private const val STATE_FOLD_OPEN = "fold_open"
+        /** Debug builds only: start with solid surfaces, to check the solid look on an API level that can blur. */
+        const val EXTRA_FORCE_SOLID = "console_solid"
     }
 }

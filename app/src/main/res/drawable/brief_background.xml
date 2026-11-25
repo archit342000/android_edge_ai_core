@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- .toast: the brief message -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+        <corners android:topLeftRadius="@dimen/radius_control_top_left" android:topRightRadius="@dimen/radius_control_top_right" android:bottomRightRadius="@dimen/radius_control_bottom_right" android:bottomLeftRadius="@dimen/radius_control_bottom_left" />
+        <solid android:color="?attr/consolePop" />
+        <stroke android:width="@dimen/rule_thickness" android:color="@color/console_edge" />
+    </shape>

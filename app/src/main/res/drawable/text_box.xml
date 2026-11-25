@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- .input: edge-strong at rest; blue edge and soft halo when focused; red edge in error (shown with the activated state) -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_activated="true">
+        <layer-list>
+            <item>
+            <shape>
+                    <corners android:topLeftRadius="@dimen/radius_control_top_left" android:topRightRadius="@dimen/radius_control_top_right" android:bottomRightRadius="@dimen/radius_control_bottom_right" android:bottomLeftRadius="@dimen/radius_control_bottom_left" />
+                    <solid android:color="@android:color/transparent" />
+                </shape>
+            </item>
+            <item android:left="@dimen/input_focus_halo" android:top="@dimen/input_focus_halo" android:right="@dimen/input_focus_halo" android:bottom="@dimen/input_focus_halo">
+            <shape>
+                    <corners android:topLeftRadius="@dimen/radius_control_top_left" android:topRightRadius="@dimen/radius_control_top_right" android:bottomRightRadius="@dimen/radius_control_bottom_right" android:bottomLeftRadius="@dimen/radius_control_bottom_left" />
+                    <solid android:color="?attr/consoleGlassStrong" />
+                    <stroke android:width="@dimen/input_stroke" android:color="@color/console_bad" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item android:state_focused="true">
+        <layer-list>
+            <item>
+            <shape>
+                    <corners android:topLeftRadius="@dimen/radius_control_top_left" android:topRightRadius="@dimen/radius_control_top_right" android:bottomRightRadius="@dimen/radius_control_bottom_right" android:bottomLeftRadius="@dimen/radius_control_bottom_left" />
+                    <solid android:color="@color/console_accent_soft" />
+                </shape>
+            </item>
+            <item android:left="@dimen/input_focus_halo" android:top="@dimen/input_focus_halo" android:right="@dimen/input_focus_halo" android:bottom="@dimen/input_focus_halo">
+            <shape>
+                    <corners android:topLeftRadius="@dimen/radius_control_top_left" android:topRightRadius="@dimen/radius_control_top_right" android:bottomRightRadius="@dimen/radius_control_bottom_right" android:bottomLeftRadius="@dimen/radius_control_bottom_left" />
+                    <solid android:color="?attr/consoleGlassStrong" />
+                    <stroke android:width="@dimen/input_stroke" android:color="@color/console_accent" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item>
+        <layer-list>
+            <item>
+            <shape>
+                    <corners android:topLeftRadius="@dimen/radius_control_top_left" android:topRightRadius="@dimen/radius_control_top_right" android:bottomRightRadius="@dimen/radius_control_bottom_right" android:bottomLeftRadius="@dimen/radius_control_bottom_left" />
+                    <solid android:color="@android:color/transparent" />
+                </shape>
+            </item>
+            <item android:left="@dimen/input_focus_halo" android:top="@dimen/input_focus_halo" android:right="@dimen/input_focus_halo" android:bottom="@dimen/input_focus_halo">
+            <shape>
+                    <corners android:topLeftRadius="@dimen/radius_control_top_left" android:topRightRadius="@dimen/radius_control_top_right" android:bottomRightRadius="@dimen/radius_control_bottom_right" android:bottomLeftRadius="@dimen/radius_control_bottom_left" />
+                    <solid android:color="?attr/consoleGlassStrong" />
+                    <stroke android:width="@dimen/input_stroke" android:color="@color/console_edge_strong" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</selector>

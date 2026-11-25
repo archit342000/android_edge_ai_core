@@ -3,8 +3,8 @@
 ## Rules
 
 1. **Test mapping:** every new or changed source class has a test class with the same package in `app/src/test/java/com/aanand/edgeaicore/`
-   (`TokenManager.kt` has `TokenManagerTest.kt`). Current test classes: `OpenAIModelsTest`, `AiEngineManagerTest`, `OpenAIServerTest`, `CancellableGenerationTest`, `EngineLimitExceptionsTest`, `StopSequenceMatcherTest`, `NettyDisconnectTest`, plus `CoroutinesPinTest` (a build guard, `docs/pitfalls.md` 26). The other classes are a known gap, filled as they are touched.
-   Agreed exception: Android framework classes (`InferenceService`, `MainActivity`) and `LlmEngine.kt` (logic-free interfaces plus the thin LiteRT-LM adapters) have no test class; they are covered by plain-Kotlin helpers and device checks.
+   (`TokenManager.kt` has `TokenManagerTest.kt`). Current test classes: `OpenAIModelsTest`, `AiEngineManagerTest`, `OpenAIServerTest`, `CancellableGenerationTest`, `EngineLimitExceptionsTest`, `StopSequenceMatcherTest`, `NettyDisconnectTest`, `ServerStatusStoreTest`, `ControlsPolicyTest`, `ExplainCardPolicyTest`, `ContextSizeInputTest`, `DotSphereModelTest`, `SphereFadePatchesTest`, `LoopFramesTest`, `SegmentFitTest`, `ServerStatusTest`, plus `CoroutinesPinTest` (a build guard, `docs/pitfalls.md` 26) and `ConsoleTokensTest` (the design tokens: resources against a `tokens.json` snapshot, text contrast, curves). The other classes are a known gap, filled as they are touched.
+   Agreed exception: Android framework classes (`InferenceService`, `MainActivity`), `LlmEngine.kt` (logic-free interfaces plus the thin LiteRT-LM adapters) and the classes that only draw or show UI (`DotSphereView`, `SphereFrostView`, `SphereFadeLayout`, `TickRuleDrawable`, `ConsoleUi`) have no test class; they are covered by plain-Kotlin helpers and device checks.
 2. **Coverage:** test each public function you add or change, including failure paths.
 3. **Keep tests current:** if a change breaks a test because the intended behaviour changed, update the test.
 4. **No regressions:** a change must not break unrelated tests. A bug fix adds a test that fails without the fix.

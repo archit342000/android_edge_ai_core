@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Console at Rest surfaces. Glass values by default; ThemeOverlay.Console.Solid swaps in the solid ones. -->
+    <attr name="consoleGlass" format="color" />
+    <attr name="consoleGlassOpen" format="color" />
+    <attr name="consoleGlassStrong" format="color" />
+    <attr name="consolePop" format="color" />
+</resources>

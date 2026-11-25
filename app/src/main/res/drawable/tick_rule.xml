@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The tick rule (.ticks): 1 wide marks every 8, 5 tall, in the tick colour. -->
+<drawable xmlns:android="http://schemas.android.com/apk/res/android"
+    class="com.aanand.edgeaicore.TickRuleDrawable" />

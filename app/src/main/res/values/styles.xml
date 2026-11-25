@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Console at Rest pieces (rule book Part 7), one style per piece the layouts use. Numbers come from tokens_*.xml and pieces.xml. -->
+<resources>
+    <!-- Buttons (7.1). Main: filled blue, at most one per screen. -->
+    <style name="Widget.Console.Button" parent="Widget.Material3.Button">
+        <item name="backgroundTint">@color/console_btn_main_bg</item>
+        <item name="android:textColor">@color/console_btn_on_fill_fg</item>
+        <item name="iconTint">@color/console_btn_on_fill_fg</item>
+        <item name="android:textAppearance">@style/TextAppearance.Console.Strong</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Console.Control</item>
+        <item name="android:minHeight">@dimen/piece_touch</item>
+        <item name="android:insetTop">@dimen/button_inset</item>
+        <item name="android:insetBottom">@dimen/button_inset</item>
+        <item name="android:paddingStart">@dimen/button_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/button_padding_horizontal</item>
+        <item name="iconPadding">@dimen/button_icon_gap</item>
+        <item name="iconSize">@dimen/button_icon_size</item>
+        <item name="android:stateListAnimator">@animator/button_lift</item>
+        <item name="rippleColor">@android:color/transparent</item>
+        <item name="strokeWidth">@dimen/button_stroke_none</item>
+        <item name="android:foreground">@drawable/focus_ring_control</item>
+    </style>
+
+    <!-- Quiet: blue tint, blue text. A helpful second action. -->
+    <style name="Widget.Console.Button.Quiet">
+        <item name="backgroundTint">@color/console_btn_quiet_bg</item>
+        <item name="android:textColor">@color/console_btn_quiet_fg</item>
+        <item name="iconTint">@color/console_btn_quiet_fg</item>
+        <item name="rippleColor">@color/console_accent_soft</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+
+    <!-- Outline: thin edge. Neutral actions. -->
+    <style name="Widget.Console.Button.Outline">
+        <item name="backgroundTint">@android:color/transparent</item>
+        <item name="strokeColor">@color/console_btn_outline_stroke</item>
+        <item name="strokeWidth">@dimen/button_stroke</item>
+        <item name="android:textColor">@color/console_btn_outline_fg</item>
+        <item name="iconTint">@color/console_btn_outline_fg</item>
+        <item name="rippleColor">@color/console_well_ripple</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+
+    <!-- Plain: text only. The least important action; Cancel. -->
+    <style name="Widget.Console.Button.Plain">
+        <item name="backgroundTint">@android:color/transparent</item>
+        <item name="android:textColor">@color/console_btn_plain_fg</item>
+        <item name="iconTint">@color/console_btn_plain_fg</item>
+        <item name="rippleColor">@color/console_well_ripple</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+
+    <!-- Danger: filled red. Only inside a confirming sheet. -->
+    <style name="Widget.Console.Button.Danger">
+        <item name="backgroundTint">@color/console_btn_danger_bg</item>
+    </style>
+
+    <!-- Switch (7.3): on or off, takes effect at once. -->
+    <style name="Widget.Console.Switch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
+        <item name="android:thumb">@drawable/switch_thumb</item>
+        <item name="track">@drawable/switch_track</item>
+        <item name="thumbTint">@color/console_switch_thumb</item>
+        <item name="trackTint">@color/console_switch_track</item>
+        <item name="trackDecorationTint">@android:color/transparent</item>
+        <item name="thumbIcon">@null</item>
+        <item name="android:textAppearance">@style/TextAppearance.Console.Strong</item>
+        <item name="android:textColor">@color/console_btn_outline_fg</item>
+        <item name="android:minHeight">@dimen/piece_touch</item>
+        <item name="android:foreground">@drawable/focus_ring_small</item>
+        <item name="android:background">@drawable/row_background</item>
+    </style>
+
+    <!-- Side-by-side pick-one (7.3): the track, and one choice in it. Built on RadioGroup and RadioButton. -->
+    <style name="Widget.Console.SegmentTrack" parent="">
+        <item name="android:orientation">horizontal</item>
+        <!-- The focus ring is drawn just outside each segment; the track must not clip it. -->
+        <item name="android:clipChildren">false</item>
+        <item name="android:clipToPadding">false</item>
+        <item name="android:background">@drawable/segment_track</item>
+        <item name="android:padding">@dimen/segment_track_padding</item>
+    </style>
+
+    <style name="Widget.Console.Segment" parent="Widget.AppCompat.CompoundButton.RadioButton">
+        <item name="android:button">@null</item>
+        <item name="buttonCompat">@null</item>
+        <item name="useMaterialThemeColors">false</item>
+        <item name="android:background">@drawable/segment</item>
+        <item name="android:foreground">@drawable/focus_ring_segment</item>
+        <item name="android:gravity">center</item>
+        <item name="android:minHeight">@dimen/piece_touch</item>
+        <item name="android:paddingStart">@dimen/segment_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/segment_padding_horizontal</item>
+        <item name="android:textAppearance">@style/TextAppearance.Console.Strong</item>
+        <item name="android:textColor">@color/console_segment_text</item>
+    </style>
+
+    <!-- Text box (7.2): label above, hint below. Error is shown through the activated state. -->
+    <style name="Widget.Console.TextBox" parent="Widget.AppCompat.EditText">
+        <item name="android:background">@drawable/text_box</item>
+        <item name="android:minHeight">@dimen/piece_touch</item>
+        <item name="android:paddingStart">@dimen/text_box_padding</item>
+        <item name="android:paddingEnd">@dimen/text_box_padding</item>
+        <item name="android:textAppearance">@style/TextAppearance.Console.Body</item>
+        <item name="android:textColor">@color/console_input_text</item>
+        <item name="android:textColorHint">@color/console_muted</item>
+    </style>
+
+
+    <!-- Top bar on each screen; part of the content panel's surface. -->
+    <style name="Widget.Console.TopBar" parent="Widget.Material3.Toolbar">
+        <item name="android:background">@android:color/transparent</item>
+        <item name="titleTextAppearance">@style/TextAppearance.Console.Heading</item>
+        <item name="titleTextColor">@color/console_fg</item>
+        <item name="android:minHeight">@dimen/top_bar_height</item>
+        <item name="contentInsetStart">@dimen/page_padding_phone</item>
+    </style>
+
+    <!-- Navigation: bottom bar (phone), rail (600 to 1023), navigation panel (1024 and over). -->
+    <style name="Widget.Console.NavIndicator.Bar" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/console_accent_soft</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Console.Small</item>
+    </style>
+
+    <style name="Widget.Console.NavIndicator.Rail" parent="Widget.Material3.NavigationRailView.ActiveIndicator">
+        <item name="android:color">@color/console_accent_soft</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Console.Small</item>
+    </style>
+
+    <style name="Widget.Console.BottomBar" parent="Widget.Material3.BottomNavigationView">
+        <item name="android:background">@drawable/bottom_bar_background</item>
+        <item name="backgroundTint">@null</item>
+        <item name="elevation">@dimen/elevation_none</item>
+        <item name="itemIconTint">@color/console_nav_item</item>
+        <item name="itemTextColor">@color/console_nav_item</item>
+        <item name="itemIconSize">@dimen/nav_icon_size</item>
+        <item name="itemRippleColor">@color/console_well_ripple</item>
+        <item name="itemActiveIndicatorStyle">@style/Widget.Console.NavIndicator.Bar</item>
+        <item name="itemBackground">@drawable/nav_item_background</item>
+        <item name="itemTextAppearanceActive">@style/TextAppearance.Console.Strong</item>
+        <item name="itemTextAppearanceInactive">@style/TextAppearance.Console.Small</item>
+        <item name="labelVisibilityMode">labeled</item>
+    </style>
+
+    <style name="Widget.Console.Rail" parent="Widget.Material3.NavigationRailView">
+        <item name="android:background">@drawable/float_background</item>
+        <item name="backgroundTint">@null</item>
+        <item name="elevation">@dimen/elevation_rest</item>
+        <item name="android:minWidth">@dimen/rail</item>
+        <item name="itemIconTint">@color/console_nav_item</item>
+        <item name="itemTextColor">@color/console_nav_item</item>
+        <item name="itemIconSize">@dimen/nav_icon_size</item>
+        <item name="itemRippleColor">@color/console_well_ripple</item>
+        <item name="itemActiveIndicatorStyle">@style/Widget.Console.NavIndicator.Rail</item>
+        <item name="itemBackground">@drawable/nav_item_background</item>
+        <item name="itemMinHeight">@dimen/piece_touch</item>
+        <item name="labelVisibilityMode">unlabeled</item>
+        <item name="menuGravity">top</item>
+    </style>
+
+    <style name="Widget.Console.NavPanel" parent="Widget.Material3.NavigationView">
+        <item name="android:background">@drawable/float_background</item>
+        <item name="elevation">@dimen/elevation_rest</item>
+        <item name="itemBackground">@drawable/nav_panel_item_background</item>
+        <item name="itemTextColor">@color/console_nav_item</item>
+        <item name="itemIconTint">@color/console_nav_item</item>
+        <item name="itemIconSize">@dimen/nav_icon_size</item>
+        <item name="itemTextAppearance">@style/TextAppearance.Console.Strong</item>
+        <item name="itemHorizontalPadding">@dimen/nav_item_padding</item>
+        <item name="itemIconPadding">@dimen/nav_item_gap</item>
+        <item name="itemShapeInsetStart">@dimen/nav_item_inset_none</item>
+        <item name="itemShapeInsetEnd">@dimen/nav_item_inset_none</item>
+        <item name="itemRippleColor">@color/console_well_ripple</item>
+        <item name="itemMaxLines">1</item>
+        <item name="android:paddingTop">@dimen/nav_panel_padding_vertical</item>
+        <item name="android:paddingBottom">@dimen/nav_panel_padding_vertical</item>
+        <item name="android:paddingStart">@dimen/nav_panel_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/nav_panel_padding_horizontal</item>
+    </style>
+
+    <!-- Standard row (7.8): two lines and an action, at least the two-line height. -->
+    <style name="Widget.Console.Row" parent="">
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:minHeight">@dimen/row_two_line_min_height</item>
+        <item name="android:paddingTop">@dimen/row_padding_vertical</item>
+        <item name="android:paddingBottom">@dimen/row_padding_vertical</item>
+    </style>
+
+    <!-- Fold-open box (7.10): a row with an arrow that opens in place. -->
+    <style name="Widget.Console.Fold" parent="">
+        <item name="android:background">@drawable/fold_background</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="Widget.Console.FoldHeader" parent="">
+        <item name="android:background">@drawable/row_background</item>
+        <item name="android:foreground">@drawable/focus_ring_control</item>
+        <item name="android:minHeight">@dimen/piece_touch</item>
+        <item name="android:paddingStart">@dimen/fold_header_padding</item>
+        <item name="android:paddingEnd">@dimen/fold_header_padding</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="Widget.Console.FoldBody" parent="">
+        <item name="android:orientation">vertical</item>
+        <item name="android:paddingStart">@dimen/fold_body_padding_start</item>
+        <item name="android:paddingEnd">@dimen/fold_body_padding_end</item>
+        <item name="android:paddingTop">@dimen/fold_body_padding_top</item>
+        <item name="android:paddingBottom">@dimen/fold_body_padding_bottom</item>
+    </style>
+
+    <!-- Code box (7.10): dark in day and night. -->
+    <style name="Widget.Console.CodeBox" parent="">
+        <item name="android:background">@drawable/code_box</item>
+        <item name="android:paddingStart">@dimen/code_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/code_padding_horizontal</item>
+        <item name="android:paddingTop">@dimen/code_padding_vertical</item>
+        <item name="android:paddingBottom">@dimen/code_padding_vertical</item>
+        <item name="android:textAppearance">@style/TextAppearance.Console.Code</item>
+    </style>
+
+    <!-- Notice strip (7.11): a problem with this screen, with one action. -->
+    <style name="Widget.Console.Notice" parent="">
+        <item name="android:background">@drawable/notice_background</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">@dimen/notice_padding_start</item>
+        <item name="android:paddingEnd">@dimen/notice_padding</item>
+        <item name="android:paddingTop">@dimen/notice_padding</item>
+        <item name="android:paddingBottom">@dimen/notice_padding</item>
+    </style>
+
+    <!-- Explain card (7.11): before the phone's own "Allow?" box, with "Not now" as an equal choice. -->
+    <style name="Widget.Console.ExplainCard" parent="">
+        <item name="android:background">@drawable/card_background</item>
+        <item name="android:elevation">@dimen/elevation_rest</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">@dimen/space_4</item>
+    </style>
+
+    <!-- Brief message (7.11): bottom centre, 2.6 s. -->
+    <style name="Widget.Console.Brief" parent="">
+        <item name="android:background">@drawable/brief_background</item>
+        <item name="android:elevation">@dimen/elevation_lift</item>
+        <item name="android:paddingStart">@dimen/brief_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/brief_padding_horizontal</item>
+        <item name="android:paddingTop">@dimen/brief_padding_vertical</item>
+        <item name="android:paddingBottom">@dimen/brief_padding_vertical</item>
+        <item name="android:textAppearance">@style/TextAppearance.Console.Body</item>
+    </style>
+
+    <!-- Sheet rising from the bottom (Part 6): confirms only the irreversible. -->
+    <style name="Widget.Console.BottomSheet" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="backgroundTint">?attr/consolePop</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Console.Sheet</item>
+        <item name="android:elevation">@dimen/elevation_lift</item>
+    </style>
+
+    <style name="ThemeOverlay.Console.BottomSheetDialog" parent="ThemeOverlay.Material3.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.Console.BottomSheet</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="enableEdgeToEdge">true</item>
+    </style>
+
+    <!-- Progress bar (7.12): a known amount. -->
+    <style name="Widget.Console.Progress" parent="Widget.Material3.LinearProgressIndicator">
+        <item name="trackColor">@color/console_well</item>
+        <item name="indicatorColor">@color/console_led</item>
+        <item name="trackThickness">@dimen/progress_height</item>
+        <item name="trackCornerRadius">@dimen/progress_radius</item>
+    </style>
+</resources>

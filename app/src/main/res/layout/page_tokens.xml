@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tokens: a reading column. The token, its backup, and the apps that use it. -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/page_tokens"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToPadding="false"
+    android:fillViewport="true"
+    android:visibility="gone">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <LinearLayout
+            android:id="@+id/tokens_panel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_max="@dimen/measure"
+            android:background="@drawable/page_panel"
+            android:elevation="@dimen/page_panel_elevation"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/page_padding"
+            android:paddingEnd="@dimen/page_padding"
+            android:paddingTop="@dimen/space_5"
+            android:paddingBottom="@dimen/space_7">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/section_api_token"
+                android:textAppearance="@style/TextAppearance.Console.Label" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/tick_rule_height"
+                android:layout_marginTop="@dimen/space_2"
+                android:background="@drawable/tick_rule" />
+
+            <TextView
+                android:id="@+id/tv_api_token"
+                style="@style/Widget.Console.CodeBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_3"
+                android:text="@string/no_token_generated"
+                android:textIsSelectable="true" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_3"
+                android:clipChildren="false"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_generate_token"
+                    style="@style/Widget.Console.Button.Quiet"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="@dimen/space_2"
+                    android:text="@string/generate_token" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_copy_token"
+                    style="@style/Widget.Console.Button.Outline"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:enabled="false"
+                    android:text="@string/copy_token" />
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_delete_token"
+                style="@style/Widget.Console.Button.Plain"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
+                android:enabled="false"
+                android:text="@string/delete_token" />
+
+            <TextView
+                android:id="@+id/tv_token_reason"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.Console.Small"
+                android:visibility="gone" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_6"
+                android:text="@string/section_backup"
+                android:textAppearance="@style/TextAppearance.Console.Label" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/tick_rule_height"
+                android:layout_marginTop="@dimen/space_2"
+                android:background="@drawable/tick_rule" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_3"
+                android:clipChildren="false"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_backup_tokens"
+                    style="@style/Widget.Console.Button.Outline"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="@dimen/space_2"
+                    android:text="@string/backup_tokens" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_restore_tokens"
+                    style="@style/Widget.Console.Button.Outline"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/restore_tokens" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
+                android:text="@string/backup_secret"
+                android:textAppearance="@style/TextAppearance.Console.Small" />
+
+            <TextView
+                android:id="@+id/tv_authorized_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_6"
+                android:text="@string/section_authorized_apps"
+                android:textAppearance="@style/TextAppearance.Console.Label" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/tick_rule_height"
+                android:layout_marginTop="@dimen/space_2"
+                android:background="@drawable/tick_rule" />
+
+            <TextView
+                android:id="@+id/tv_no_authorized_apps"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_3"
+                android:text="@string/no_authorized_apps"
+                android:textAppearance="@style/TextAppearance.Console.Body"
+                android:textColor="@color/console_muted" />
+
+            <LinearLayout
+                android:id="@+id/ll_authorized_apps"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
+                android:clipChildren="false"
+                android:orientation="vertical" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.core.widget.NestedScrollView>

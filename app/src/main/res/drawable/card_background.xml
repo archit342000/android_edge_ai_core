@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A card inside the panel that is itself a control (the explain card) -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+        <corners android:topLeftRadius="@dimen/radius_panel_top_left" android:topRightRadius="@dimen/radius_panel_top_right" android:bottomRightRadius="@dimen/radius_panel_bottom_right" android:bottomLeftRadius="@dimen/radius_panel_bottom_left" />
+        <solid android:color="?attr/consoleGlassStrong" />
+        <stroke android:width="@dimen/rule_thickness" android:color="@color/console_edge" />
+    </shape>

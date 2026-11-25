@@ -1,27 +1,120 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Console at Rest theme. Every Material 3 colour role maps to a token, so nothing falls back to Material defaults.
+     Day and night share it: the colours are night-qualified. System bar icon colours are set in MainActivity. -->
+<resources>
     <style name="Theme.LiteRTLMServer" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Main theme colors -->
-        <item name="colorPrimary">@color/md_theme_light_primary</item>
-        <item name="colorOnPrimary">@color/md_theme_light_onPrimary</item>
-        <item name="colorPrimaryContainer">@color/md_theme_light_primaryContainer</item>
-        <item name="colorOnPrimaryContainer">@color/md_theme_light_onPrimaryContainer</item>
-        <item name="colorSecondary">@color/md_theme_light_secondary</item>
-        <item name="colorOnSecondary">@color/md_theme_light_onSecondary</item>
-        <item name="colorSecondaryContainer">@color/md_theme_light_secondaryContainer</item>
-        <item name="colorOnSecondaryContainer">@color/md_theme_light_onSecondaryContainer</item>
-        <item name="colorError">@color/md_theme_light_error</item>
-        <item name="colorOnError">@color/md_theme_light_onError</item>
-        <item name="android:windowBackground">@color/md_theme_light_background</item>
-        <item name="colorSurface">@color/md_theme_light_surface</item>
-        <item name="colorOnSurface">@color/md_theme_light_onSurface</item>
-        <item name="colorSurfaceVariant">@color/md_theme_light_surfaceVariant</item>
-        <item name="colorOnSurfaceVariant">@color/md_theme_light_onSurfaceVariant</item>
-        <item name="colorOutline">@color/md_theme_light_outline</item>
+        <item name="consoleGlass">@color/console_glass</item>
+        <item name="consoleGlassOpen">@color/console_glass_open</item>
+        <item name="consoleGlassStrong">@color/console_glass_strong</item>
+        <item name="consolePop">@color/console_pop</item>
 
-        <!-- Status bar and Navigation bar -->
-        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
-        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
-        <item name="android:navigationBarColor" tools:targetApi="l">?attr/colorSurface</item>
-        <item name="android:windowLightNavigationBar" tools:targetApi="o">true</item>
+        <item name="colorPrimary">@color/console_accent</item>
+        <item name="colorOnPrimary">@color/console_accent_fg</item>
+        <item name="colorPrimaryContainer">@color/console_accent_soft</item>
+        <item name="colorOnPrimaryContainer">@color/console_accent_text</item>
+        <item name="colorPrimaryInverse">@color/console_accent</item>
+        <item name="colorPrimaryVariant">@color/console_accent</item>
+        <item name="colorPrimaryFixed">@color/console_accent_soft</item>
+        <item name="colorPrimaryFixedDim">@color/console_accent_soft</item>
+        <item name="colorOnPrimaryFixed">@color/console_accent_text</item>
+        <item name="colorOnPrimaryFixedVariant">@color/console_accent_text</item>
+        <item name="colorSecondary">@color/console_accent</item>
+        <item name="colorOnSecondary">@color/console_accent_fg</item>
+        <item name="colorSecondaryContainer">@color/console_accent_soft</item>
+        <item name="colorOnSecondaryContainer">@color/console_accent_text</item>
+        <item name="colorSecondaryVariant">@color/console_accent</item>
+        <item name="colorSecondaryFixed">@color/console_accent_soft</item>
+        <item name="colorSecondaryFixedDim">@color/console_accent_soft</item>
+        <item name="colorOnSecondaryFixed">@color/console_accent_text</item>
+        <item name="colorOnSecondaryFixedVariant">@color/console_accent_text</item>
+        <item name="colorTertiary">@color/console_accent</item>
+        <item name="colorOnTertiary">@color/console_accent_fg</item>
+        <item name="colorTertiaryContainer">@color/console_accent_soft</item>
+        <item name="colorOnTertiaryContainer">@color/console_accent_text</item>
+        <item name="colorTertiaryFixed">@color/console_accent_soft</item>
+        <item name="colorTertiaryFixedDim">@color/console_accent_soft</item>
+        <item name="colorOnTertiaryFixed">@color/console_accent_text</item>
+        <item name="colorOnTertiaryFixedVariant">@color/console_accent_text</item>
+        <item name="colorError">@color/console_bad</item>
+        <item name="colorOnError">@color/console_accent_fg</item>
+        <item name="colorErrorContainer">@color/console_well</item>
+        <item name="colorOnErrorContainer">@color/console_bad</item>
+        <item name="android:colorBackground">@color/console_bg</item>
+        <item name="colorOnBackground">@color/console_fg</item>
+        <item name="colorSurface">?attr/consolePop</item>
+        <item name="colorOnSurface">@color/console_fg</item>
+        <item name="colorSurfaceVariant">@color/console_well</item>
+        <item name="colorOnSurfaceVariant">@color/console_muted</item>
+        <item name="colorSurfaceInverse">@color/console_fg</item>
+        <item name="colorOnSurfaceInverse">@color/console_bg</item>
+        <item name="colorSurfaceBright">?attr/consolePop</item>
+        <item name="colorSurfaceDim">@color/console_bg</item>
+        <item name="colorSurfaceContainerLowest">?attr/consoleGlassOpen</item>
+        <item name="colorSurfaceContainerLow">?attr/consoleGlass</item>
+        <item name="colorSurfaceContainer">?attr/consoleGlassStrong</item>
+        <item name="colorSurfaceContainerHigh">?attr/consolePop</item>
+        <item name="colorSurfaceContainerHighest">?attr/consolePop</item>
+        <item name="colorOutline">@color/console_edge_strong</item>
+        <item name="colorOutlineVariant">@color/console_edge</item>
+        <item name="colorControlNormal">@color/console_muted</item>
+        <item name="colorControlActivated">@color/console_accent</item>
+        <item name="colorControlHighlight">@color/console_well</item>
+        <item name="elevationOverlayEnabled">false</item>
+
+        <item name="android:windowBackground">@color/console_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:textColorPrimary">@color/console_fg</item>
+        <item name="android:textColorSecondary">@color/console_muted</item>
+        <item name="android:textColorHint">@color/console_muted</item>
+        <item name="android:textColorHighlight">@color/console_accent_soft</item>
+        <item name="android:fontFamily">@font/instrument_sans_regular</item>
+        <item name="fontFamily">@font/instrument_sans_regular</item>
+
+        <item name="shapeAppearanceCornerExtraSmall">@style/ShapeAppearance.Console.Small</item>
+        <item name="shapeAppearanceCornerSmall">@style/ShapeAppearance.Console.Small</item>
+        <item name="shapeAppearanceCornerMedium">@style/ShapeAppearance.Console.Control</item>
+        <item name="shapeAppearanceCornerLarge">@style/ShapeAppearance.Console.Panel</item>
+        <item name="shapeAppearanceCornerExtraLarge">@style/ShapeAppearance.Console.Sheet</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.Console.Control</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Console.Panel</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.Console.Sheet</item>
+
+        <item name="textAppearanceDisplayLarge">@style/TextAppearance.Console.Greeting</item>
+        <item name="textAppearanceDisplayMedium">@style/TextAppearance.Console.Greeting</item>
+        <item name="textAppearanceDisplaySmall">@style/TextAppearance.Console.Greeting</item>
+        <item name="textAppearanceHeadlineLarge">@style/TextAppearance.Console.Page</item>
+        <item name="textAppearanceHeadlineMedium">@style/TextAppearance.Console.Popup</item>
+        <item name="textAppearanceHeadlineSmall">@style/TextAppearance.Console.Section</item>
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.Console.Heading</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.Console.Strong</item>
+        <item name="textAppearanceTitleSmall">@style/TextAppearance.Console.Strong</item>
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.Console.Body</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.Console.Body</item>
+        <item name="textAppearanceBodySmall">@style/TextAppearance.Console.Small</item>
+        <item name="textAppearanceLabelLarge">@style/TextAppearance.Console.Strong</item>
+        <item name="textAppearanceLabelMedium">@style/TextAppearance.Console.Small</item>
+        <item name="textAppearanceLabelSmall">@style/TextAppearance.Console.Small</item>
+        <item name="textAppearanceButton">@style/TextAppearance.Console.Strong</item>
+        <item name="textAppearanceCaption">@style/TextAppearance.Console.Small</item>
+        <item name="textAppearanceOverline">@style/TextAppearance.Console.Label</item>
+
+        <item name="materialButtonStyle">@style/Widget.Console.Button.Outline</item>
+        <item name="materialSwitchStyle">@style/Widget.Console.Switch</item>
+        <item name="toolbarStyle">@style/Widget.Console.TopBar</item>
+        <item name="bottomNavigationStyle">@style/Widget.Console.BottomBar</item>
+        <item name="navigationRailStyle">@style/Widget.Console.Rail</item>
+        <item name="navigationViewStyle">@style/Widget.Console.NavPanel</item>
+        <item name="linearProgressIndicatorStyle">@style/Widget.Console.Progress</item>
+        <item name="editTextStyle">@style/Widget.Console.TextBox</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.Console.BottomSheetDialog</item>
+    </style>
+
+    <!-- Devices that cannot blur (below API 31), or a forced check: the same colours, solid (rule book 2.1). -->
+    <style name="ThemeOverlay.Console.Solid" parent="">
+        <item name="consoleGlass">@color/console_solid_glass</item>
+        <item name="consoleGlassOpen">@color/console_solid_glass_open</item>
+        <item name="consoleGlassStrong">@color/console_solid_glass_strong</item>
+        <item name="consolePop">@color/console_solid_pop</item>
     </style>
 </resources>

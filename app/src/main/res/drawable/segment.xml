@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- .seg button: the chosen one sits raised on glass-strong; plain ones show the well when hovered or pressed -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true">
+        <shape>
+            <corners android:topLeftRadius="@dimen/segment_radius" android:topRightRadius="@dimen/segment_radius" android:bottomRightRadius="@dimen/segment_radius" android:bottomLeftRadius="@dimen/segment_radius_bottom_left" />
+            <solid android:color="?attr/consoleGlassStrong" />
+            <stroke android:width="@dimen/rule_thickness" android:color="@color/console_edge" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape>
+            <corners android:topLeftRadius="@dimen/segment_radius" android:topRightRadius="@dimen/segment_radius" android:bottomRightRadius="@dimen/segment_radius" android:bottomLeftRadius="@dimen/segment_radius_bottom_left" />
+            <solid android:color="@color/console_well" />
+        </shape>
+    </item>
+    <item android:state_hovered="true">
+        <shape>
+            <corners android:topLeftRadius="@dimen/segment_radius" android:topRightRadius="@dimen/segment_radius" android:bottomRightRadius="@dimen/segment_radius" android:bottomLeftRadius="@dimen/segment_radius_bottom_left" />
+            <solid android:color="@color/console_well" />
+        </shape>
+    </item>
+    <item android:drawable="@android:color/transparent" />
+</selector>

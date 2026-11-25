@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Console at Rest colours, night. Mirrors colour.night in tokens.json (#AARRGGBB); checked by ConsoleTokensTest. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="UnusedResources">
+    <color name="console_bg">#FF070708</color>
+    <color name="console_fg">#FFF4F5F7</color>
+    <color name="console_muted">#FFA9ADB6</color>
+    <color name="console_accent">#FF1A73D1</color>
+    <color name="console_accent_fg">#FFFFFFFF</color>
+    <color name="console_accent_text">#FFC7E2FB</color>
+    <color name="console_accent_soft">#2E5FA8EE</color>
+    <color name="console_led">#FF5FA8EE</color>
+    <color name="console_dot_1">#FF5FA8EE</color>
+    <color name="console_dot_2">#FF2F8AE5</color>
+    <color name="console_dot_3">#FF8FC2F4</color>
+    <color name="console_dot_4">#FF1A73D1</color>
+    <color name="console_dot_5">#FFD9ECFD</color>
+    <color name="console_ok">#FF4ADE9A</color>
+    <color name="console_warn">#FFF2B84B</color>
+    <color name="console_bad">#FFFF8A80</color>
+    <color name="console_bad_solid">#FFC0322B</color>
+    <color name="console_glass">#0EFFFFFF</color>
+    <color name="console_glass_open">#82141417</color>
+    <color name="console_glass_strong">#16FFFFFF</color>
+    <color name="console_pop">#FA131316</color>
+    <color name="console_well">#0DFFFFFF</color>
+    <color name="console_scrim">#A8000000</color>
+    <color name="console_edge">#21FFFFFF</color>
+    <color name="console_edge_strong">#4DFFFFFF</color>
+    <color name="console_tick">#47FFFFFF</color>
+    <color name="console_code_bg">#80000000</color>
+    <color name="console_code_fg">#FFE4E7EE</color>
+    <color name="console_solid_glass">#FF111113</color>
+    <color name="console_solid_glass_open">#FF0E0E10</color>
+    <color name="console_solid_glass_strong">#FF1B1B1F</color>
+    <color name="console_solid_pop">#FF151518</color>
+</resources>

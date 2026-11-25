@@ -15,7 +15,7 @@ The app uses Semantic Versioning, `vX.Y.Z`:
 
 1. **Release branch:** cut `release/X.Y.Z` from `develop` once the planned work is merged (`docs/standards/gitflow.md`). Only fixes, docs and the version bump go in.
 2. **Verify:** `./gradlew testDebugUnitTest lintDebug` and `scripts/check_docs.sh`. Install a debug build on a device and run the diagnostics buttons
-   (Test Inference, Multi-Turn Test, Health Check, Get Load) with a real model on each backend you support.
+   (Server tab, Diagnostics: Test chat, Test two turns, Check health, Check load) with a real model on each backend you support.
 3. **Audit dependencies:** check `app/build.gradle.kts` coordinates for updates and known issues (`docs/standards/dependencies.md`).
 4. **Bump the version** in `app/build.gradle.kts`: `versionName = "X.Y.Z"` and `versionCode` + 1.
 5. **What's New:** add an entry at the top of `app/src/main/assets/changelog.json` for `X.Y.Z`. Users see it in the "What's New" dialog on first launch after the update.

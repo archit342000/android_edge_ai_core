@@ -61,6 +61,11 @@ kotlin {
     }
 }
 
+// ConsoleTokensTest reads the resource files from disk, so a resource change must re-run the unit tests.
+tasks.withType<Test>().configureEach {
+    inputs.dir("src/main/res").withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 configurations.all {
     resolutionStrategy {
         // Ktor 2.3.12 needs coroutines < 1.11.0 (docs/pitfalls.md 26). Remove when Ktor is upgraded.

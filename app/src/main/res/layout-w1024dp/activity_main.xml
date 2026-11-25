@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Computer frame (1024 and over): a 252 navigation panel, and the content with its header: title on the left, status on the right, tick rule beneath. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity"
+    tools:ignore="MergeRootFrame">
+
+    <com.aanand.edgeaicore.DotSphereView
+        android:id="@+id/sphere"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no" />
+
+    <LinearLayout
+        android:id="@+id/frame_row"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:baselineAligned="false"
+        android:orientation="horizontal"
+        android:padding="@dimen/floating_gap"
+        tools:ignore="InconsistentLayout">
+
+        <FrameLayout
+            android:id="@+id/nav_frame"
+            android:layout_width="@dimen/side_panel"
+            android:layout_height="match_parent">
+
+            <com.aanand.edgeaicore.SphereFrostView
+                android:id="@+id/frost_nav"
+                tools:ignore="InconsistentLayout"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <com.google.android.material.navigation.NavigationView
+                android:id="@+id/nav_panel"
+                tools:ignore="InconsistentLayout"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:menu="@menu/bottom_nav_menu" />
+        </FrameLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/content_column"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="@dimen/floating_gap"
+            android:clipChildren="false">
+            <LinearLayout
+                android:id="@+id/content_header"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                android:background="@drawable/page_panel"
+                android:elevation="@dimen/page_panel_elevation"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:minHeight="@dimen/content_header_height"
+                    android:orientation="horizontal"
+                    android:paddingEnd="@dimen/page_padding"
+                    tools:ignore="RtlSymmetry">
+                    <!-- The start side's inset is the top bar's own title inset; the end needs the page padding for the status. -->
+
+                    <com.google.android.material.appbar.MaterialToolbar
+                        android:id="@+id/toolbar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="@null"
+                        app:title="@string/nav_server" />
+
+                    <ImageView
+                        android:id="@+id/iv_header_status_light"
+                        tools:ignore="InconsistentLayout"
+                        android:layout_width="@dimen/status_light_box"
+                        android:layout_height="@dimen/status_light_box"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/status_light" />
+
+                    <TextView
+                        android:id="@+id/tv_header_status_word"
+                        tools:ignore="InconsistentLayout"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/status_line_gap"
+                        android:textAppearance="@style/TextAppearance.Console.Label"
+                        android:textColor="@color/console_fg" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/tick_rule_height"
+                    android:background="@drawable/tick_rule" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/pages"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_marginTop="@dimen/floating_gap"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/content_header">
+
+            <include layout="@layout/page_server" />
+
+            <include layout="@layout/page_backend" />
+
+            <include layout="@layout/page_tokens" />
+            </FrameLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/brief_host"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:paddingStart="@dimen/page_padding"
+        android:paddingEnd="@dimen/page_padding" />
+</FrameLayout>

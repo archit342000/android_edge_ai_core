@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The pop curve (tokens.css ease-pop): Small things that pop, with a slight overshoot (tokens.json motion.curve.pop) -->
+<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:controlX1="0.34"
+    android:controlY1="1.56"
+    android:controlX2="0.64"
+    android:controlY2="1" />

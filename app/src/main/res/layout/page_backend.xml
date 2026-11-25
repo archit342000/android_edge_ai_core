@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backend: a reading column of settings. Settings apply at once and show Saving, then Saved. -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/page_backend"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToPadding="false"
+    android:fillViewport="true"
+    android:visibility="gone">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <LinearLayout
+            android:id="@+id/backend_panel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_max="@dimen/settings_measure"
+            android:background="@drawable/page_panel"
+            android:elevation="@dimen/page_panel_elevation"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/page_padding"
+            android:paddingEnd="@dimen/page_padding"
+            android:paddingTop="@dimen/space_5"
+            android:paddingBottom="@dimen/space_7">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/section_engine"
+                    android:textAppearance="@style/TextAppearance.Console.Label" />
+
+                <TextView
+                    android:id="@+id/tv_settings_state"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.Console.Label"
+                    android:textColor="@color/console_fg" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/tick_rule_height"
+                android:layout_marginTop="@dimen/space_2"
+                android:background="@drawable/tick_rule" />
+
+            <TextView
+                android:id="@+id/tv_settings_note"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
+                android:text="@string/settings_note"
+                android:textAppearance="@style/TextAppearance.Console.Small"
+                android:visibility="gone" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_4"
+                android:text="@string/backend_title"
+                android:textAppearance="@style/TextAppearance.Console.Strong" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_1"
+                android:text="@string/backend_help"
+                android:textAppearance="@style/TextAppearance.Console.Small" />
+            <RadioGroup
+                android:id="@+id/rg_backend"
+                style="@style/Widget.Console.SegmentTrack"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2">
+
+                <RadioButton
+                    android:id="@+id/rb_cpu"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/backend_cpu" />
+
+                <RadioButton
+                    android:id="@+id/rb_gpu"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/segment_gap"
+                    android:checked="true"
+                    android:text="@string/backend_gpu" />
+
+                <RadioButton
+                    android:id="@+id/rb_npu"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/segment_gap"
+                    android:text="@string/backend_npu" />
+            </RadioGroup>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_5"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tv_context_size_label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/context_size_title"
+                    android:textAppearance="@style/TextAppearance.Console.Strong" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/space_2"
+                    android:text="@string/optional"
+                    android:textAppearance="@style/TextAppearance.Console.Small" />
+            </LinearLayout>
+
+            <EditText
+                android:id="@+id/et_context_size"
+                style="@style/Widget.Console.TextBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/field_gap"
+                android:hint="@string/context_size_hint"
+                android:importantForAutofill="no"
+                android:imeOptions="actionDone"
+                android:inputType="number"
+                android:maxLength="7" />
+
+            <TextView
+                android:id="@+id/tv_context_size_reason"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_1"
+                android:textAppearance="@style/TextAppearance.Console.Small"
+                android:textColor="@color/console_bad"
+                android:visibility="gone" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_1"
+                android:text="@string/context_size_help"
+                android:textAppearance="@style/TextAppearance.Console.Small" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_5"
+                android:text="@string/speculative_title"
+                android:textAppearance="@style/TextAppearance.Console.Strong" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_1"
+                android:text="@string/speculative_help"
+                android:textAppearance="@style/TextAppearance.Console.Small" />
+            <RadioGroup
+                android:id="@+id/rg_speculative"
+                style="@style/Widget.Console.SegmentTrack"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2">
+
+                <RadioButton
+                    android:id="@+id/rb_spec_off"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/speculative_off" />
+
+                <RadioButton
+                    android:id="@+id/rb_spec_on"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/segment_gap"
+                    android:text="@string/speculative_on" />
+
+                <RadioButton
+                    android:id="@+id/rb_spec_adaptive"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/segment_gap"
+                    android:checked="true"
+                    android:text="@string/speculative_adaptive" />
+            </RadioGroup>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_6"
+                android:text="@string/section_encoders"
+                android:textAppearance="@style/TextAppearance.Console.Label" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/tick_rule_height"
+                android:layout_marginTop="@dimen/space_2"
+                android:background="@drawable/tick_rule" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_4"
+                android:text="@string/encoder_vision_title"
+                android:textAppearance="@style/TextAppearance.Console.Strong" />
+            <RadioGroup
+                android:id="@+id/rg_vision_backend"
+                style="@style/Widget.Console.SegmentTrack"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2">
+
+                <RadioButton
+                    android:id="@+id/rb_vision_auto"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:checked="true"
+                    android:text="@string/encoder_auto" />
+
+                <RadioButton
+                    android:id="@+id/rb_vision_cpu"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/segment_gap"
+                    android:text="@string/backend_cpu" />
+
+                <RadioButton
+                    android:id="@+id/rb_vision_gpu"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/segment_gap"
+                    android:text="@string/backend_gpu" />
+            </RadioGroup>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_5"
+                android:text="@string/encoder_audio_title"
+                android:textAppearance="@style/TextAppearance.Console.Strong" />
+            <RadioGroup
+                android:id="@+id/rg_audio_backend"
+                style="@style/Widget.Console.SegmentTrack"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2">
+
+                <RadioButton
+                    android:id="@+id/rb_audio_auto"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:checked="true"
+                    android:text="@string/encoder_auto" />
+
+                <RadioButton
+                    android:id="@+id/rb_audio_cpu"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/segment_gap"
+                    android:text="@string/backend_cpu" />
+
+                <RadioButton
+                    android:id="@+id/rb_audio_gpu"
+                    style="@style/Widget.Console.Segment"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/segment_gap"
+                    android:text="@string/backend_gpu" />
+            </RadioGroup>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
+                android:text="@string/encoder_help"
+                android:textAppearance="@style/TextAppearance.Console.Small" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.core.widget.NestedScrollView>

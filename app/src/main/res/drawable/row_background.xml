@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The standard row: the well on hover and press (rule book 7.8) -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/console_well">
+    <item android:id="@android:id/mask">
+        <shape>
+            <corners android:topLeftRadius="@dimen/radius_small_top_left" android:topRightRadius="@dimen/radius_small_top_right" android:bottomRightRadius="@dimen/radius_small_bottom_right" android:bottomLeftRadius="@dimen/radius_small_bottom_left" />
+            <solid android:color="@color/console_fg" />
+        </shape>
+    </item>
+</ripple>

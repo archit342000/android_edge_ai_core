@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The three sections, shared by the bottom bar, the rail and the navigation panel. -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:id="@+id/nav_server"
-        android:icon="@android:drawable/ic_menu_slideshow"
-        android:title="Server" />
-    <item
-        android:id="@+id/nav_backend"
-        android:icon="@android:drawable/ic_menu_preferences"
-        android:title="Backend" />
-    <item
-        android:id="@+id/nav_tokens"
-        android:icon="@android:drawable/ic_lock_lock"
-        android:title="API Tokens" />
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_server"
+            android:checked="true"
+            android:icon="@drawable/ic_nav_server"
+            android:title="@string/nav_server" />
+        <item
+            android:id="@+id/nav_backend"
+            android:icon="@drawable/ic_nav_backend"
+            android:title="@string/nav_backend" />
+        <item
+            android:id="@+id/nav_tokens"
+            android:icon="@drawable/ic_nav_tokens"
+            android:title="@string/nav_tokens" />
+    </group>
 </menu>

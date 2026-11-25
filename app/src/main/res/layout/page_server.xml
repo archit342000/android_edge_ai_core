@@ -1,0 +1,399 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Server: the app's home, an open screen. A short block of words on the sphere, then the reading panel. -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/page_server"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToPadding="false"
+    android:fillViewport="true">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipChildren="false">
+
+        <com.aanand.edgeaicore.SphereFadeLayout
+            android:id="@+id/open_block"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/page_padding"
+            android:paddingEnd="@dimen/page_padding"
+            android:paddingTop="@dimen/space_6"
+            android:paddingBottom="@dimen/space_6"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_max="@dimen/measure">
+
+            <LinearLayout
+                android:id="@+id/status_line"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/iv_status_light"
+                    android:layout_width="@dimen/status_light_box"
+                    android:layout_height="@dimen/status_light_box"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/status_light" />
+
+                <TextView
+                    android:id="@+id/tv_status_word"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/status_line_gap"
+                    android:textAppearance="@style/TextAppearance.Console.Label"
+                    android:textColor="@color/console_fg" />
+
+                <LinearLayout
+                    android:id="@+id/working_dots"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/status_line_gap"
+                    android:importantForAccessibility="no"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/working_dot" />
+
+                    <ImageView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/working_dot_gap"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/working_dot" />
+
+                    <ImageView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/working_dot_gap"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/working_dot" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_headline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_3"
+                android:text="@string/app_name"
+                android:textAppearance="@style/TextAppearance.Console.Greeting" />
+
+            <TextView
+                android:id="@+id/tv_server_address"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
+                android:textAppearance="@style/TextAppearance.Console.Body"
+                android:textIsSelectable="true" />
+
+        </com.aanand.edgeaicore.SphereFadeLayout>
+
+        <LinearLayout
+            android:id="@+id/server_panel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/open_block"
+            app:layout_constraintWidth_max="@dimen/measure"
+            android:background="@drawable/page_panel"
+            android:elevation="@dimen/page_panel_elevation"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/page_padding"
+            android:paddingEnd="@dimen/page_padding"
+            android:paddingTop="@dimen/space_5"
+            android:paddingBottom="@dimen/space_7">
+
+            <!-- The status detail can run to several lines, so it opens the panel rather than sitting on the sphere (rule book 3.3). -->
+            <TextView
+                android:id="@+id/tv_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/space_5"
+                android:textAppearance="@style/TextAppearance.Console.Body" />
+
+            <include
+                android:id="@+id/notice_error"
+                layout="@layout/view_notice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/space_5"
+                android:visibility="gone" />
+
+            <include
+                android:id="@+id/card_explain"
+                layout="@layout/view_explain_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/space_5"
+                android:visibility="gone" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/section_model"
+                android:textAppearance="@style/TextAppearance.Console.Label" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/tick_rule_height"
+                android:layout_marginTop="@dimen/space_2"
+                android:background="@drawable/tick_rule" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_3"
+                android:clipChildren="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tv_model_path"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="@dimen/space_3"
+                    android:ellipsize="middle"
+                    android:singleLine="true"
+                    android:text="@string/model_none"
+                    android:textAppearance="@style/TextAppearance.Console.Figure" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_select_model"
+                    style="@style/Widget.Console.Button.Quiet"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/select_model" />
+            </LinearLayout>
+
+            <com.google.android.material.progressindicator.LinearProgressIndicator
+                android:id="@+id/progress_model_copy"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
+                android:visibility="gone" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_6"
+                android:text="@string/section_server"
+                android:textAppearance="@style/TextAppearance.Console.Label" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/tick_rule_height"
+                android:layout_marginTop="@dimen/space_2"
+                android:background="@drawable/tick_rule" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_enable_server"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_2"
+                android:enabled="false"
+                android:text="@string/enable_server" />
+
+            <TextView
+                android:id="@+id/tv_switch_reason"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.Console.Small"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/fold_diagnostics_box"
+                style="@style/Widget.Console.Fold"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_6"
+                android:clipChildren="false"
+                android:clipToPadding="false">
+
+                <LinearLayout
+                    android:id="@+id/fold_diagnostics"
+                    style="@style/Widget.Console.FoldHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <ImageView
+                        android:id="@+id/iv_fold_chevron"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_chevron"
+                        app:tint="@color/console_muted" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/fold_header_gap"
+                        android:text="@string/fold_diagnostics_title"
+                        android:textAppearance="@style/TextAppearance.Console.Strong" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="@dimen/fold_header_gap"
+                        android:ellipsize="end"
+                        android:singleLine="true"
+                        android:text="@string/fold_diagnostics_summary"
+                        android:textAppearance="@style/TextAppearance.Console.Small" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/fold_diagnostics_body"
+                    style="@style/Widget.Console.FoldBody"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tv_tests_reason"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/space_3"
+                        android:textAppearance="@style/TextAppearance.Console.Small"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipChildren="false"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_test_inference"
+                            style="@style/Widget.Console.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="@dimen/space_2"
+                            android:enabled="false"
+                            android:text="@string/test_inference" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_test_multiturn"
+                            style="@style/Widget.Console.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:enabled="false"
+                            android:text="@string/test_multiturn" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_3"
+                        android:clipChildren="false"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_test_vision"
+                            style="@style/Widget.Console.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="@dimen/space_2"
+                            android:enabled="false"
+                            android:text="@string/test_vision" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_test_audio"
+                            style="@style/Widget.Console.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:enabled="false"
+                            android:text="@string/test_audio" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_3"
+                        android:clipChildren="false"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_test_health"
+                            style="@style/Widget.Console.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="@dimen/space_2"
+                            android:enabled="false"
+                            android:text="@string/test_health" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_test_load"
+                            style="@style/Widget.Console.Button.Outline"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:enabled="false"
+                            android:text="@string/test_load" />
+                    </LinearLayout>
+
+                    <include
+                        android:id="@+id/card_explain_mic"
+                        layout="@layout/view_explain_card"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_4"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_5"
+                        android:text="@string/section_logs"
+                        android:textAppearance="@style/TextAppearance.Console.Label" />
+
+                    <!-- The box clips the scrolled log to its rectangle (the body above lets focus rings spill, which would let the log spill too); the log's own padding keeps it off the rounded corners. -->
+                    <FrameLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/code_box_height"
+                        android:layout_marginTop="@dimen/space_2"
+                        android:background="@drawable/code_box">
+
+                        <androidx.core.widget.NestedScrollView
+                            android:id="@+id/scroll_logs"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:fadeScrollbars="false"
+                            android:scrollbars="vertical">
+
+                            <TextView
+                                android:id="@+id/tv_logs"
+                                style="@style/Widget.Console.CodeBox"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@null"
+                                android:textIsSelectable="true"
+                                tools:text="Status update" />
+                        </androidx.core.widget.NestedScrollView>
+                    </FrameLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.core.widget.NestedScrollView>

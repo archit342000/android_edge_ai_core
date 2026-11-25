@@ -8,12 +8,12 @@
 - Inference callbacks: `AiEngineManager.generateConversationResponseAsync` reports failures through `onErrorCallback` and success through `onComplete`.
   Call exactly one of them, once. Callers must handle both.
 - HTTP failures map to status codes and an `ErrorResponse` body as listed in `docs/standards/api.md`. Streams send `data: {"error": ...}` and end.
-- User-facing messages (toasts, status text, broadcasts) are short and actionable. Internal detail goes to `Log`.
+- User-facing messages (brief messages, status text, broadcasts) are short and actionable and follow the rule book's Part 9. Internal detail goes to `Log`.
 
 ## Logging
 
 Use `android.util.Log` with the class `TAG` constant (`private const val TAG = "<ClassName>"` in the `companion object`).
-Do not pass a string literal as the tag (`MainActivity.kt:414,443` do; fix when touched).
+Do not pass a string literal as the tag.
 
 | Level | Use for |
 |-------|---------|

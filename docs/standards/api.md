@@ -48,7 +48,7 @@ compatibility, a bare token. Missing or unknown tokens get `401 {"error": "Inval
 
 Ranges are checked before generation: `messages` has 1 to 256 items, `temperature` is 0 to 2, `top_p` is above 0 and at most 1, `top_k` is at least 1, the
 penalties are -2 to 2 and the token limits at least 1. Anything outside gives `400 {"error": "<field> must be ..."}` (a fixed message naming the field, never the value).
-The context size (KV cache, input plus output tokens) is not a request field: it is set in the app (Backend Settings, "Context size (tokens)", empty = model default)
+The context size (KV cache, input plus output tokens) is not a request field: it is set in the app (Backend tab, "Context size (tokens)", empty = model default)
 and applied when the server starts.
 
 `content` is a string or an array of parts: `{"type": "text", "text": ...}`, `{"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}`,

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fold-open arrow. Outline icon: 2 line on a 24 grid, rounded ends and joins (rule book 2.6). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="@dimen/nav_icon_size"
+    android:height="@dimen/nav_icon_size"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M9,6l6,6l-6,6"
+        android:strokeWidth="2"
+        android:strokeColor="@color/console_fg"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

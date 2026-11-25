@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Console at Rest corners (rule book 2.4): three rounded, the bottom left squared off. -->
+<resources>
+    <style name="ShapeAppearance.Console.Small" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/radius_small_top_left</item>
+        <item name="cornerSizeTopRight">@dimen/radius_small_top_right</item>
+        <item name="cornerSizeBottomRight">@dimen/radius_small_bottom_right</item>
+        <item name="cornerSizeBottomLeft">@dimen/radius_small_bottom_left</item>
+    </style>
+
+    <style name="ShapeAppearance.Console.Control" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/radius_control_top_left</item>
+        <item name="cornerSizeTopRight">@dimen/radius_control_top_right</item>
+        <item name="cornerSizeBottomRight">@dimen/radius_control_bottom_right</item>
+        <item name="cornerSizeBottomLeft">@dimen/radius_control_bottom_left</item>
+    </style>
+
+    <style name="ShapeAppearance.Console.Panel" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/radius_panel_top_left</item>
+        <item name="cornerSizeTopRight">@dimen/radius_panel_top_right</item>
+        <item name="cornerSizeBottomRight">@dimen/radius_panel_bottom_right</item>
+        <item name="cornerSizeBottomLeft">@dimen/radius_panel_bottom_left</item>
+    </style>
+
+    <style name="ShapeAppearance.Console.Sheet" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/radius_sheet_top_left</item>
+        <item name="cornerSizeTopRight">@dimen/radius_sheet_top_right</item>
+        <item name="cornerSizeBottomRight">@dimen/radius_sheet_bottom_right</item>
+        <item name="cornerSizeBottomLeft">@dimen/radius_sheet_bottom_left</item>
+    </style>
+
+</resources>

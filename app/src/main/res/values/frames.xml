@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Values that change with the width frame. Phone: edge to edge, square, 16 side padding. -->
+<resources>
+    <dimen name="page_padding">@dimen/page_padding_phone</dimen>
+    <item name="page_panel" type="drawable">@drawable/panel_background_phone</item>
+    <dimen name="page_panel_elevation">@dimen/elevation_none</dimen>
+</resources>

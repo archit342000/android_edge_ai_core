@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- .switch: 48 x 28, corners 14 14 14 4 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+        <corners android:topLeftRadius="@dimen/switch_track_radius" android:topRightRadius="@dimen/switch_track_radius" android:bottomRightRadius="@dimen/switch_track_radius" android:bottomLeftRadius="@dimen/switch_track_radius_bottom_left" />
+        <solid android:color="@color/console_switch_track" />
+        <size android:width="@dimen/switch_track_width" android:height="@dimen/switch_track_height" />
+    </shape>
