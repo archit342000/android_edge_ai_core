@@ -119,9 +119,8 @@ class DotSphereView @JvmOverloads constructor(context: Context, attrs: Attribute
     /** Pulses while the app works (a model loading, a test running). */
     fun setWorking(working: Boolean) = model.setWorking(working)
 
-    /** The touch ended: the sphere goes back to the middle. */
-    fun release() {
-        model.release()
+    /** The touch ended: the smoother frame rate runs on while the sphere settles where it was touched. */
+    fun touchEnded() {
         lastTouchMs = SystemClock.uptimeMillis()
     }
 

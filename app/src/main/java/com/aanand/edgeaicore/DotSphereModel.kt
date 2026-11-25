@@ -150,25 +150,16 @@ class DotSphereModel(private val spec: DotSphereSpec, seed: Long) {
         }
     }
 
-    /** Leans the sphere toward a touch at ([x], [y]) in dp. */
+    /**
+     * Leans the sphere toward a touch at ([x], [y]) in dp. It stays aimed there after the touch ends, as the script's sphere
+     * stays where the pointer last was: a tap is too short for the sphere to get far before it would turn back.
+     */
     fun leanToward(x: Float, y: Float) {
         if (!motionEnabled || width <= 0f) return
         mouseX = (x - width / 2) / (width / 2)
         mouseY = (y - height / 2) / (height / 2)
         targetX = x.coerceIn(0f, width)
         targetY = y.coerceIn(0f, height)
-    }
-
-    /**
-     * The touch has ended: the sphere drifts back to the middle and stops leaning. The script keeps following the pointer;
-     * on a phone that would park the sphere wherever the last tap was, often under the bottom bar.
-     */
-    fun release() {
-        if (width <= 0f) return
-        mouseX = 0f
-        mouseY = 0f
-        targetX = width / 2
-        targetY = height / 2
     }
 
     /** Sends a ripple through the sphere, as on a commit; [strength] as in the script (touch 1.3, a finished task 0.6). */

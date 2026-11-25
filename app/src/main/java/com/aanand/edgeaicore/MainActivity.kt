@@ -250,11 +250,11 @@ class MainActivity : AppCompatActivity() {
         outState.putBoolean(STATE_FOLD_OPEN, foldBody.isVisible)
     }
 
-    /** The sphere leans toward a touch and returns to the middle when it ends; the touch goes on to the views as usual. */
+    /** The sphere leans toward a touch and stays there when it ends; the touch goes on to the views as usual. */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> sphere.leanToward(ev.x, ev.y)
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> sphere.release()
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> sphere.touchEnded()
         }
         return super.dispatchTouchEvent(ev)
     }
