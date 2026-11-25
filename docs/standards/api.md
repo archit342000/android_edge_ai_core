@@ -91,7 +91,7 @@ With `stream_options.include_usage: true` the last event before `[DONE]` is a ch
 chunk carries `usage`.
 
 On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`. The message is always a fixed one (`Server busy`, `Generation timed out`, `Token usage unavailable`, `Model not loaded`, otherwise `Inference failed`), never the exception text, which goes to the log.
-If the client disconnects (noticed through the closed connection, even before the first token, or through a failed stream write), the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops.
+If the client disconnects (noticed through the closed connection, even before the first token, or through a failed stream write), the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops. A request still queued for the engine is dropped at once. LiteRT-LM finishes prompt processing (prefill) before it honours a cancel, so a request dropped during prefill frees the slot only when prefill ends, without generating any text.
 
 ## Unsupported or ignored
 
