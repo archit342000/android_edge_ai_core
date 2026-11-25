@@ -17,13 +17,13 @@
             android:strokeLineJoin="round"
             android:strokeColor="#FFFFFFFF" />
         <path
-            android:pathData="M51.1,43.8 L51.1,39.6 M51.1,56.2 L51.1,60.4 M47.8,47.1 L43.6,47.1 M60.2,47.1 L64.4,47.1 M56.9,43.8 L56.9,39.6 M56.9,56.2 L56.9,60.4 M47.8,52.9 L43.6,52.9 M60.2,52.9 L64.4,52.9"
-            android:strokeWidth="2.4"
+            android:pathData="M48.6,42.6 L59.4,42.6 Q61.4,42.6 61.4,44.6 L61.4,55.4 Q61.4,57.4 59.4,57.4 L48.6,57.4 Q46.6,57.4 46.6,55.4 L46.6,44.6 Q46.6,42.6 48.6,42.6 Z"
+            android:strokeWidth="3.4"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeColor="#FFFFFFFF" />
         <path
-            android:pathData="M49.2,43.8 L58.8,43.8 Q60.2,43.8 60.2,45.2 L60.2,54.8 Q60.2,56.2 58.8,56.2 L49.2,56.2 Q47.8,56.2 47.8,54.8 L47.8,45.2 Q47.8,43.8 49.2,43.8 Z"
+            android:pathData="M52,47.4 L56,47.4 Q56.6,47.4 56.6,48 L56.6,52 Q56.6,52.6 56,52.6 L52,52.6 Q51.4,52.6 51.4,52 L51.4,48 Q51.4,47.4 52,47.4 Z"
             android:fillColor="#FFFFFFFF" />
     </group>
 </vector>
