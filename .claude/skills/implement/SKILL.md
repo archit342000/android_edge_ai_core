@@ -41,10 +41,10 @@ Execute an existing plan faithfully. Implement the steps in order, make small ed
 
 ## Ticket mode
 
-Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
-- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
-- **Epic IDs:** if the ID is an epic (`type: epic`), do not run on it. List its unfinished children (as `/ticket list epic <ID>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
-- **Step 1:** the plan is the ticket's `## Plan` section; do not look in `plans/`. If it is empty, say so and ask whether to run `plan` first. Read Implementation notes and Review history too, in case work is already underway, and continue from there. Record the baseline test result under `### Baseline (YYYY-MM-DD)` and pre-existing dirty files in Implementation notes (not the plan).
+Applies when the user gives a ticket key such as `MA-12` (see the `ticket` skill, "Use from other skills"). Differences:
+- **Jira:** read the whole issue first (`ticket` skill, "Reading a ticket") and write to it as you go. There is nothing to pull, commit or push: a Jira write is the save, and it is not a code commit, so this skill's "do not commit or push" rules do not cover it. Fields are replaced whole (read, then send the complete value), one write at a time. Say in the report if a write failed and what is missing (`ticket` skill, "Failed writes").
+- **Epic keys:** if the key is an epic (issue type `Epic`), do not run on it. List its unfinished children (as `/ticket list epic <KEY>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
+- **Step 1:** the plan is the ticket's `Plan` field (plus any `## Plan (part k of N)` comments); do not look in `plans/`. If it is empty, say so and ask whether to run `plan` first. Read the Implementation Notes field and the Review history comments too, in case work is already underway, and continue from there. Record the baseline test result under `### Baseline (YYYY-MM-DD)` and pre-existing dirty files in the Implementation Notes field (not the plan). Set the `Branch` field once the branch name is known.
 - **Step 2:** do not edit step Status lines in the ticket's Plan (it is frozen once validated); after each step, append to `### Implementation progress` in Implementation notes a line `- [x] Step N: <name> - <files>`, plus any deviation and the branch name once known. Write as you go so work can resume in a new conversation.
 - **Steps 3 and 5:** record the smoke-test commands and results under `### Smoke test (YYYY-MM-DD)` in Implementation notes, including failures that remain. Add a Log line (`implemented, smoke tests pass` or the failures).
 

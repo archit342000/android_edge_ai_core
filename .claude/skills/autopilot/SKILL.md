@@ -2,7 +2,7 @@
 name: autopilot
 description: Run the full development pipeline from a requirement - plan, implement, verify (fixing failures), review and resolve (iterated), then commit and open a PR. Automatic by default; pass "manual" to approve each stage. User-invoked only.
 disable-model-invocation: true
-argument-hint: "[manual] <ticket ID | plan path | requirement>"
+argument-hint: "[manual] <ticket key | plan path | requirement>"
 ---
 
 # Instructions
@@ -17,7 +17,7 @@ Take a requirement from the user and carry it through six stages by invoking the
 - If no requirement was given, ask for it. This is the only question asked before starting.
 - **Batch runs:** when `batch-autopilot` runs this pipeline for one of its items, that item's session runs this whole pipeline by itself, the item's worktree is the repo, and the batch's "Item session rules" (dirty list, starting commit, existing branch and worktree, PR base, verification slot) take precedence over the matching steps here.
 - **Plan path:** if the requirement is the path of an existing plan file, it is both requirement and plan (see stage 1).
-- **Ticket mode:** if the whole requirement is a ticket ID (such as `MYAI-12`, or a bare number with nothing else), run in ticket mode (see "Ticket mode" below). Free text runs as before and does not create a ticket. If the ID resolves to an epic (`type: epic`), stop here, before any pre-flight step (no branch, no run log), as described under "Ticket mode", "Epic IDs".
+- **Ticket mode:** if the whole requirement is a ticket key (such as `MA-12`, or a bare number with nothing else), run in ticket mode (see "Ticket mode" below). Free text runs as before and does not create a ticket. If the key resolves to an epic (issue type `Epic`), stop here, before any pre-flight step (no branch, no run log), as described under "Ticket mode", "Epic keys".
 
 ## One session
 
@@ -100,7 +100,7 @@ The sub-skills sometimes ask the user a question or wait for a decision. Under a
 ## Hard blockers (stop in either mode)
 
 This list is complete. "It needs the user's input", "it is a big change", "it is a design decision" and "a dependency is not merged yet" are not on it. In automatic mode none of them stops the run.
-Stop and report instead of guessing when: there is no requirement; the requirement is an epic ID (see "Ticket mode"); any stage-1 stop above; the work would be destructive to real data or existing containers outside a throwaway environment; required access or tools are missing and cannot be set up; the fix loop hits its cap or its early stop; a 4th plan amendment is needed; checks fail in a way you cannot fix; shipping fails for a non-network reason (for example a rejected push). The report says which stage stopped, why, what state the repo is in, and what the user can do next.
+Stop and report instead of guessing when: there is no requirement; the requirement is an epic key (see "Ticket mode"); any stage-1 stop above; the work would be destructive to real data or existing containers outside a throwaway environment; required access or tools are missing and cannot be set up; the fix loop hits its cap or its early stop; a 4th plan amendment is needed; checks fail in a way you cannot fix; shipping fails for a non-network reason (for example a rejected push). The report says which stage stopped, why, what state the repo is in, and what the user can do next.
 
 ## Run log
 
@@ -108,11 +108,11 @@ Create `plans/<slug>-autopilot-<date>.md` in pre-flight (slug: a few words from 
 
 ## Ticket mode
 
-Applies when the input is a ticket ID (see the `ticket` skill, "Use from other skills"). The ticket replaces the plan, verification and run-log files in `plans/`, so a later conversation can resume the run.
-- **Epic IDs:** an epic is not a requirement autopilot runs; it is a hard blocker in either mode. List its unfinished children (as `/ticket list epic <ID>`), suggest running autopilot on one of them or `batch-autopilot epic <ID>` for its `todo` children, and stop.
-- **Start:** read the ticket. Its Description and Acceptance criteria are the requirement. If a Plan, Implementation notes or Review history already exist, continue from the first stage not yet done instead of restarting, and say where you resume. Set status `in-progress` and add a Log line (`autopilot started`); if the ticket's epic is `todo`, set it `in-progress` too (ticket `start` rule).
-- **Sub-skills:** invoke each one with the ticket ID so it works in ticket mode (plan in Plan, progress in Implementation notes, scenarios in Verification, rounds in Review history).
-- **Run log:** no `plans/` run log. Pre-flight creates two subsections at the top of Implementation notes: `### Autopilot run (YYYY-MM-DD)` and `### Autopilot decisions (YYYY-MM-DD)`. The run subsection uses this template and is updated at the end of every stage and loop round (not continuously); resume reads it:
+Applies when the input is a ticket key (see the `ticket` skill, "Use from other skills"). The Jira issue replaces the plan, verification and run-log files in `plans/`, so a later conversation can resume the run.
+- **Epic keys:** an epic is not a requirement autopilot runs; it is a hard blocker in either mode. List its unfinished children (as `/ticket list epic <KEY>`), suggest running autopilot on one of them or `batch-autopilot epic <KEY>` for its `To Do` children, and stop.
+- **Start:** read the ticket (`ticket` skill, "Reading a ticket"). Its Description and Acceptance Criteria are the requirement. If a Plan, Implementation Notes or Review history already exist, continue from the first stage not yet done instead of restarting, and say where you resume. Move the issue to `In Progress` and add a Log line (`autopilot started`); if the ticket's epic is `To Do`, move it to `In Progress` too (ticket `start` rule).
+- **Sub-skills:** invoke each one with the ticket key so it works in ticket mode (plan in the Plan field, progress in Implementation Notes, scenarios in Verification comments, rounds in Review history comments).
+- **Run log:** no `plans/` run log. Pre-flight creates two subsections at the top of the Implementation Notes field: `### Autopilot run (YYYY-MM-DD)` and `### Autopilot decisions (YYYY-MM-DD)`. The run subsection uses this template and is updated at the end of every stage and loop round (not continuously); resume reads it:
   ```
   - Mode: automatic | manual
   - Branch: <name>  PR base: <branch>  Starting commit: <sha>
@@ -125,16 +125,16 @@ Applies when the input is a ticket ID (see the `ticket` skill, "Use from other s
   ```
   Below them, the other skills' subsections go in this order: `### Baseline`, `### Implementation progress`, `### Smoke test`, `### Fix loop`, then the `PR:` line last. Insert each in its place rather than appending at the end. After each stage add a Log line (stage, outcome, loop counts used). Record the decision log under `### Autopilot decisions (YYYY-MM-DD)` in Implementation notes, and update it as decisions are made.
 - **Fix loop (stage 4):** record each round's triage, root cause, fix and re-verification result under `### Fix loop` in Implementation notes.
-- **Every ticket write** sets the frontmatter `updated` date (ticket rules), whichever skill writes.
-- **Ticket sync:** the ticket lives in the shared tickets clone and on the repo's `tickets` branch (`ticket` skill, "Storage and sync"). Pull the clone before the first read in pre-flight. At the end of pre-flight, of every stage, and of every fix round and review iteration, commit the ticket file by explicit path (`<ID>: autopilot <stage> <outcome>`) and push; that commit also carries whatever the stage's skill wrote and had not yet committed. Never start the next stage with the ticket uncommitted. A push that fails for network or auth reasons does not stop the run: keep the commit and push again at the next stage end.
-- **Before the final report:** check that the ticket is committed and pushed: `git -C <clone> status --short -- <file>` prints nothing and `git -C <clone> log origin/tickets..HEAD --oneline` is empty. Commit and push if not. If the push still fails, say so under "Needs your attention".
-- **Ship:** the ticket ID may appear in commits, branch and PR, and the PR may link the ticket on the `tickets` branch; local ticket and evidence paths never do (see the `ship` skill). Leave the status `in-progress`; tell the user to run `/ticket close <ID>` when done.
-- **Hard blockers:** also log the stage, reason and repo state in the ticket, then commit and push it.
+- **Field size:** Implementation Notes is one field of at most 29,000 characters (`ticket` skill, "Writing rules"). If the run's notes would outgrow it, move the oldest finished subsections (`### Baseline`, `### Smoke test`, closed rounds of `### Fix loop`) into a comment whose first line is `## Implementation notes (part k)` and keep the run and decisions subsections in the field.
+- **Ticket sync:** the ticket is the Jira issue, which is shared and always current: there is nothing to pull, commit or push. Read it before the first step in pre-flight. At the end of pre-flight, of every stage, and of every fix round and review iteration, write the run subsection and the Log line (`autopilot <stage> <outcome>`) to the issue, together with whatever the stage's skill had not yet written. Never start the next stage with the issue out of date. A Jira write that fails (rate limit, timeout) does not stop the run: follow the `ticket` skill's "Failed writes", keep the content in the conversation and write it again at the next stage end.
+- **Before the final report:** check that the issue holds the last stage's results (read the Implementation Notes and the Log). Write anything missing. If a write still fails, say so under "Needs your attention" with what is missing.
+- **Ship:** the ticket key may appear in commits, branch and PR, and the PR may link the issue (`https://archit342000.atlassian.net/browse/<KEY>`); local ticket and evidence paths never do (see the `ship` skill). Leave the status `In Progress`; tell the user to run `/ticket close <KEY>` when done.
+- **Hard blockers:** also log the stage, reason and repo state in the ticket (Implementation Notes and a Log line).
 
 ## Final report
 
-When the pipeline ends, report: the outcome (shipped with PR link, or stopped and why), a line per stage, loop counts, the decision log, BLOCKED scenarios, unresolved review findings, and the paths of the run log, plan and verification evidence. In ticket mode, say whether the ticket is pushed.
-End with a "Needs your attention" list: the assumptions made in place of the user's decisions, the PR to merge (and its base if stacked), and, in ticket mode, `/ticket close <ID>`.
+When the pipeline ends, report: the outcome (shipped with PR link, or stopped and why), a line per stage, loop counts, the decision log, BLOCKED scenarios, unresolved review findings, and the paths of the run log, plan and verification evidence. In ticket mode, say whether every Jira write succeeded and list any that did not.
+End with a "Needs your attention" list: the assumptions made in place of the user's decisions, the PR to merge (and its base if stacked), and, in ticket mode, `/ticket close <KEY>`.
 
 ## Constraints & Rules
 

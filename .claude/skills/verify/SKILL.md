@@ -88,13 +88,13 @@ Applies when a verification plan for this change already exists (for example aft
 
 ## Ticket mode
 
-Applies when the user gives a ticket ID (see the `ticket` skill, "Use from other skills"). Differences:
-- **Sync:** pull the tickets clone before reading the ticket, and when this skill finishes, commit the ticket file and push it (`ticket` skill, "Storage and sync"). This is not a code commit, so this skill's "do not commit or push" rules do not cover it. Say in the report if the push failed.
-- **Epic IDs:** if the ID is an epic (`type: epic`), do not run on it. List its unfinished children (as `/ticket list epic <ID>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
-- **Step 1:** a re-run is detected by the ticket's Verification section already holding a plan, not by `plans/` files. The plan and intent come from the ticket's Plan and Acceptance criteria; Implementation notes say what was built. The diff is still the ground truth.
-- **Step 2:** write the verification plan into the ticket's `## Verification` section (`###` headings), not a `plans/` file.
-- **Steps 3 and 4:** put evidence and temporary scripts in `~/.claude/tickets/<repo>/<ID>-evidence/` (scripts in `scripts/`), not the repo's `plans/` folder, and link them from the ticket.
-- **Step 5:** append the results table under `### Results (YYYY-MM-DD)`; a re-run adds a new Results subsection and leaves earlier ones. Tick an acceptance criterion only when every scenario covering it passes in the latest results. Add a Log line with the verdict and counts.
+Applies when the user gives a ticket key such as `MA-12` (see the `ticket` skill, "Use from other skills"). Differences:
+- **Jira:** read the whole issue first (`ticket` skill, "Reading a ticket") and write to it as you go. There is nothing to pull, commit or push: a Jira write is the save, and it is not a code commit, so this skill's "do not commit or push" rules do not cover it. Fields are replaced whole (read, then send the complete value), one write at a time. Say in the report if a write failed and what is missing (`ticket` skill, "Failed writes").
+- **Epic keys:** if the key is an epic (issue type `Epic`), do not run on it. List its unfinished children (as `/ticket list epic <KEY>`) and ask which child ticket to use (see the `ticket` skill, "Epics").
+- **Step 1:** a re-run is detected by the ticket already having a `## Verification` comment with a plan, not by `plans/` files. The plan and intent come from the ticket's Plan and Acceptance Criteria; Implementation Notes say what was built. The diff is still the ground truth.
+- **Step 2:** post the verification plan as a comment whose first line is `## Verification` (`###` headings below it), not a `plans/` file. Keep it under 29,000 characters; split into a second `## Verification` comment if needed.
+- **Steps 3 and 4:** put evidence and temporary scripts in `~/.claude/ticket-evidence/<KEY>/` (scripts in `scripts/`), not the repo's `plans/` folder. The folder stays on this machine, so the ticket must carry the results themselves.
+- **Step 5:** add the results table under `### Results (YYYY-MM-DD)` by editing the Verification comment that holds the plan (read it, send it back with the results appended); a re-run adds a new `## Verification` comment with a `### Results (re-run N, YYYY-MM-DD)` subsection and leaves earlier ones. Tick an acceptance criterion (`☐` to `☑` in the Acceptance Criteria field) only when every scenario covering it passes in the latest results. Add a Log line with the verdict and counts.
 - Writing the ticket and its evidence folder is the only change verify makes outside the throwaway environment.
 
 ## Constraints & Rules

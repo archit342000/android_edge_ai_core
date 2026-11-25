@@ -1,8 +1,8 @@
 ---
 name: batch-autopilot
-description: Run the autopilot pipeline over several tickets or requirements in one go, in parallel where dependencies allow. Orders tickets by their blocked_by links, runs every item whose blockers have shipped at the same time (each in its own worktree with its own session), stacks each dependent PR on its blocker's branch, skips dependents of anything that fails, and keeps a batch log so the run can resume. Automatic by default; pass "manual" to approve the batch plan and each item's stages. User-invoked only.
+description: Run the autopilot pipeline over several tickets or requirements in one go, in parallel where dependencies allow. Orders tickets by their Blocks links, runs every item whose blockers have shipped at the same time (each in its own worktree with its own session), stacks each dependent PR on its blocker's branch, skips dependents of anything that fails, and keeps a batch log so the run can resume. Automatic by default; pass "manual" to approve the batch plan and each item's stages. User-invoked only.
 disable-model-invocation: true
-argument-hint: "[manual] [parallel=<n>] [model=<m>] <ticket IDs... | all | epic <ID> | \"requirement\" \"requirement\" ...>"
+argument-hint: "[manual] [parallel=<n>] [model=<m>] <ticket keys... | all | epic <KEY> | \"requirement\" \"requirement\" ...>"
 ---
 
 # Instructions
@@ -20,10 +20,10 @@ The user queues a batch and walks away for hours. They expect it to be finished 
 
 ## Input
 
-- Items are ticket IDs (`MYAI-3 MYAI-7`, or bare numbers), `all`, `epic <ID>`, or quoted free-text requirements. They may be mixed. An optional leading `manual` selects manual mode.
+- Items are ticket keys (`MA-3 MA-7`, or bare numbers), `all`, `epic <KEY>`, or quoted free-text requirements. They may be mixed. An optional leading `manual` selects manual mode.
 - **Options:** `parallel=<n>` caps how many items run at once (default: no cap, every ready item runs). `model=<m>` sets the item sessions' model (default Sonnet): a family alias (`sonnet`, `opus`, `fable`, `haiku`), resolved to that family's latest model ID known in this session, or a full model ID; record the resolved ID in the batch log. The Haiku validators and reviewers inside the skills are not affected. A plain-language request counts too.
-- `all` means every `todo` ticket of the current repo without a PR recorded in its Implementation notes (`PR: <url>, branch <name>, base <base>`). Epics are never items themselves. `epic <ID>` (or an epic's ID given as a plain item) expands to that epic's children by the same rule as `all`, in place of the epic; its `in-progress` children still need to be named. If the ID after `epic` is not an epic, or the epic expands to no children, report it and drop it. `in-progress` tickets are included only when named, since another conversation may be working on them. Tickets with a recorded PR are already shipped; they can still serve as external bases (step 2.2).
-- Resolve tickets per the `ticket` skill ("Locations"), after pulling the tickets clone (its "Storage and sync", Read), so statuses, links and recorded PRs are current. An ID that does not resolve is reported and dropped; tickets already `done` are dropped with a note. An explicitly named ticket that already has a recorded PR (open or merged) is dropped too, with a note to use plain `autopilot` to rework it.
+- `all` means every `To Do` ticket of the current repo (JQL `project = <KEY> AND status = "To Do"`) without a PR recorded in its Implementation notes (`PR: <url>, branch <name>, base <base>`). Epics are never items themselves. `epic <KEY>` (or an epic's key given as a plain item) expands to that epic's children (JQL `parent = <KEY>`) by the same rule as `all`, in place of the epic; its `In Progress` children still need to be named. If the key after `epic` is not an epic, or the epic expands to no children, report it and drop it. `In Progress` tickets are included only when named, since another conversation may be working on them. Tickets with a recorded PR are already shipped; they can still serve as external bases (step 2.2).
+- Resolve tickets per the `ticket` skill ("Ticket keys"), reading them from Jira (one search for the set, `ticket` skill "Reading a ticket"), so statuses, links and recorded PRs are current. A key that does not resolve is reported and dropped; tickets already `Done` are dropped with a note. An explicitly named ticket that already has a recorded PR (open or merged) is dropped too, with a note to use plain `autopilot` to rework it.
 - Free-text items have no links: they are independent and based on the integration branch.
 - If no items were given, ask for them. This is the only question asked before starting, and in automatic mode the only question asked at all.
 
@@ -33,7 +33,7 @@ The user queues a batch and walks away for hours. They expect it to be finished 
 **Where it runs** (before step 1): call `get_environment` with no ID. If it describes this session's environment, this conversation runs in an Anthropic cloud environment: use cloud mode (see "Cloud mode") and record it in the batch log. If it refuses because this session's environment is not an Anthropic cloud environment, or the tool is not available, run locally as written.
 
 1. **Plans directory:** the one the repo's docs name, else `plans/`; create it if missing. The batch log lives in this checkout's plans directory; each item's own run log, plan and evidence live in its worktree's plans directory (or its ticket).
-2. **Resume check:** the batch key is `batch:` followed by the resolved ticket IDs in input order (after epic expansion) and then the free-text items' first lines, whitespace collapsed; options and `manual` are not part of it. Look for a batch log whose first line is that key (`grep -lxF -- "<key>" <plans dir>/batch-*-autopilot-*.md`; in cloud mode, search the batch-logs clone after pulling it). If found, resume:
+2. **Resume check:** the batch key is `batch:` followed by the resolved ticket keys in input order (after epic expansion) and then the free-text items' first lines, whitespace collapsed; options and `manual` are not part of it. Look for a batch log whose first line is that key (`grep -lxF -- "<key>" <plans dir>/batch-*-autopilot-*.md`; in cloud mode, search the batch-logs clone after pulling it). If found, resume:
    - reuse its order, bases, worktrees, slots, verification mode and item statuses;
    - if no item is `pending` or `running`, the batch is finished: report its results and stop. Stopped and skipped items are retried with plain `autopilot` or a new batch that names them;
    - for each `running` item, `get_session` its item session: if it exists, message it for its state and carry on waiting; if it is gone, create a replacement session for the same worktree (its autopilot resumes through its own resume check);
@@ -46,14 +46,14 @@ The user queues a batch and walks away for hours. They expect it to be finished 
    Record the mode and the reason in the batch log. Only verification is ever serial; planning, implementation and review always run in parallel.
 
 ### 2. Build the batch plan
-1. **Dependency graph:** from each ticket's `links.blocked_by`, build the graph. If it has a cycle, report the cycle and stop (nothing has run yet).
+1. **Dependency graph:** from each ticket's `Blocks` issue links (`ticket` skill, "Links"), build the graph. If it has a cycle, report the cycle and stop (nothing has run yet).
 2. **Blockers outside the batch:**
    - `done`: satisfied.
    - Not `done` with a recorded PR: check the PR's state. Merged: satisfied. Open: an **external base** (its recorded branch). An unmerged blocker PR is never a reason to wait: stack on it. Closed without merging: the item is skipped (reason: blocker PR closed).
-   - `todo` with no recorded PR: **pull it into the batch** as an added item, along with its own unfinished `todo` blockers (transitively, by these same rules). The dependent cannot ship without it, so building it is part of the request. Record each addition as a decision and list it in the final report.
-   - `in-progress` with no recorded PR (another conversation may own it): if its working branch exists on the remote (from its Implementation notes), use that branch as an external base and note in the PR that the base is unshipped work. Otherwise the item is **skipped** (reason: blocked by `<ID>`, in progress elsewhere with no pushed branch).
+   - `To Do` with no recorded PR: **pull it into the batch** as an added item, along with its own unfinished `To Do` blockers (transitively, by these same rules). The dependent cannot ship without it, so building it is part of the request. Record each addition as a decision and list it in the final report.
+   - `In Progress` with no recorded PR (another conversation may own it): if its working branch exists on the remote (from its Implementation Notes or `Branch` field), use that branch as an external base and note in the PR that the base is unshipped work. Otherwise the item is **skipped** (reason: blocked by `<KEY>`, in progress elsewhere with no pushed branch).
    - Skipping an item skips everything that depends on or is stacked on it, transitively. Skipping is only for the cases named here. It is never because a blocker "must be merged first": unmerged blockers are what stacking is for.
-3. **Order:** topological order, like `ticket order` waves: wave by wave; within a wave, for `conflicts_with` pairs follow the ticket rule (fewer conflicts first, then lower ID), otherwise lowest ID first. Free-text items go last, in the order given. The order decides the merge order in the final report and who starts first under a `parallel=<n>` cap; it does not make independent items wait for each other.
+3. **Order:** topological order, like `ticket order` waves: wave by wave; within a wave, for `conflicts_with` pairs (named in the Log lines of the `Relates` links) follow the ticket rule (fewer conflicts first, then lower number), otherwise lowest number first. Free-text items go last, in the order given. The order decides the merge order in the final report and who starts first under a `parallel=<n>` cap; it does not make independent items wait for each other.
 4. **Base per item** (where its branch starts and what its PR targets):
    - No unfinished blockers: the integration branch.
    - One unfinished blocker (in the batch, or an external base): that blocker's working branch. The PR is stacked on it.
@@ -69,12 +69,12 @@ Start every ready item, up to the `parallel=<n>` cap, in order. Then wait (see "
 2. **Worktree:** resolve the base ref: `origin/<base>` after `git fetch origin <base>` whenever the base exists on the remote (a local branch may be stale), otherwise the local branch. Create the worktree with `git worktree add --no-track -b <branch> <path> <base ref>` (so a stacked branch does not track its blocker's remote branch), or `git worktree add <path> <branch>` if the branch already exists; reuse the worktree if it is already there. The path is where the repo's docs put worktrees, else `.claude/worktrees/<branch slug>` when git ignores that directory (`git check-ignore`), else a sibling directory `<repo>-worktrees/<branch slug>`. If git refuses, stop the item. If step 2.4 gave the item extra external bases, merge them in now, on a new branch only. Copy in the untracked local config the repo's docs say the app needs (such as `.env`); it is never committed.
 3. **Item session:** create it with `create_session`: title `autopilot: <item>`, tags `autopilot` and `batch`, the item model, no `environment_id`, never `permission_mode: plan`. Write its ID to the batch log. Its brief gives:
    - that it runs one item of a batch: the whole autopilot pipeline for that item, by itself, in this one session; the batch chat is its parent;
-   - the worktree's absolute path (it must `cd` there first; sessions do not start in the repo, and the worktree is its "repo"), the branch, the PR base, the starting commit (the base ref's tip), the plans directory, the mode, and the item (ticket ID or requirement text);
+   - the worktree's absolute path (it must `cd` there first; sessions do not start in the repo, and the worktree is its "repo"), the branch, the PR base, the starting commit (the base ref's tip), the plans directory, the mode, and the item (ticket key or requirement text);
    - the slot number and the verification mode: every port, container, compose project, database and temp directory used in verification is derived from the slot;
    - to read `autopilot/SKILL.md` in full (absolute path) and run it, and to read this file's "Item session rules" (absolute path) for the overrides.
-4. **Record the outcome** when the item session's hand-back arrives: check it first (the PR exists and targets the base, the branch is pushed, the worktree is clean or holds only the WIP commit's leftovers; for a ticket item, its ticket file is committed and pushed), then write `shipped` (PR URL), `stopped` (stage, reason, WIP commit) or `skipped` to the batch log. For a ticket item, also add a Log line to its ticket (`batch-autopilot: <outcome>, base <base>`), set `updated`, and commit that file and push it (`ticket` skill, "Storage and sync"); if the item session left the ticket uncommitted or unpushed, this commit and push carry that too. Free its slot.
+4. **Record the outcome** when the item session's hand-back arrives: check it first (the PR exists and targets the base, the branch is pushed, the worktree is clean or holds only the WIP commit's leftovers; for a ticket item, its Jira issue holds the item's last stage results), then write `shipped` (PR URL), `stopped` (stage, reason, WIP commit) or `skipped` to the batch log. For a ticket item, also add a Log line to its ticket (`batch-autopilot: <outcome>, base <base>`); if the item session left something unwritten, write it now. Free its slot.
 5. **On a stopped item:** mark every item that depends on or is stacked on it (transitively) as `skipped` (reason: `<item>` stopped). Other items continue.
-6. Print one line per item as it ends: `[batch] MYAI-7: shipped <PR URL>` (or `stopped at verify: ...`, `skipped: ...`), followed by `running <n>, pending <n>, done <n>`.
+6. Print one line per item as it ends: `[batch] MA-7: shipped <PR URL>` (or `stopped at verify: ...`, `skipped: ...`), followed by `running <n>, pending <n>, done <n>`.
 
 ### Item session rules
 These bind the item sessions. Everything else in autopilot applies unchanged: one session for every stage, caps, hard blockers, run log, ticket mode and decision log.
@@ -85,10 +85,10 @@ These bind the item sessions. Everything else in autopilot applies unchanged: on
 - **Verification:** derive every verification resource from the slot. In serial mode, after stage 2 send `[batch verify-request] <item>` to `@parent` with `send_message`, end the turn, and start stages 3 and 4 only when `[batch verify-grant]` arrives; send `[batch verify-release] <item>` as soon as stage 4 ends. Do the same around every re-verify. This and a manual gate are the only times the session ends a turn before its hand-back.
 - **Automatic mode:** no approval gate anywhere. The item stops only on one of autopilot's hard blockers. A question that only the user could answer is decided with a logged assumption, not treated as a blocker.
 - **Manual mode:** the item session cannot reach the user. At each of autopilot's gates, send `[batch gate] <item>, stage <n>` with what autopilot would present, and wait for `[batch gate-answer]` (accept, reject, or the requested changes).
-- **Stage 6 (`ship`):** the PR targets the item's base. For a stacked PR, the PR notes say what it is stacked on (the blocker's PR link, with its ticket ID if it has one; never a local path), that it merges after that PR, and that once it does, the PR is retargeted to the integration branch before the blocker's branch is deleted (otherwise the platform may close it); if the blocker was squash-merged, this branch also needs updating onto the integration branch.
+- **Stage 6 (`ship`):** the PR targets the item's base. For a stacked PR, the PR notes say what it is stacked on (the blocker's PR link, with its ticket key if it has one; never a local path), that it merges after that PR, and that once it does, the PR is retargeted to the integration branch before the blocker's branch is deleted (otherwise the platform may close it); if the blocker was squash-merged, this branch also needs updating onto the integration branch.
 - **Stopping:** if the item stops with uncommitted work, stage it by explicit paths, leaving out `*-autopilot-*` files, verification plans and evidence folders, and commit it on its own branch with a message in the repo's commit format marking it as unfinished (Conventional Commits: `chore(wip): <summary> (stopped at <stage>)`), local only, never pushed, hooks not bypassed. For a ticket, record it on the `WIP commit:` line of its `### Autopilot run` subsection as `<sha> (unverified)`, so a later autopilot run reviews it rather than treating it as pre-existing.
 - **Shared git:** other items work in other worktrees of the same repository at the same time. Touch only your worktree and your branch. Retry a git command that fails on a lock file after a short wait.
-- **Tickets:** the tickets clone is shared with the other item sessions. Follow autopilot's "Ticket sync": commit only your own ticket file, by explicit path, and push at the end of every stage; never stash, reset or `git add -A` in that clone.
+- **Tickets:** item sessions run in parallel against the same Jira site, which rate-limits writes. Write only your own ticket, one call at a time, at the end of every stage as autopilot's "Ticket sync" says; on a 429 or a timeout follow the `ticket` skill's "Failed writes".
 - **Hand-back:** when the item has shipped or stopped, confirm it on disk and on the remote, then send one hand-back to `@parent` and end the turn. Change nothing afterwards; if you find the hand-back was wrong, send `[batch correction] <item>` saying what is wrong, and wait:
   ```
   [batch hand-back] <item>
@@ -96,12 +96,12 @@ These bind the item sessions. Everything else in autopilot applies unchanged: on
   PR: <url, or none>  Branch: <name>  Base: <base>
   Stopped at: <stage and reason, or n/a>  WIP commit: <sha, or none>
   Sub-items: <branch and PR of each, when the plan was split, or none>
-  Ticket: pushed | unpushed (<why>) | n/a
+  Ticket: written | incomplete (<what is missing and why>) | n/a
   Checkout: clean | <paths left uncommitted>
   Counters: fix <n>/10, review <n>/5, plan amendments <n>/3
   Assumptions: <question -> choice; ... or none>
   Open items: <BLOCKED scenarios, unresolved findings, or none>
-  Run log: <path or ticket ID>
+  Run log: <path or ticket key>
   ```
 
 ### Waiting
@@ -116,22 +116,22 @@ These bind the item sessions. Everything else in autopilot applies unchanged: on
 These are the only reasons to end the batch before every item is shipped, stopped or skipped: no items given; a dependency cycle (step 2.1); a missing tool that blocks shipping (step 1.4). Anything else stops at most the one item it affects (and what depends on it), and the batch carries on.
 
 ### 4. Finish
-- Before reporting, check the tickets clone: no batch item's ticket file is uncommitted (`git status --short`) and nothing is unpushed (`git log origin/tickets..HEAD --oneline`); commit by explicit path and push what is. Leave the sessions and the worktrees as they are. Archive sessions or remove worktrees only when the user asks for it.
+- Before reporting, check each batch item's ticket in Jira (Implementation Notes and Log hold its last stage); write what is missing. Leave the sessions and the worktrees as they are. Archive sessions or remove worktrees only when the user asks for it.
 - Report:
   - a table of items: order, item, base, branch, outcome, PR link;
   - the merge order: stacked PRs after their bases, and for each `conflicts_with` pair which to land first; the second will need updating onto the integration branch afterwards, which is the user's call (this skill never rebases);
   - skipped and stopped items with reasons (say when an item was skipped only because of chain stacking, not a real dependency), and WIP branches left behind;
   - decisions that matter (verification mode, chain stacking, external bases, items pulled into the batch, merged-in external branches) and the batch log path;
-  - the worktree path and session ID of each item, and any ticket that could not be pushed.
-- **Needs your attention:** one list of everything left for the user. It holds the assumptions made in place of their decisions (item, question, choice, PR link), the PRs to merge in order, stacked PRs to retarget after their base merges, tickets to close with `/ticket close <ID>`, and stopped items to rerun. For each epic touched by the batch, report its progress (`<done>/<total> done`, counting a shipped child as not yet done until closed).
+  - the worktree path and session ID of each item, and any ticket whose Jira writes are incomplete.
+- **Needs your attention:** one list of everything left for the user. It holds the assumptions made in place of their decisions (item, question, choice, PR link), the PRs to merge in order, stacked PRs to retarget after their base merges, tickets to close with `/ticket close <KEY>`, and stopped items to rerun. For each epic touched by the batch, report its progress (`<done>/<total> done`, counting a shipped child as not yet done until closed).
 
 ## Cloud mode
 
-Cloud mode applies when the "Where it runs" check finds that this conversation runs in an Anthropic cloud environment. There, every item session gets its own container with a fresh clone of the repo. It cannot see this conversation's files, worktrees or tickets clone, and anything it leaves unpushed is lost when its container is reclaimed. The same is true of this conversation's container while it waits for hours. So `origin` is the only shared, lasting state. The overrides below replace the steps they name, and everything else applies unchanged. If the batch falls back to running items one at a time in this conversation (step 1.4), only the batch-log rule applies: worktrees inside one container work as usual.
+Cloud mode applies when the "Where it runs" check finds that this conversation runs in an Anthropic cloud environment. There, every item session gets its own container with a fresh clone of the repo. It cannot see this conversation's files or worktrees, and anything it leaves unpushed is lost when its container is reclaimed. The same is true of this conversation's container while it waits for hours. So `origin` is the only shared, lasting state. The overrides below replace the steps they name, and everything else applies unchanged. If the batch falls back to running items one at a time in this conversation (step 1.4), only the batch-log rule applies: worktrees inside one container work as usual.
 
 - **Batch log (steps 1.2, 2.6, "Batch log"):**
-  - Keep the log in a batch-logs clone instead of the plans directory: `~/.claude/autopilot-batches/<repo>/`, a standalone clone of the repo's `autopilot-batches` branch on `origin` (`<repo>` as in the `ticket` skill, "Locations").
-  - Set up and sync the clone the way the `ticket` skill handles the tickets clone ("Storage and sync"), with `autopilot-batches` in place of `tickets` and no `.prefix`. If the branch exists on `origin`, clone it. Otherwise start it as an orphan branch holding the first batch log, then `git push -u origin autopilot-batches`.
+  - Keep the log in a batch-logs clone instead of the plans directory: `~/.claude/autopilot-batches/<repo>/`, a standalone clone of the repo's `autopilot-batches` branch on `origin` (`<repo>` = basename of the `origin` URL without `.git`, resolved from the git common dir, as in the `ticket` skill, "Projects and fields").
+  - Set up the clone when `~/.claude/autopilot-batches/<repo>/.git` is missing. If `git ls-remote --heads <url> autopilot-batches` finds the branch, `git clone --single-branch --branch autopilot-batches <url> ~/.claude/autopilot-batches/<repo>`. Otherwise create the directory, `git init -b autopilot-batches`, `git remote add origin <url>`, commit the first batch log and `git push -u origin autopilot-batches`. Use a merge pull (`git pull --no-rebase --no-edit`), never `--rebase`. If a push is rejected, pull and push again. Never force-push or rewrite the branch's history.
   - Pull before the resume check and before every read. After every write, commit the batch log by explicit path and push.
   - The branch holds only batch logs and cloud item run logs, never code. Every file has a single writer, so pushes do not conflict on content.
 - **Verification mode (step 1.5):** always `parallel` (reason: each item session has its own container). Slots are still assigned and passed on.
@@ -147,14 +147,14 @@ Cloud mode applies when the "Where it runs" check finds that this conversation r
   - The brief states that the run is in cloud mode, so the cloud item rules below apply.
 - **Cloud item rules** (on top of "Item session rules"):
   - **Checkout:** your checkout is your worktree. "Never leave the worktree" means never leave it and never switch branches.
-  - **Tickets:** you have your own tickets clone, which the `ticket` skill sets up when it is missing. Pull before every read and push at the end of every stage, as autopilot's "Ticket sync" says. If a push is rejected, pull and push again. Nothing unpushed outlives this container.
+  - **Tickets:** the ticket is the Jira issue, which outlives this container. Write it at the end of every stage, as autopilot's "Ticket sync" says.
   - **Free-text items:** keep the run log in your own batch-logs clone as `<batch log name without .md>/<item slug>-run.md`. Commit it by explicit path and push it at the end of every stage, so a replacement session can resume it.
-  - **Evidence:** evidence folders stay in this container and are lost later. The ticket body, or the run log for a free-text item, must carry the results, as the `ticket` skill already requires.
+  - **Evidence:** evidence folders stay in this container and are lost later. The Jira issue, or the run log for a free-text item, must carry the results, as the `ticket` skill already requires.
   - **Stopping:** after making the WIP commit, push it with `git push origin HEAD:refs/heads/wip/<branch>`, never to `<branch>` itself. Record it as `<sha> (unverified, on wip/<branch>)`. This is the only push of unverified work, and it exists because a local-only commit would be lost with the container.
   - **Hand-back:** confirm everything on the remote. Fill `Checkout:` from `git status --short`.
 - **Recording outcomes (step 3.4):**
-  - Check only the remote: the PR, the pushed branch, and the item's ticket on `tickets` after a pull. The item's `Checkout:` line stands in for the worktree check.
-  - If the item's ticket or run log is not pushed, message the item session to push it before you record the outcome. This conversation cannot commit files that live in another container.
+  - Check only the remote: the PR, the pushed branch, and the item's Jira issue. The item's `Checkout:` line stands in for the worktree check.
+  - If the item's ticket is not up to date in Jira, or its run log is not pushed, message the item session to write it before you record the outcome. This conversation cannot commit files that live in another container.
 - **Replacement sessions (step 1.2, "Waiting"):**
   - "For the same worktree" means for the same branch, created as step 3.3 says.
   - The replacement starts from what is on `origin`: the branch, the ticket's `### Autopilot run` subsection or the cloud run log, and `wip/<branch>` if one is recorded.
@@ -175,6 +175,6 @@ Cloud mode applies when the "Where it runs" check finds that this conversation r
 - **Never rewrite history:** no rebases, no force-pushes and no merging of PRs. The only merge allowed is the one in step 2.4, which brings an extra external base's branch into an item's own branch. If a blocker's branch changes after its dependent was branched from it, report that the dependent needs updating; do not rebase it.
 - **Stack, never wait:** an unmerged blocker never pauses or skips its dependents. Once it has shipped, stack them on it and carry on.
 - **No mid-batch questions (automatic mode):** see "Run to the end without asking". The final report is the only place where you hand anything back to the user.
-- **Ticket references:** ticket IDs may appear in branches, commits and PRs; local ticket and evidence paths never do (as in `ship`). Refer to other PRs by link. Item sessions run in parallel and share one tickets clone, so each commits only its own ticket files (see the `ticket` skill, "Storage and sync").
+- **Ticket references:** ticket keys may appear in branches, commits and PRs; local ticket and evidence paths never do (as in `ship`). Refer to other PRs by link. Item sessions run in parallel and share the Jira site, so each writes only its own ticket, one call at a time (see the `ticket` skill, "Failed writes").
 - **Honest accounting:** every item ends as shipped, stopped or skipped, with the reason. Do not describe a partly shipped batch as complete.
 - **User-invoked only:** this skill runs only when the user types it.
