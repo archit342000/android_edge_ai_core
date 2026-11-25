@@ -688,6 +688,42 @@ class OpenAIServerTest {
     }
 
     @Test
+    fun clientMessageGivesFixedMessagesOnly() {
+        assertEquals("Server busy", OpenAIServer.clientMessage(EngineBusyException(), "fallback"))
+        assertEquals("Generation timed out", OpenAIServer.clientMessage(GenerationTimeoutException(), "fallback"))
+        assertEquals("Token usage unavailable", OpenAIServer.clientMessage(UsageUnavailableException(IllegalStateException("x")), "fallback"))
+        assertEquals("Model not loaded", OpenAIServer.clientMessage(ModelNotLoadedException(), "fallback"))
+        assertEquals("fallback", OpenAIServer.clientMessage(IllegalStateException("secret detail"), "fallback"))
+        assertEquals("fallback", OpenAIServer.clientMessage(IllegalStateException("Model not loaded"), "fallback"))
+    }
+
+    @Test
+    fun anEngineFailureNeverEchoesTheExceptionText() {
+        val failing = newManager(FakeEngineFactory(failure = IllegalStateException("boom")))
+        runBlocking { failing.loadModel(tmp.newFile("m-boom.litertlm").absolutePath, "CPU") }
+        withServer(failing) {
+            val plain = post(chatBody)
+            assertEquals(HttpStatusCode.InternalServerError, plain.status)
+            val plainText = plain.bodyAsText().replace(" ", "").replace("\n", "")
+            assertEquals("{\"error\":\"Inferencefailed\"}", plainText)
+            val streamText = post(streamBody).bodyAsText()
+            assertTrue(streamText, streamText.contains("\"error\":\"Inference failed\""))
+            assertFalse(streamText, streamText.contains("boom"))
+            assertFalse(streamText, streamText.contains("[DONE]"))
+            awaitLoadZero()
+        }
+    }
+
+    @Test
+    fun aNonStreamingRequestWithoutAModelGetsTheFixedMessage() = withServer(AiEngineManager(FakeEngineFactory())) {
+        val response = post(chatBody)
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val text = response.bodyAsText().replace("\n", "")
+        assertTrue(text, text.replace(" ", "").contains("{\"error\":\"Modelnotloaded\"}"))
+        assertFalse(text, text.contains("Bad Request"))
+    }
+
+    @Test
     fun aStopSequenceEndsTheOutputOnBothPathsWithFinishReasonStop() {
         val factory = FakeEngineFactory(chunks = listOf("one ", "two ", "three"))
         val manager = newManager(factory)

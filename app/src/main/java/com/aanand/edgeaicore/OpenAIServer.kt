@@ -196,7 +196,7 @@ class OpenAIServer(
                                                         // A cancel is a client disconnect, not an error to send.
                                                         if (error !is CancellationException) {
                                                             Log.e(TAG, "Streaming error", error)
-                                                            val errorJson = GsonBuilder().create().toJson(ErrorResponse(error.message ?: "Unknown error"))
+                                                            val errorJson = GsonBuilder().create().toJson(ErrorResponse(clientMessage(error, INFERENCE_FAILED_MESSAGE)))
                                                             channel.trySend("data: $errorJson\n\n")
                                                         }
                                                         channel.close()
@@ -207,7 +207,7 @@ class OpenAIServer(
                                                 throw e
                                             } catch (e: Exception) {
                                                 Log.e(TAG, "Streaming launch error", e)
-                                                val errorJson = GsonBuilder().create().toJson(ErrorResponse(e.message ?: "Unknown error"))
+                                                val errorJson = GsonBuilder().create().toJson(ErrorResponse(clientMessage(e, INFERENCE_FAILED_MESSAGE)))
                                                 channel.trySend("data: $errorJson\n\n")
                                                 channel.close()
                                             }
@@ -274,9 +274,10 @@ class OpenAIServer(
                                 call.respond(HttpStatusCode.GatewayTimeout, ErrorResponse(GenerationTimeoutException.MESSAGE))
                                 return@post
                             }
-                            if (errorOccurred != null) {
-                                Log.e(TAG, "Inference failed", errorOccurred)
-                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse(errorOccurred?.message ?: "Unknown error"))
+                            val error = errorOccurred
+                            if (error != null) {
+                                Log.e(TAG, INFERENCE_FAILED_MESSAGE, error)
+                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse(clientMessage(error, INFERENCE_FAILED_MESSAGE)))
                                 return@post
                             }
 
@@ -317,7 +318,7 @@ class OpenAIServer(
                         call.respond(HttpStatusCode.BadRequest, ErrorResponse(INVALID_BODY_MESSAGE))
                     } catch (e: Exception) {
                         Log.e(TAG, "Error processing request", e)
-                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("Bad Request: ${e.message}"))
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse(clientMessage(e, BAD_REQUEST_MESSAGE)))
                     } finally {
                         activeRequests.decrementAndGet()
                     }
@@ -353,7 +354,7 @@ class OpenAIServer(
                     if (aiEngineManager.isModelLoaded) {
                         call.respond(HealthResponse("ok", aiEngineManager.activeBackend))
                     } else {
-                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(ModelNotLoadedException.MESSAGE))
                     }
                 }
 
@@ -366,7 +367,7 @@ class OpenAIServer(
                     }
 
                     if (!aiEngineManager.isModelLoaded) {
-                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(ModelNotLoadedException.MESSAGE))
                         return@get
                     }
 
@@ -384,7 +385,7 @@ class OpenAIServer(
                  if (aiEngineManager.isModelLoaded) {
                      call.respond(HealthResponse("ok", aiEngineManager.activeBackend))
                  } else {
-                     call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
+                     call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(ModelNotLoadedException.MESSAGE))
                  }
              }
         }
@@ -429,6 +430,24 @@ class OpenAIServer(
 
         /** The only text a client sees when the request body cannot be read. */
         const val INVALID_BODY_MESSAGE = "Invalid request body"
+
+        /** What a client sees for an unexpected failure outside generation (outer 400). */
+        const val BAD_REQUEST_MESSAGE = "Bad request"
+
+        /** What a client sees for an unexpected engine failure (500, or an SSE error event). */
+        const val INFERENCE_FAILED_MESSAGE = "Inference failed"
+
+        /**
+         * The error text a client may see for [error]: the fixed message of a known exception, otherwise [fallback].
+         * Never an exception's own text, which can name internal classes, paths or echo the input; the detail goes to the log.
+         */
+        internal fun clientMessage(error: Throwable, fallback: String): String = when (error) {
+            is EngineBusyException -> EngineBusyException.MESSAGE
+            is GenerationTimeoutException -> GenerationTimeoutException.MESSAGE
+            is UsageUnavailableException -> UsageUnavailableException.MESSAGE
+            is ModelNotLoadedException -> ModelNotLoadedException.MESSAGE
+            else -> fallback
+        }
 
         /** Model id echoed back when the request names none. */
         private const val DEFAULT_MODEL_ID = "litertlm-model"

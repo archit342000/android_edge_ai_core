@@ -6,9 +6,8 @@ Known traps in the current code. Each is recorded, not yet fixed. Fix one only a
 
 1. **The server listens on all interfaces.** `embeddedServer(Netty, port = 8080)` in `OpenAIServer.start` sets no `host`, so Netty binds `0.0.0.0`.
    The README says localhost, but other devices on the same network can reach the port. Only the token protects it.
-2. **Some error bodies still leak exception text.** An unreadable request body now gets the fixed `400 "Invalid request body"` (logged with the exception class only), but the outer 400 for other failures returns `"Bad Request: ${e.message}"`, and the 500 path and SSE errors return `error.message`.
-   New code should return a short fixed message and log the detail (`docs/standards/errors-and-logging.md`).
-3. **"Model not loaded" on chat becomes 400.** `generateConversationResponseAsync` throws `IllegalStateException` when no engine is loaded.
+2. *(Removed.)* Error bodies and SSE error events no longer carry exception text: `OpenAIServer.clientMessage` gives the fixed message of a known exception or a fixed fallback (`Bad request`, `Inference failed`), and the detail goes to the log. The number is kept because docs and tickets cite later entries.
+3. **"Model not loaded" on chat becomes 400.** `generateConversationResponseAsync` throws `ModelNotLoadedException` (an `IllegalStateException`) when no engine is loaded.
    For a non-streaming request the outer `catch` turns it into `400 Bad Request`, not `503`.
 4. **`/v1/health` and root `/health` duplicate the same handler.** Change both or neither.
 5. **The raw token is accepted without `Bearer `.** `extractToken` strips the prefix if present and otherwise uses the whole header value.

@@ -165,7 +165,7 @@ class AiEngineManager(
         thinkingConfig: ThinkingConfig? = null,
         enableResponseFormat: Boolean = false
     ): LlmConversation {
-        val currentEngine = engine ?: throw IllegalStateException("Model not loaded")
+        val currentEngine = engine ?: throw ModelNotLoadedException()
         
         Log.d(TAG, "System instruction: ${systemInstruction?.let { "${it.length} chars" } ?: "none (model default)"}")
 
@@ -232,7 +232,7 @@ class AiEngineManager(
         GenerationTracker.begin()
         try {
             // Read under the lock: loadModel replaces the engine under it too.
-            if (engine == null) throw IllegalStateException("Model not loaded")
+            if (engine == null) throw ModelNotLoadedException()
 
             // The conversation in use; closed in the finally block unless it goes back into the cache.
             var conversation: LlmConversation? = null

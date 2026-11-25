@@ -90,7 +90,7 @@ chunks, and tool calls as one `delta.tool_calls` chunk (each with `index`, `id`,
 With `stream_options.include_usage: true` the last event before `[DONE]` is a chunk with `"choices": []` and the `usage` object; without it no
 chunk carries `usage`.
 
-On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`.
+On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`. The message is always a fixed one (`Server busy`, `Generation timed out`, `Token usage unavailable`, `Model not loaded`, otherwise `Inference failed`), never the exception text, which goes to the log.
 If the client disconnects mid-stream, or while a non-streaming answer is being generated (noticed through the closed connection), the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops.
 
 ## Unsupported or ignored
@@ -104,9 +104,9 @@ The context size set in the app is clamped to the model's maximum when the model
 
 | Status | When |
 |--------|------|
-| `400` | body cannot be read (malformed JSON, wrong types, missing `messages` or `role`, empty body, wrong content type): fixed message `Invalid request body`, never the input or an exception text; a field is out of range (see Chat request), an `image_url` part for a model without a vision encoder or an `audio_url` part for a model without an audio encoder (`Model does not support image input` / `... audio input`), the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
+| `400` | body cannot be read (malformed JSON, wrong types, missing `messages` or `role`, empty body, wrong content type): fixed message `Invalid request body`, never the input or an exception text; a field is out of range (see Chat request), an `image_url` part for a model without a vision encoder or an `audio_url` part for a model without an audio encoder (`Model does not support image input` / `... audio input`), the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation: `Model not loaded` when no model is loaded, otherwise the fixed `Bad request` (never the exception text) |
 | `401` | missing or invalid token |
-| `500` | the engine reported an error, returned no text (non-streaming), or its token usage could not be read (`Token usage unavailable`) |
+| `500` | the engine reported an error (fixed message `Inference failed`, never the exception text), returned no text (`Empty response from model`, non-streaming), or its token usage could not be read (`Token usage unavailable`) |
 | `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`); or `Server busy` on chat (more than 4 requests held at once, refused at once, or a request waited more than 120 s for the engine), with `Retry-After: 5`; on a stream only the refused-at-once case is a real 503, a queue-wait timeout arrives as a `data: {"error": "Server busy"}` event without `[DONE]` (the 200 had already started) |
 | `504` | `Generation timed out`: one generation ran for 10 minutes and was stopped (on a stream: a `data: {"error": ...}` event without `[DONE]`) |
 
