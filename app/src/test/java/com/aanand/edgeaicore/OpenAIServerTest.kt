@@ -647,6 +647,125 @@ class OpenAIServerTest {
         }
     }
 
+    /** A seam that records disposes and lets the test decide when the client goes away. */
+    private class GoneSeam(private val fire: (onGone: () -> Unit) -> Unit) {
+        val disposed = java.util.concurrent.atomic.AtomicInteger()
+        val watched = java.util.concurrent.atomic.AtomicInteger()
+        val watch: (io.ktor.server.application.ApplicationCall, () -> Unit) -> kotlinx.coroutines.DisposableHandle? = { _, onGone ->
+            watched.incrementAndGet()
+            fire(onGone)
+            kotlinx.coroutines.DisposableHandle { disposed.incrementAndGet() }
+        }
+    }
+
+    private fun withGoneSeam(manager: AiEngineManager, seam: GoneSeam, block: suspend ApplicationTestBuilder.() -> Unit) {
+        // A long generation timeout: a hanging generation that ends without "Generation timed out" was ended by the disconnect
+        val server = OpenAIServer(manager, seam.watch) { it == validToken }.also { it.generationTimeoutMs = 30_000 }
+        testApplication {
+            application { with(server) { module() } }
+            block()
+        }
+    }
+
+    /**
+     * Fires the client-gone callback once the prompt was sent to the engine (prefill, no token yet), whichever of the
+     * send and the watcher's registration comes first. No polling: the fake engine reports the send.
+     */
+    private class GoneAfterPrompt {
+        private var onGone: (() -> Unit)? = null
+        private var promptSent = false
+        val fireCount = java.util.concurrent.atomic.AtomicInteger()
+
+        /** Only the first request's watcher is kept. */
+        @Synchronized fun watched(callback: () -> Unit) { if (onGone == null) onGone = callback; fireIfReady() }
+        @Synchronized fun promptSent() { promptSent = true; fireIfReady() }
+        private fun fireIfReady() {
+            val callback = onGone ?: return
+            if (promptSent && fireCount.get() == 0) { fireCount.incrementAndGet(); callback() }
+        }
+    }
+
+    @Test
+    fun aStreamingClientThatLeavesDuringPrefillCancelsTheGenerationAndFreesTheLock() {
+        val (manager, factory) = hangingManager()
+        val gone = GoneAfterPrompt()
+        factory.engine.onSendMessage = { gone.promptSent() }
+        val seam = GoneSeam { onGone -> gone.watched(onGone) }
+        withGoneSeam(manager, seam) {
+            // Without the watcher only the 30 s generation timeout would end this request, with "Generation timed out"
+            val text = post(streamBody).bodyAsText()
+            assertEquals(1, gone.fireCount.get())
+            assertFalse(text, text.contains("Generation timed out"))
+            assertFalse(text, text.contains("[DONE]"))
+            assertTrue(factory.engine.conversations[0].cancelCount >= 1)
+            assertTrue(factory.engine.conversations[0].closed)
+            assertEquals(1, seam.disposed.get())
+            awaitLoadZero()
+            factory.engine.onSendMessage = null
+            factory.engine.hangUntilCancelled = false
+            assertEquals(HttpStatusCode.OK, post(streamBody).status)
+        }
+    }
+
+    @Test
+    fun aStreamingClientWhoseConnectionIsAlreadyClosedWhenWatchedIsCancelled() {
+        val (manager, factory) = hangingManager()
+        val first = java.util.concurrent.atomic.AtomicBoolean(true)
+        // the connection is already closed when the watcher is registered (the generation may not have started yet)
+        val seam = GoneSeam { onGone -> if (first.getAndSet(false)) onGone() }
+        withGoneSeam(manager, seam) {
+            // Without the watcher only the 30 s generation timeout would end this request, with "Generation timed out"
+            val text = post(streamBody).bodyAsText()
+            assertFalse(text, text.contains("Generation timed out"))
+            assertEquals(1, seam.disposed.get())
+            awaitLoadZero()
+            // a conversation exists only if the generation got that far (at most one); then it was cancelled and closed
+            assertTrue(factory.engine.conversations.size <= 1)
+            for (conversation in factory.engine.conversations) {
+                assertTrue(conversation.cancelCount >= 1)
+                assertTrue(conversation.closed)
+            }
+            factory.engine.hangUntilCancelled = false
+            assertEquals(HttpStatusCode.OK, post(streamBody).status)
+        }
+    }
+
+    @Test
+    fun aCloseAfterAFinishedStreamChangesNothing() {
+        val factory = FakeEngineFactory(chunks = listOf("po", "ng"))
+        val manager = newManager(factory)
+        runBlocking { manager.loadModel(tmp.newFile("m-done.litertlm").absolutePath, "CPU") }
+        var gone: (() -> Unit)? = null
+        val seam = GoneSeam { onGone -> gone = onGone }
+        withGoneSeam(manager, seam) {
+            val text = post(streamBody).bodyAsText()
+            assertTrue(text, text.trimEnd().endsWith("data: [DONE]"))
+            // the connection closes after the reply was sent
+            requireNotNull(gone).invoke()
+            assertEquals(1, seam.watched.get())
+            assertEquals(0, factory.engine.conversations[0].cancelCount)
+            // not closed: the finished conversation went into the cache
+            assertFalse(factory.engine.conversations[0].closed)
+            awaitLoadZero()
+        }
+    }
+
+    @Test
+    fun stopForGoneClientCancelsOnlyWhenItEndsTheStream() {
+        val open = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val job = kotlinx.coroutines.Job()
+        assertTrue(OpenAIServer.stopForGoneClient(open, job))
+        assertTrue(open.isClosedForSend)
+        assertTrue(job.isCancelled)
+
+        // the reply's end (or an error) already closed the channel: the job is left alone
+        val finished = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        finished.close()
+        val running = kotlinx.coroutines.Job()
+        assertFalse(OpenAIServer.stopForGoneClient(finished, running))
+        assertFalse(running.isCancelled)
+    }
+
     @Test
     fun everyExitOfTheChatHandlerLeavesTheLoadCounterAtZero() {
         // engine error (500 non-streaming, SSE error event streaming)
@@ -683,6 +802,61 @@ class OpenAIServerTest {
                     setBody(body)
                 }.bodyAsText()
             }
+            awaitLoadZero()
+        }
+    }
+
+    @Test
+    fun clientMessageGivesFixedMessagesOnly() {
+        assertEquals("Server busy", OpenAIServer.clientMessage(EngineBusyException(), "fallback"))
+        assertEquals("Generation timed out", OpenAIServer.clientMessage(GenerationTimeoutException(), "fallback"))
+        assertEquals("Token usage unavailable", OpenAIServer.clientMessage(UsageUnavailableException(IllegalStateException("x")), "fallback"))
+        assertEquals("Model not loaded", OpenAIServer.clientMessage(ModelNotLoadedException(), "fallback"))
+        assertEquals("fallback", OpenAIServer.clientMessage(IllegalStateException("secret detail"), "fallback"))
+        assertEquals("fallback", OpenAIServer.clientMessage(IllegalStateException("Model not loaded"), "fallback"))
+    }
+
+    @Test
+    fun anEngineFailureNeverEchoesTheExceptionText() {
+        val failing = newManager(FakeEngineFactory(failure = IllegalStateException("boom")))
+        runBlocking { failing.loadModel(tmp.newFile("m-boom.litertlm").absolutePath, "CPU") }
+        withServer(failing) {
+            val plain = post(chatBody)
+            assertEquals(HttpStatusCode.InternalServerError, plain.status)
+            val plainBody = com.google.gson.JsonParser.parseString(plain.bodyAsText()).asJsonObject
+            assertEquals(setOf("error"), plainBody.keySet())
+            assertEquals("Inference failed", plainBody["error"].asString)
+            val streamText = post(streamBody).bodyAsText()
+            assertTrue(streamText, streamText.contains("\"error\":\"Inference failed\""))
+            assertFalse(streamText, streamText.contains("boom"))
+            assertFalse(streamText, streamText.contains("[DONE]"))
+            awaitLoadZero()
+        }
+    }
+
+    @Test
+    fun aNonStreamingRequestWithoutAModelGetsTheFixedMessage() = withServer(AiEngineManager(FakeEngineFactory())) {
+        val response = post(chatBody)
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val body = com.google.gson.JsonParser.parseString(response.bodyAsText()).asJsonObject
+        assertEquals(setOf("error"), body.keySet())
+        assertEquals("Model not loaded", body["error"].asString)
+    }
+
+    @Test
+    fun anUnexpectedFailureInTheChatHandlerGetsTheFixedBadRequest() {
+        // Any exception the chat handler does not expect reaches the outer catch; here the disconnect watcher throws
+        // (the generation has just been launched and is cancelled with it).
+        val failingWatch: (io.ktor.server.application.ApplicationCall, () -> Unit) -> kotlinx.coroutines.DisposableHandle? =
+            { _, _ -> throw IllegalStateException("secret detail /data/x") }
+        val server = OpenAIServer(loadedManager(), failingWatch) { it == validToken }
+        testApplication {
+            application { with(server) { module() } }
+            val response = post(chatBody)
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            val body = com.google.gson.JsonParser.parseString(response.bodyAsText()).asJsonObject
+            assertEquals("Bad request", body["error"].asString)
+            assertFalse(response.bodyAsText().contains("secret"))
             awaitLoadZero()
         }
     }

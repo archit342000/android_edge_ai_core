@@ -140,6 +140,7 @@ class AiEngineManagerTest {
             )
             fail("expected IllegalStateException")
         } catch (e: IllegalStateException) {
+            assertTrue(e is ModelNotLoadedException)
             assertEquals("Model not loaded", e.message)
         }
     }

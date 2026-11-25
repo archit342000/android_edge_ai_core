@@ -90,23 +90,23 @@ chunks, and tool calls as one `delta.tool_calls` chunk (each with `index`, `id`,
 With `stream_options.include_usage: true` the last event before `[DONE]` is a chunk with `"choices": []` and the `usage` object; without it no
 chunk carries `usage`.
 
-On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`.
-If the client disconnects mid-stream, or while a non-streaming answer is being generated (noticed through the closed connection), the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops.
+On a generation error the stream sends `data: {"error": "..."}` and closes without `[DONE]`. The message is always a fixed one (`Server busy`, `Generation timed out`, `Token usage unavailable`, `Model not loaded`, otherwise `Inference failed`), never the exception text, which goes to the log.
+If the client disconnects (noticed through the closed connection, even before the first token, or through a failed stream write), the server cancels the generation (`cancelProcess()`), frees the inference slot and the `/v1/load` count drops. A request still queued for the engine is dropped at once. LiteRT-LM finishes prompt processing (prefill) before it honours a cancel, so a request dropped during prefill frees the slot only when prefill ends, without generating any text.
 
 ## Unsupported or ignored
 
 Accepted but ignored (clients such as the OpenAI SDKs send them by default): `logit_bias`, `parallel_tool_calls` (the server returns every call the model emits).
 Not supported: `n` other than 1 (400), `tool_choice` naming a function (400: the engine cannot force a call), `regex` response formats, `reasoning_tokens` in `usage` (the engine gives no thinking count), user-configurable limits.
 `json_schema` output may contain properties the schema does not list unless the schema sets `additionalProperties: false`.
-The context size set in the app is clamped to the model's maximum when the model reports a fixed one (the status line says so).
+The context size set in the app is clamped to the model's maximum when the model reports a fixed one (the status line says so). Not yet observed on a device: Gemma 4 reports a dynamic context, so no clamp applies to it.
 
 ## Errors
 
 | Status | When |
 |--------|------|
-| `400` | body cannot be read (malformed JSON, wrong types, missing `messages` or `role`, empty body, wrong content type): fixed message `Invalid request body`, never the input or an exception text; a field is out of range (see Chat request), an `image_url` part for a model without a vision encoder or an `audio_url` part for a model without an audio encoder (`Model does not support image input` / `... audio input`), the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation (including "Model not loaded") |
+| `400` | body cannot be read (malformed JSON, wrong types, missing `messages` or `role`, empty body, wrong content type): fixed message `Invalid request body`, never the input or an exception text; a field is out of range (see Chat request), an `image_url` part for a model without a vision encoder or an `audio_url` part for a model without an audio encoder (`Model does not support image input` / `... audio input`), the request has no non-system message (only `system`/`developer` messages, or an empty `messages` array), or any other exception before or during a non-streaming generation: `Model not loaded` when no model is loaded, otherwise the fixed `Bad request` (never the exception text) |
 | `401` | missing or invalid token |
-| `500` | the engine reported an error, returned no text (non-streaming), or its token usage could not be read (`Token usage unavailable`) |
+| `500` | the engine reported an error (fixed message `Inference failed`, never the exception text), returned no text (`Empty response from model`, non-streaming), or its token usage could not be read (`Token usage unavailable`) |
 | `503` | model not loaded (`/health`, `/v1/health`, `/v1/load`); or `Server busy` on chat (more than 4 requests held at once, refused at once, or a request waited more than 120 s for the engine), with `Retry-After: 5`; on a stream only the refused-at-once case is a real 503, a queue-wait timeout arrives as a `data: {"error": "Server busy"}` event without `[DONE]` (the 200 had already started) |
 | `504` | `Generation timed out`: one generation ran for 10 minutes and was stopped (on a stream: a `data: {"error": ...}` event without `[DONE]`) |
 

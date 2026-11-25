@@ -27,6 +27,7 @@ import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
@@ -196,7 +197,7 @@ class OpenAIServer(
                                                         // A cancel is a client disconnect, not an error to send.
                                                         if (error !is CancellationException) {
                                                             Log.e(TAG, "Streaming error", error)
-                                                            val errorJson = GsonBuilder().create().toJson(ErrorResponse(error.message ?: "Unknown error"))
+                                                            val errorJson = GsonBuilder().create().toJson(ErrorResponse(clientMessage(error, INFERENCE_FAILED_MESSAGE)))
                                                             channel.trySend("data: $errorJson\n\n")
                                                         }
                                                         channel.close()
@@ -207,16 +208,23 @@ class OpenAIServer(
                                                 throw e
                                             } catch (e: Exception) {
                                                 Log.e(TAG, "Streaming launch error", e)
-                                                val errorJson = GsonBuilder().create().toJson(ErrorResponse(e.message ?: "Unknown error"))
+                                                val errorJson = GsonBuilder().create().toJson(ErrorResponse(clientMessage(e, INFERENCE_FAILED_MESSAGE)))
                                                 channel.trySend("data: $errorJson\n\n")
                                                 channel.close()
                                             }
                                         }
 
-                                        // Write to the response stream
-                                        OpenAIServer.forwardChunks(channel, job) { msg ->
-                                            write(msg)
-                                            flush()
+                                        // A client that leaves before the first token (queued or in prefill) is noticed
+                                        // through the closed connection, not only through a failed write.
+                                        val watcher = onClientGone(call) { stopForGoneClient(channel, job) }
+                                        try {
+                                            // Write to the response stream
+                                            OpenAIServer.forwardChunks(channel, job) { msg ->
+                                                write(msg)
+                                                flush()
+                                            }
+                                        } finally {
+                                            watcher?.dispose()
                                         }
                                     }
                                 }
@@ -261,7 +269,7 @@ class OpenAIServer(
                                 }
                             }
                             if (clientGone.get()) {
-                                Log.i(TAG, "Generation cancelled (client disconnected)")
+                                Log.i(TAG, CLIENT_GONE_LOG)
                                 return@post
                             }
 
@@ -274,9 +282,10 @@ class OpenAIServer(
                                 call.respond(HttpStatusCode.GatewayTimeout, ErrorResponse(GenerationTimeoutException.MESSAGE))
                                 return@post
                             }
-                            if (errorOccurred != null) {
-                                Log.e(TAG, "Inference failed", errorOccurred)
-                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse(errorOccurred?.message ?: "Unknown error"))
+                            val error = errorOccurred
+                            if (error != null) {
+                                Log.e(TAG, INFERENCE_FAILED_MESSAGE, error)
+                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse(clientMessage(error, INFERENCE_FAILED_MESSAGE)))
                                 return@post
                             }
 
@@ -317,7 +326,7 @@ class OpenAIServer(
                         call.respond(HttpStatusCode.BadRequest, ErrorResponse(INVALID_BODY_MESSAGE))
                     } catch (e: Exception) {
                         Log.e(TAG, "Error processing request", e)
-                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("Bad Request: ${e.message}"))
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse(clientMessage(e, BAD_REQUEST_MESSAGE)))
                     } finally {
                         activeRequests.decrementAndGet()
                     }
@@ -353,7 +362,7 @@ class OpenAIServer(
                     if (aiEngineManager.isModelLoaded) {
                         call.respond(HealthResponse("ok", aiEngineManager.activeBackend))
                     } else {
-                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(ModelNotLoadedException.MESSAGE))
                     }
                 }
 
@@ -366,7 +375,7 @@ class OpenAIServer(
                     }
 
                     if (!aiEngineManager.isModelLoaded) {
-                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
+                        call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(ModelNotLoadedException.MESSAGE))
                         return@get
                     }
 
@@ -384,7 +393,7 @@ class OpenAIServer(
                  if (aiEngineManager.isModelLoaded) {
                      call.respond(HealthResponse("ok", aiEngineManager.activeBackend))
                  } else {
-                     call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Model not loaded"))
+                     call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(ModelNotLoadedException.MESSAGE))
                  }
              }
         }
@@ -430,6 +439,27 @@ class OpenAIServer(
         /** The only text a client sees when the request body cannot be read. */
         const val INVALID_BODY_MESSAGE = "Invalid request body"
 
+        /** Logged when a client disconnect cancels a generation. */
+        private const val CLIENT_GONE_LOG = "Generation cancelled (client disconnected)"
+
+        /** What a client sees for an unexpected failure outside generation (outer 400). */
+        const val BAD_REQUEST_MESSAGE = "Bad request"
+
+        /** What a client sees for an unexpected engine failure (500, or an SSE error event). */
+        const val INFERENCE_FAILED_MESSAGE = "Inference failed"
+
+        /**
+         * The error text a client may see for [error]: the fixed message of a known exception, otherwise [fallback].
+         * Never an exception's own text, which can name internal classes, paths or echo the input; the detail goes to the log.
+         */
+        internal fun clientMessage(error: Throwable, fallback: String): String = when (error) {
+            is EngineBusyException -> EngineBusyException.MESSAGE
+            is GenerationTimeoutException -> GenerationTimeoutException.MESSAGE
+            is UsageUnavailableException -> UsageUnavailableException.MESSAGE
+            is ModelNotLoadedException -> ModelNotLoadedException.MESSAGE
+            else -> fallback
+        }
+
         /** Model id echoed back when the request names none. */
         private const val DEFAULT_MODEL_ID = "litertlm-model"
 
@@ -445,6 +475,20 @@ class OpenAIServer(
         private const val RETRY_AFTER_SECONDS = "5"
 
         /**
+         * Ends a stream whose client has gone: closes [channel] so the writer stops and, only if this call closed it,
+         * cancels the generation [job]. A channel already closed by the reply's end or an error means the stream had
+         * finished, so the job is left alone (a finished reply can still go into the conversation cache). A client that
+         * leaves after the engine finished but before the reply's end reached the channel still cancels the job, so that
+         * conversation is closed instead of cached. Returns true when it cancelled the job.
+         */
+        internal fun stopForGoneClient(channel: SendChannel<String>, job: Job): Boolean {
+            if (!channel.close()) return false
+            Log.i(TAG, CLIENT_GONE_LOG)
+            job.cancel()
+            return true
+        }
+
+        /**
          * Copies [channel] to the client with [write]. If a write fails because the client disconnected, cancels the
          * generation [job] (which cancels native decoding) and, for a cancellation-style failure, rethrows it.
          */
@@ -452,11 +496,11 @@ class OpenAIServer(
             try {
                 for (msg in channel) write(msg)
             } catch (e: IOException) {
-                Log.i(TAG, "Generation cancelled (client disconnected)")
+                Log.i(TAG, CLIENT_GONE_LOG)
                 job.cancel()
             } catch (e: CancellationException) {
                 // Ktor reports a write to an already closed channel this way too.
-                Log.i(TAG, "Generation cancelled (client disconnected)")
+                Log.i(TAG, CLIENT_GONE_LOG)
                 job.cancel()
                 throw e
             }

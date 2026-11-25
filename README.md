@@ -83,7 +83,7 @@ Also supported: `max_tokens` / `max_completion_tokens`, `top_p`, `top_k`, `prese
 
 Limits: at most 4 chat requests are held at once (the next gets `503 Server busy` with `Retry-After`), a request waits at most 2 minutes for the engine (`503`), and one generation may run 10 minutes (`504`). `finish_reason` is `length` when the reply reached the token cap and `tool_calls` after a tool call. `stop` (a string or up to 4 strings) ends the answer before the first match. Ignored: `logit_bias`, `parallel_tool_calls`. Not supported: `n` above 1 (400), a named `tool_choice` (400), `reasoning_tokens` in `usage`. With `json_schema`, set `additionalProperties: false` to forbid extra properties.
 
-**Tool calling, JSON output and thinking** (supported by models such as Gemma 4):
+**Tool calling, JSON output and thinking** (supported by models such as Gemma 4; the app does not check support up front, see `docs/standards/api.md`):
 ```json
 {
   "messages": [{"role": "user", "content": "Weather in Paris?"}],
@@ -157,9 +157,9 @@ for line in response.iter_lines():
 1.  **State Management**: The server uses a transient conversation ID for each request to maintain context within the engine, but the REST API itself is stateless. Send the full conversation history in the `messages` array every time; the server reuses its cache automatically when the history extends the previous request.
 2.  **System prompt**: put instructions in a `system` message; with none, the model's own default applies (no built-in prompt). A request with only system messages is rejected with 400.
 3.  **Reuse**: send the assistant's reply back exactly as received (unchanged text); an edited or trimmed reply, a changed earlier message or different settings make the server rebuild the context (correct, just slower).
-4.  **Streaming**: Use `stream: true` for the best user experience, as Large Language Models can take time to generate full responses. Closing a connection, streaming or not, stops generation as soon as the next token is written (not during the initial prompt processing), so the next request normally does not wait for it.
+4.  **Streaming**: Use `stream: true` for the best user experience, as Large Language Models can take time to generate full responses. Closing a connection, streaming or not, cancels the request at once: a request still waiting for the engine gives up its place, and a running one stops before generating any more text. The engine does not interrupt the initial prompt processing, so a request dropped during it keeps the engine busy until that part ends.
 5.  **Token usage**: responses carry real `usage` (prompt, completion, total and cached prompt tokens). For streams, send `"stream_options": {"include_usage": true}` to get a final usage chunk before `data: [DONE]`.
-6.  **Error Handling**: Check for HTTP status codes (401 for Unauthorized, 503 for Model Not Loaded).
+6.  **Error Handling**: Check for HTTP status codes: 401 for an invalid token; with no model loaded, chat answers 400 `Model not loaded` and `/health`, `/v1/health` and `/v1/load` answer 503.
 
 ---
 
